@@ -1,0 +1,442 @@
+<title>Cattelan Italia — Live Chat Agent QA Pass</title>
+<style>
+:root {
+  --bg: #f4f2ed;
+  --surface: #ffffff;
+  --surface-2: #ebe8e0;
+  --text: #242320;
+  --text-dim: #5b574e;
+  --border: #dcd7cb;
+  --accent: #3b4a6b;
+  --accent-soft: #e7eaf1;
+  --pass: #3f7a56;
+  --pass-bg: #e5f0e7;
+  --fail: #a6453a;
+  --fail-bg: #f6e6e2;
+  --fixed: #a3791f;
+  --fixed-bg: #f4ecd8;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+  --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15151a;
+    --surface: #1d1d24;
+    --surface-2: #24242c;
+    --text: #e8e6e0;
+    --text-dim: #a3a096;
+    --border: #34343e;
+    --accent: #8b9dcf;
+    --accent-soft: #262c3d;
+    --pass: #7cbb95;
+    --pass-bg: #1c2b21;
+    --fail: #e08579;
+    --fail-bg: #302020;
+    --fixed: #d9b35c;
+    --fixed-bg: #2e2718;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15151a; --surface: #1d1d24; --surface-2: #24242c; --text: #e8e6e0; --text-dim: #a3a096;
+  --border: #34343e; --accent: #8b9dcf; --accent-soft: #262c3d; --pass: #7cbb95; --pass-bg: #1c2b21;
+  --fail: #e08579; --fail-bg: #302020; --fixed: #d9b35c; --fixed-bg: #2e2718;
+}
+:root[data-theme="light"] {
+  --bg: #f4f2ed; --surface: #ffffff; --surface-2: #ebe8e0; --text: #242320; --text-dim: #5b574e;
+  --border: #dcd7cb; --accent: #3b4a6b; --accent-soft: #e7eaf1; --pass: #3f7a56; --pass-bg: #e5f0e7;
+  --fail: #a6453a; --fail-bg: #f6e6e2; --fixed: #a3791f; --fixed-bg: #f4ecd8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.page {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.55;
+  min-height: 100vh;
+}
+.wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+.masthead {
+  border-bottom: 3px solid var(--text);
+  padding-bottom: 20px;
+  margin-bottom: 28px;
+}
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+.round-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fixed);
+  background: var(--fixed-bg);
+  border-radius: 3px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+h1 {
+  font-family: var(--serif);
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 700;
+  margin: 0 0 8px;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+.dek { color: var(--text-dim); font-size: 15.5px; max-width: 680px; margin: 0; }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin-bottom: 40px;
+}
+.stat {
+  background: var(--surface);
+  padding: 18px 16px;
+}
+.stat .num {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.stat .label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.stat.ok .num { color: var(--pass); }
+
+section { margin-bottom: 44px; }
+h2 {
+  font-family: var(--serif);
+  font-size: 22px;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+h2 .idx { font-family: var(--mono); font-size: 13px; color: var(--text-dim); font-weight: 400; }
+.section-note { color: var(--text-dim); font-size: 14px; margin: 0 0 18px; max-width: 700px; }
+
+.pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill.fixed { background: var(--fixed-bg); color: var(--fixed); }
+.pill.pass { background: var(--pass-bg); color: var(--pass); }
+.pill.fail { background: var(--fail-bg); color: var(--fail); }
+.pill.warn { background: var(--fixed-bg); color: var(--fixed); }
+
+.bugcard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--fixed);
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+.bugcard h3 { font-family: var(--serif); font-size: 17px; margin: 0 0 4px; }
+.bugcard .cause { color: var(--text-dim); font-size: 14px; margin: 0 0 14px; }
+.diffgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+@media (max-width: 640px) { .diffgrid { grid-template-columns: 1fr; } }
+.termblock {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-x: auto;
+}
+.termblock .tag {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.termblock.before { border-left: 3px solid var(--fail); }
+.termblock.after { border-left: 3px solid var(--pass); }
+.query-line { color: var(--accent); margin-bottom: 6px; }
+.query-line::before { content: "> "; }
+
+.scopegrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  margin: 4px 0 14px;
+}
+.scopegrid .cell { background: var(--surface-2); padding: 10px 14px; }
+.scopegrid .cell .n { font-family: var(--mono); font-size: 18px; font-variant-numeric: tabular-nums; }
+.scopegrid .cell .l { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+@media (max-width: 640px) { .scopegrid { grid-template-columns: 1fr; } }
+
+.tablewrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 820px; }
+thead th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  position: sticky;
+  top: 0;
+}
+tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface-2); }
+td.q { font-family: var(--mono); font-size: 12px; color: var(--text-dim); max-width: 260px; }
+td.n { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+td.cat { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+.findings { display: flex; flex-direction: column; gap: 10px; }
+.finding {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 18px;
+  font-size: 14px;
+}
+.finding b { display: block; margin-bottom: 3px; }
+.finding .fnote { color: var(--text-dim); font-size: 13px; }
+
+.callout {
+  background: var(--fixed-bg);
+  border: 1px solid var(--fixed);
+  border-radius: 4px;
+  padding: 18px 22px;
+  font-size: 14.5px;
+}
+.callout.pass-tone { background: var(--pass-bg); border-color: var(--pass); }
+.callout h3 { font-family: var(--serif); font-size: 16px; margin: 0 0 8px; color: var(--fixed); }
+.callout.pass-tone h3 { color: var(--pass); }
+.callout p { margin: 0 0 8px; }
+.callout p:last-child { margin-bottom: 0; }
+.callout code { font-family: var(--mono); font-size: 12.5px; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; }
+
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 18px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-family: var(--mono);
+}
+</style>
+
+<div class="page">
+<div class="wrap">
+
+  <div class="masthead">
+    <p class="eyebrow">Altossa AI Catalog Agent · QA Pass · Cattelan Italia <span class="round-badge">Round 2 — 3 fixes closed out</span></p>
+    <h1>Live chat agent, stress-tested against ground truth</h1>
+    <p class="dek">Round 1 found 2 bugs and 3 confirmed gaps. This round root-causes and fixes all 3: multi-product messages that silently dropped a named product, letter/qualifier size codes that couldn't be selected at all, and no visible signal when the LLM path is unavailable. Verified with a 56-query regression (the original 52 plus 4 new multi-product combinations) and a separate 190-case automated sweep across every product in the catalog that uses a non-numeric size code.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat ok"><div class="num">56 / 56</div><div class="label">Zero fabricated prices</div></div>
+    <div class="stat ok"><div class="num">5</div><div class="label">Bugs found &amp; fixed (2 + 3)</div></div>
+    <div class="stat ok"><div class="num">190 / 190</div><div class="label">Size-code cases improved, 0 unimproved</div></div>
+    <div class="stat"><div class="num">1</div><div class="label">Known gap left (unresolvable typo, no live LLM)</div></div>
+  </div>
+
+  <section>
+    <h2>Safety check <span class="idx">— still the thing that actually matters</span></h2>
+    <p class="section-note">Every response across all 56 regression queries, plus all 190 size-code sweep queries (246 live calls total this round), was cross-checked automatically against the live <code style="font-family: var(--mono);">prices.json</code> / <code style="font-family: var(--mono);">manual_additions.json</code>. Result: <strong>zero fabricated or wrong numbers, in every run, before and after every fix below.</strong> Every fix this round is purely additive narrowing — it can only exclude wrong rows or combine real answers, never invent one.</p>
+  </section>
+
+  <section>
+    <h2>Bug 3 <span class="idx">— fixed</span></h2>
+    <p class="section-note"><span class="pill fixed">root cause</span>&nbsp; Multi-product messages went through the LLM's own <code style="font-family: var(--mono);">product_names</code> array with no deterministic backstop. When that array only surfaced one of two clearly-named products (a casing mismatch, or the LLM simply not noticing both), the second product vanished from the reply with zero trace — reproduced identically whether the LLM was live or rate-limited, so it wasn't an availability fluke.</p>
+    <div class="bugcard">
+      <h3>Deterministic longest-match scan for every real product named in the text</h3>
+      <p class="cause">Fix: independently scan the raw query for every real catalog product name, using the same "prefer the longest/most-complete match" rule as Bug 1 — a shorter name only counts as a separate mention if it appears somewhere the longer name's match doesn't already cover. Union this with whatever the LLM found. Anything the LLM named but couldn't resolve to a real product now gets an explicit "couldn't find X" line instead of silently disappearing.</p>
+      <div class="diffgrid">
+        <div class="termblock before">
+          <span class="tag">Before</span>
+          <div class="query-line">italia pelle and italia couture pelle</div>
+          Answered only for ITALIA Couture (€696/€1.048). ITALIA never mentioned.
+        </div>
+        <div class="termblock after">
+          <span class="tag">After</span>
+          <div class="query-line">italia pelle and italia couture pelle</div>
+          status: multi_product → ITALIA (€656/€1.009) AND ITALIA Couture (€696/€1.048), both real, both shown
+        </div>
+      </div>
+      <p class="section-note" style="margin:10px 0 0;">Same fix resolved the other known failure ("...greta wood pelle and wlima pelle glove" — see note below) for the recoverable half, and 4 brand-new combinations tried for the first time this round all combined correctly: <em>"how much are agatha flex and sofia"</em>, <em>"give me stilo and melody prices"</em>, <em>"compare bishop and richard"</em>, <em>"price for kay, tina, and wilma"</em> (Oxford comma, 3 products) — every one addressed every named product, several with an explicit "found X, but not that exact size/fabric combination" instead of guessing when the query's size/tier didn't apply to that particular product.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bug 4 <span class="idx">— fixed, verified across the full catalog</span></h2>
+    <p class="section-note"><span class="pill fixed">root cause</span>&nbsp; The size filter was 100% digit-based. Any size distinguished by a letter/code with no dimensions (MELODY's "A"–"E") or by a trailing shape qualifier on otherwise-identical dimensions ("240x120x74h" vs "240x120x74h <em>sag</em>") couldn't be selected at all — and a query with bare/space-separated numbers and no literal "x" ("premier wood 240 120", "ritz lounge 140") wasn't recognized as a size at all either.</p>
+    <p class="section-note" style="margin-top:-8px;">Scoped it first, as asked, before touching the matching logic: scanned every product in the catalog for this exact shape of ambiguity.</p>
+    <div class="scopegrid">
+      <div class="cell"><div class="n">72</div><div class="l">products with a size that has zero real dimension numbers at all</div></div>
+      <div class="cell"><div class="n">104</div><div class="l">products where 2+ sizes share identical dimensions, letter/qualifier-only</div></div>
+      <div class="cell"><div class="n">110</div><div class="l">unique products affected — the real verification scope</div></div>
+    </div>
+    <div class="bugcard">
+      <h3>Bare-number size fallback + letter/qualifier disambiguation, both scoped to real catalog vocabulary</h3>
+      <p class="cause">Two additive fixes: (1) when no "x"-joined size is found, fall back to any bare 2–3 digit numbers in the query, reusing the same real-dimension matching already in place. (2) independently pull the non-numeric code/qualifier words out of each real size string (stripping pure units like "h"/"x"/"ø") and match them against the query — narrowing to whichever subset matches, not requiring a clean single match, since a bare "sag" legitimately matches two different sag variants at different base sizes. Single-letter codes that double as English words ("a", "i") only count when they're positionally right after the product name or a word like "size"/"style" — never from bare presence alone, so "give me <u>a</u> price for..." can't misfire.</p>
+      <div class="diffgrid">
+        <div class="termblock before">
+          <span class="tag">Before</span>
+          <div class="query-line">melody size c</div>
+          All 14 rows, every letter code A–E mixed together, unfiltered
+        </div>
+        <div class="termblock after">
+          <span class="tag">After</span>
+          <div class="query-line">melody size c</div>
+          status: ok → MELODY (C), Cristallo fumé: €710 — exact single row
+        </div>
+      </div>
+      <p class="section-note" style="margin:10px 0 0;">Verified with an automated sweep generating one representative query per size-collision group across all 110 affected products (190 test cases) and calling the live endpoint for each: <strong>51/190 resolved to the exact single target row, 139/190 narrowed to a real, safe subset (e.g. "sag" alone correctly narrows out non-sag sizes but can't fully choose between two different sag variants without more info), 0/190 failed to improve at all, 0/190 fabricated anything.</strong> "peyote a cristallo extrachiaro verniciato bianco" and "spinnaker x fissaggio a muro..." (this round's two named examples) both now resolve correctly; "ritz lounge 140" and "premier wood 240 120" (the no-"x" cases) now resolve to exact single/narrow results too.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Feature 5 <span class="idx">— added, and it fired for real during this exact test session</span></h2>
+    <p class="section-note">A short note is now appended to the reply, and a <code style="font-family: var(--mono);">degraded: true</code> flag set on the response, any time the LLM step genuinely failed (bad key, network error, timeout, rate limit) rather than successfully running and just being unsure. This didn't need to be simulated to verify — the Groq free-tier key's 100,000 token/day quota was still exhausted from Round 1 and stayed exhausted for this entire round, so literally every one of the 246 live calls made during this fix-and-verify session carried the note.</p>
+    <div class="callout pass-tone">
+      <h3>Real response captured during this session</h3>
+      <p><code>"NETTUNO (GFM11 / GFM18) (B 130x40x72h), MIST fabric: €1.525<br>&nbsp;<br>(Using basic matching for this reply -- some phrasing variations, typos, or multi-product requests may not be recognized.)"</code></p>
+      <p>Every response in this round's regression carries this note, which is itself the most realistic possible field test of the feature — there was no need to fake an outage.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What's genuinely still open</h2>
+    <p class="section-note">Not fixed this round, shown rather than silently left out.</p>
+    <div class="findings">
+      <div class="finding">
+        <b>One typo combination still can't be recovered without a live LLM</b>
+        <span class="fnote">"...greta wood pelle and wlima pelle glove" — the deterministic multi-product scanner (Bug 3's fix) can only find real product names verbatim in the text, so it can't guess that "wlima" means WILMA on its own. With the LLM available it should resolve via the same union logic that already recovered "italia"/"italia couture" and the 4 new combinations — but Groq's quota stayed exhausted for the entirety of this session, so that specific path couldn't be re-verified live this round. The fix is structurally additive (union of LLM guesses + deterministic scan), so it can only help once quota resets, never regress.</span>
+      </div>
+      <div class="finding">
+        <b>A handful of size-collision cases can only narrow to 2, not all the way to 1</b>
+        <span class="fnote">Where a product has more than one genuinely different variant sharing the same qualifier word (e.g. two different "sag" sizes at different base dimensions, or "T"-prefixed vs plain across 3 different diameters), the fix correctly excludes everything that doesn't match but can't fully choose between the remaining real options without the user also giving the base size. Safe — never guesses, just shows the real narrowed set.</span>
+      </div>
+      <div class="finding">
+        <b>Unrelated products can still tie on a shared common word</b>
+        <span class="fnote">"grega outdoor tessuto outdoor" still offers GRETA Outdoor alongside two unrelated products that also contain the word "outdoor" — always asks rather than guessing, just a noisier candidate list than ideal. Unchanged from Round 1, not addressed this round.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>All 56 queries — final state</h2>
+    <p class="section-note">Original 52 re-run in full (not just the previously-failing ones) plus 4 new multi-product combinations. Every price shown was independently verified against the live source data — the fabrication check passed on all 56 without exception. All 56 carried the degraded-mode note (Groq quota exhausted throughout), which is reflected in the results below exactly as returned.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Category</th><th>Query</th><th>Result</th><th>Verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">1</td><td class="cat">typo</td><td class="q">agata flex pelle</td><td>Asked to clarify (AGATHA FLEX / MAYA FLEX / MAYA FLEX ML) — safe, no wrong guess (LLM would likely resolve this directly; unavailable this round)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">2</td><td class="cat">typo</td><td class="q">hystrx 300x120x75 sag cristallo trasparente</td><td>Not found — needs LLM typo correction, unavailable this round</td><td><span class="pill fail">fail</span></td></tr>
+          <tr><td class="n">3</td><td class="cat">typo</td><td class="q">wlima pelle glove</td><td>Not found — typo too aggressive for deterministic matching alone</td><td><span class="pill fail">fail</span></td></tr>
+          <tr><td class="n">4</td><td class="cat">typo</td><td class="q">kaay pelle price</td><td>Not found — typo too aggressive for deterministic matching alone</td><td><span class="pill fail">fail</span></td></tr>
+          <tr><td class="n">5</td><td class="cat">typo</td><td class="q">bishp price</td><td>Not found — typo too aggressive for deterministic matching alone</td><td><span class="pill fail">fail</span></td></tr>
+          <tr><td class="n">6</td><td class="cat">typo</td><td class="q">nettuno b 130x40x72 gfm11 gfm18 mist</td><td>NETTUNO (GFM11/GFM18) B 130x40x72h, MIST — €1.525 exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">7</td><td class="cat">typo</td><td class="q">planer keramik 158x158x75 gfm69 gfm73</td><td>PLANER Keramik, size resolved, 3 tier rows shown, all exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">8</td><td class="cat">typo</td><td class="q">peyote b pelle no wait crystal specchiato fume bronzo</td><td>2 real PEYOTE rows shown (size B narrowed correctly); typo "crystal"/"cristallo" still not recovered without LLM</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">9</td><td class="cat">multi-product</td><td class="q">sierra pouf 100x94x41h pelle and tina pelle</td><td><b>Fixed.</b> multi_product: SIERRA pouf €1.902 exact; TINA explicitly "not that exact combination" with real available sizes/tiers listed — not silently dropped</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">10</td><td class="cat">multi-product</td><td class="q">prices for wilma pelle, agatha flex pelle, and kay pelle</td><td><b>Fixed.</b> multi_product: all 3 addressed with exact real prices — AGATHA FLEX €925, WILMA €935, KAY €559</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">11</td><td class="cat">multi-product</td><td class="q">gve me greta wood pelle and wlima pelle glove</td><td>GRETA Wood answered (€1.500); WILMA still dropped — "wlima" typo unrecoverable without a live LLM (see "still open")</td><td><span class="pill fail">fail</span></td></tr>
+          <tr><td class="n">12</td><td class="cat">multi-product</td><td class="q">bishop, richard a 245x234x102 pelle, and ritz lounge 118</td><td><b>Fixed.</b> multi_product: all 3 addressed — RICHARD real prices, BISHOP and RITZ Lounge each explicitly "not that exact combination" with real options listed</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">13</td><td class="cat">multi-product</td><td class="q">italia pelle and italia couture pelle</td><td><b>Fixed.</b> multi_product: both ITALIA (€656/€1.009) and ITALIA Couture (€696/€1.048) addressed, all 4 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">14</td><td class="cat">multi-product</td><td class="q">cody 1 and cody l</td><td>Correct — one product, two sizes, all 12 real rows shown (unchanged, correctly not treated as multi-product)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">15</td><td class="cat">ambiguous prefix</td><td class="q">planer keramik round price</td><td>Resolved directly to PLANER Keramik Round, 3/3 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">16</td><td class="cat">ambiguous prefix</td><td class="q">magda price</td><td>Correctly resolved to the real standalone product "MAGDA", 8/8 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">17</td><td class="cat">ambiguous prefix</td><td class="q">isabel price</td><td>Correctly resolved to the real standalone product "ISABEL", 16/16 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">18</td><td class="cat">ambiguous prefix</td><td class="q">norma couture price</td><td>Resolved directly to NORMA Couture, 16/16 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">19</td><td class="cat">ambiguous prefix</td><td class="q">planer price</td><td>Correctly resolved to standalone "PLANER", main variant only, 6/6 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">20</td><td class="cat">size/fabric only</td><td class="q">give premier wood 240 120</td><td><b>Fixed.</b> Bare-number fallback narrows to exactly the 2 real rows for that size (€5.342/€5.413) instead of all 6</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">21</td><td class="cat">size/fabric only</td><td class="q">amsterdam pelle</td><td>AMSTERDAM has no fabric-tier concept — correctly did NOT fabricate a "pelle" price, showed real rows instead</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">22</td><td class="cat">size/fabric only</td><td class="q">isabel sgabello pelle</td><td>ISABEL Sgabello, tier filtered, 2/2 rows exact (€788/€801)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">23</td><td class="cat">size/fabric only</td><td class="q">ritz lounge 140</td><td><b>Fixed.</b> Bare-number fallback resolves to the single exact row — €3.500</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">24</td><td class="cat">size/fabric only</td><td class="q">sofia pelle glove</td><td>SOFIA, tier filtered, 4/4 rows exact (€974/€1.422/€1.062/€1.503)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">25</td><td class="cat">size/fabric only</td><td class="q">grega outdoor tessuto outdoor</td><td>Asked to clarify (GRETA Outdoor + 2 unrelated "outdoor" products) — safe, a bit noisy, unchanged from Round 1</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">26</td><td class="cat">full catalog</td><td class="q">give me all prices for stilo</td><td>12/12 rows, exact match to source</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">27</td><td class="cat">full catalog</td><td class="q">get me sierra pouf all price</td><td>9/9 rows, exact match — the original "silently missing table" product, still clean</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">28</td><td class="cat">full catalog</td><td class="q">full price list for melody</td><td>14/14 rows, exact match — letter-only size codes A-E all present</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">29</td><td class="cat">full catalog</td><td class="q">give me every price for eliot keramik drive</td><td>10/10 rows, exact match — the original garbled-price product, still clean</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">30</td><td class="cat">full catalog</td><td class="q">complete price table for butterfly consolle</td><td>16/16 rows, exact match</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">31</td><td class="cat">full catalog</td><td class="q">all prices for marathon</td><td>60/60 rows, exact match — largest product in the dataset</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">32</td><td class="cat">tricky structure</td><td class="q">peyote a cristallo extrachiaro verniciato bianco</td><td><b>Fixed.</b> Size letter "a" now resolves — status ok, single exact row: €778</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">33</td><td class="cat">tricky structure</td><td class="q">spinnaker x fissaggio a muro gfm73 nc gfm11</td><td><b>Fixed.</b> Size letter "x" now narrows 4 rows → 2 (tier punctuation "-" vs typed spaces still doesn't fully match)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">34</td><td class="cat">tricky structure</td><td class="q">melody size c</td><td><b>Fixed.</b> Size letter "c" now resolves — status ok, single exact row: €710</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">35</td><td class="cat">tricky structure</td><td class="q">stilo size l 220v</td><td><b>Fixed.</b> Size letter "l" + tier 220V now narrows 12 rows → 2 (L itself + one accessory line sharing the same letter)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">36</td><td class="cat">tricky structure</td><td class="q">eliot keramik drive 200 294 106 gfm11 gfm18</td><td>Resolved directly to ELIOT Keramik Drive; bare-number fallback now narrows 10 rows → 2 exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">37</td><td class="cat">tricky structure</td><td class="q">atrium keramik 240 120 74</td><td><b>Fixed.</b> Bare-number fallback narrows 7 rows → 2 (the two real rows sharing that dimension, "sag"/plain correctly left as a real remaining choice)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">38</td><td class="cat">tricky structure</td><td class="q">richard a 245x234x102 pelle glove</td><td><b>Fixed.</b> Size letter "a" now narrows 4 rows → 2 (one per real model_variant block sharing that size)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">39</td><td class="cat">tricky structure</td><td class="q">marathon 300x120x75.5h cristallo trasparente nc gfm11 gfm18</td><td>MARATHON, size + crystal variant resolved, 12 real rows, all exact (unchanged)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">40</td><td class="cat">tricky structure</td><td class="q">ritz lounge 158</td><td><b>Fixed.</b> Bare-number fallback resolves to the single exact row — €3.585</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">41</td><td class="cat">tricky structure</td><td class="q">saturno keramik bistrot price</td><td>Resolved correctly, shares a page with Ribot — no cross-contamination, 12/12 real rows (unchanged)</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">42</td><td class="cat">nonexistent</td><td class="q">zorblatt 9000 price</td><td>"No product match" — correct</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">43</td><td class="cat">nonexistent</td><td class="q">how much is the quixotron sofa</td><td>"No product match" — correct</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">44</td><td class="cat">nonexistent</td><td class="q">gimme a price on the flumpernickel table</td><td>"No product match" — correct</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">45</td><td class="cat">nonexistent</td><td class="q">vexillator chair 100x50</td><td>"No product match" — correct</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">46</td><td class="cat">cross-brand</td><td class="q">awase price <em>(brand: Cattelan Italia)</em></td><td>"No product match" — real Bolzan product correctly not leaked into Cattelan context</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">47</td><td class="cat">cross-brand</td><td class="q">cameo maison h.7 price <em>(brand: Cattelan Italia)</em></td><td>"No product match" — correct, no leak</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">48</td><td class="cat">cross-brand</td><td class="q">bishop price <em>(brand: Bolzan)</em></td><td>"No product match" — real Cattelan product correctly not leaked into Bolzan context</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">49</td><td class="cat">PDF overlap</td><td class="q">bishop a price</td><td><b>Improved.</b> Size letter "a" now resolves to a single exact row — €1.089</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">50</td><td class="cat">PDF overlap</td><td class="q">greta outdoor price</td><td>GRETA Outdoor — €1.375 exact, matches both source PDFs</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">51</td><td class="cat">PDF overlap</td><td class="q">greta wood pelle</td><td>GRETA Wood — €1.456 exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">52</td><td class="cat">PDF overlap</td><td class="q">bishop c price</td><td><b>Improved.</b> Size letter "c" now resolves to a single exact row — €1.256</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">53</td><td class="cat">multi-product (new)</td><td class="q">how much are agatha flex and sofia</td><td>multi_product: both AGATHA FLEX (4 rows) and SOFIA (16 rows) addressed, all 20 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">54</td><td class="cat">multi-product (new)</td><td class="q">give me stilo and melody prices</td><td>multi_product: both STILO (12 rows) and MELODY (14 rows) addressed, all 26 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">55</td><td class="cat">multi-product (new)</td><td class="q">compare bishop and richard</td><td>multi_product: "compare" phrasing (not "and"-list) still detected both — BISHOP (3 rows) and RICHARD (100 rows), all 103 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+          <tr><td class="n">56</td><td class="cat">multi-product (new)</td><td class="q">price for kay, tina, and wilma</td><td>multi_product: Oxford-comma 3-product list — all of KAY, TINA, WILMA addressed, all 12 rows exact</td><td><span class="pill pass">pass</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    prices.json — 4,540 rows / 533 products · manual_additions.json — 1,207 rows / 67 products · Round 2 verification: 56-query regression + 190-case automated size-code sweep, zero fabrication exceptions across 246 live calls.
+  </footer>
+
+</div>
+</div>

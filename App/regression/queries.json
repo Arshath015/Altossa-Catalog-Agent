@@ -1,0 +1,511 @@
+[
+  {
+    "id": 1,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "agata flex pelle",
+    "note": "AGATHA FLEX typo, Pelle tier",
+    "expect_price": "925"
+  },
+  {
+    "id": 2,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "hystrx 300x120x75 sag cristallo trasparente",
+    "note": "HYSTRIX typo + size",
+    "expect_price": "7.376"
+  },
+  {
+    "id": 3,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "wlima pelle glove",
+    "note": "WILMA letters swapped, Pelle Glove tier",
+    "expect_price": "985"
+  },
+  {
+    "id": 4,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "kaay pelle price",
+    "note": "KAY typo doubled letter, Pelle tier",
+    "expect_price": "559"
+  },
+  {
+    "id": 5,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "bishp price",
+    "note": "BISHOP truncated/typo, single price expected only if size given -- likely multi_options (3 sizes)",
+    "expect_price": null
+  },
+  {
+    "id": 6,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "nettuno b 130x40x72 gfm11 gfm18 mist",
+    "note": "NETTUNO typo-free but compact/truncated tier text",
+    "expect_price": "1.525"
+  },
+  {
+    "id": 7,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "planer keramik 158x158x75 gfm69 gfm73",
+    "note": "typo-free truncated size/tier for PLANER Keramik, KM02 group",
+    "expect_price": "4.189"
+  },
+  {
+    "id": 8,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "peyote b pelle no wait crystal specchiato fume bronzo",
+    "note": "PEYOTE reversed-label bug regression, typo 'crystal' for 'cristallo', size B",
+    "expect_price": "729"
+  },
+  {
+    "id": 9,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "give me sierra pouf 100x94x41h pelle and tina pelle",
+    "note": "2 products in 1 query",
+    "expect_prices": [
+      "1.902",
+      "758"
+    ]
+  },
+  {
+    "id": 10,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "prices for wilma pelle, agatha flex pelle, and kay pelle",
+    "note": "3 products in 1 query",
+    "expect_prices": [
+      "935",
+      "925",
+      "559"
+    ]
+  },
+  {
+    "id": 11,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "gve me greta wood pelle and wlima pelle glove",
+    "note": "typos + 2 products",
+    "expect_prices": [
+      "1.456",
+      "985"
+    ]
+  },
+  {
+    "id": 12,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "bishop, richard a 245x234x102 pelle, and ritz lounge 118",
+    "note": "3 products, one with size+tier, one with partial size",
+    "expect_note": "BISHOP ambiguous(3 sizes)/RICHARD A Pelle=6.037/RITZ ø118x64h=3.066"
+  },
+  {
+    "id": 13,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "italia pelle and italia couture pelle",
+    "note": "near-identical sibling product names sharing a page, must not cross-contaminate",
+    "expect_prices": [
+      "656",
+      "696"
+    ]
+  },
+  {
+    "id": 14,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "cody 1 and cody l",
+    "note": "same product two size codes in one message",
+    "expect_note": "CODY '1 20x22x29h'=860, CODY 'L 20x22x29h'=640"
+  },
+  {
+    "id": 15,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "planer keramik round price",
+    "note": "PLANER Keramik Round is a nested-name match -- Bug 1's containment fix now resolves it directly, verified this session (3/3 rows exact). Real behavior: multiple_options.",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 16,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "magda price",
+    "note": "MAGDA is itself a real standalone product (not just a family prefix) -- correctly resolves directly to its own 8 rows, verified this session.",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 17,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "isabel price",
+    "note": "ISABEL is itself a real standalone product -- correctly resolves directly to its own 16 rows, verified this session.",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 18,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "norma couture price",
+    "note": "NORMA Couture contains NORMA as a whole word -- Bug 1's containment fix resolves directly to the more complete name, verified this session (16/16 rows exact).",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 19,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "planer price",
+    "note": "PLANER is itself a real standalone product -- correctly resolves directly to its own main-variant rows, verified this session.",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 20,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "give premier wood 240 120",
+    "note": "size only, no fabric -- PREMIER Wood S 240x120x75h has 2 tiers (5.342 / 5.413), should list both or ask, never guess one",
+    "expect_prices_subset": [
+      "5.342",
+      "5.413"
+    ]
+  },
+  {
+    "id": 21,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "amsterdam pelle",
+    "note": "fabric mentioned but AMSTERDAM has no fabric-tier concept at all -- must not fabricate a 'pelle' price",
+    "expect_no_fabricated_price": true
+  },
+  {
+    "id": 22,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "isabel sgabello pelle",
+    "note": "fabric only, no size -- 2 sizes should both surface (801 / 788)",
+    "expect_prices_subset": [
+      "801",
+      "788"
+    ]
+  },
+  {
+    "id": 23,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "ritz lounge 140",
+    "note": "size-only, partial diameter number",
+    "expect_price": "3.500"
+  },
+  {
+    "id": 24,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "sofia pelle glove",
+    "note": "fabric only, no size -- 4 sizes should surface",
+    "expect_prices_subset": [
+      "974",
+      "1.422",
+      "1.062",
+      "1.503"
+    ]
+  },
+  {
+    "id": 25,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "grega outdoor tessuto outdoor",
+    "note": "typo'd product + its only real tier, single size, should resolve cleanly",
+    "expect_price": "1.375"
+  },
+  {
+    "id": 26,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for stilo",
+    "note": "STILO has 12 rows total, verify none truncated",
+    "expect_row_count": 12,
+    "expect_all_prices": [
+      "358",
+      "371",
+      "2.073",
+      "2.139",
+      "3.981",
+      "4.112",
+      "304",
+      "316",
+      "244",
+      "323",
+      "34",
+      "92"
+    ]
+  },
+  {
+    "id": 27,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "get me sierra pouf all price",
+    "note": "SIERRA pouf 9 rows, the exact product that was silently missing a table earlier",
+    "expect_row_count": 9,
+    "expect_all_prices": [
+      "1.296",
+      "1.627",
+      "1.704",
+      "1.502",
+      "1.902",
+      "1.988",
+      "1.674",
+      "2.104",
+      "2.195"
+    ]
+  },
+  {
+    "id": 28,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "full price list for melody",
+    "note": "MELODY 14 rows, letter-only size codes A-E,LA-LE + accessories",
+    "expect_row_count": 14
+  },
+  {
+    "id": 29,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "give me every price for eliot keramik drive",
+    "note": "ELIOT Keramik Drive 10 rows, the original garbled-price bug product",
+    "expect_row_count": 10,
+    "expect_all_prices": [
+      "4.519",
+      "4.560",
+      "5.743",
+      "5.778",
+      "5.749",
+      "5.784",
+      "6.097",
+      "6.132",
+      "6.103",
+      "6.138"
+    ]
+  },
+  {
+    "id": 30,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "complete price table for butterfly consolle",
+    "note": "BUTTERFLY Consolle 16 rows, from the new 25-batch",
+    "expect_row_count": 16
+  },
+  {
+    "id": 31,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "all prices for marathon",
+    "note": "MARATHON 60 rows, largest product in dataset, from the new 25-batch",
+    "expect_row_count": 60
+  },
+  {
+    "id": 32,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "peyote a cristallo extrachiaro verniciato bianco",
+    "note": "PEYOTE reversed Top/Base label bug regression check, size A",
+    "expect_price": "778"
+  },
+  {
+    "id": 33,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "spinnaker x fissaggio a muro gfm73 nc gfm11",
+    "note": "SPINNAKER letter-only size code X",
+    "expect_price": "1.894"
+  },
+  {
+    "id": 34,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "melody size c",
+    "note": "MELODY letter-only size code C",
+    "expect_price": "710"
+  },
+  {
+    "id": 35,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "stilo size l 220v",
+    "note": "STILO bare-letter size code L + voltage tier",
+    "expect_price": "304"
+  },
+  {
+    "id": 36,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "eliot keramik drive 200 294 106 gfm11 gfm18",
+    "note": "ELIOT Keramik Drive, original garbled-price bug, 200->294x106 size",
+    "expect_price": "6.132"
+  },
+  {
+    "id": 37,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "atrium keramik 240 120 74",
+    "note": "ATRIUM Keramik, single-EUR-column radius regression check",
+    "expect_price": "6.607"
+  },
+  {
+    "id": 38,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "richard a 245x234x102 pelle glove",
+    "note": "RICHARD, recovered from page-range boundary bug, 100 rows",
+    "expect_price": "6.481"
+  },
+  {
+    "id": 39,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "marathon 300x120x75.5h cristallo trasparente nc gfm11 gfm18",
+    "note": "MARATHON from new batch, deep nested model_variant/fabric_tier",
+    "expect_price": "6.470"
+  },
+  {
+    "id": 40,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "ritz lounge 158",
+    "note": "RITZ Lounge, shares page 83 with Ribot -- must not cross-contaminate",
+    "expect_price": "3.585"
+  },
+  {
+    "id": 41,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "saturno keramik bistrot price",
+    "note": "SATURNO Keramik Bistrot resolves directly (no ambiguity) -- verified this session (12/12 rows exact, no cross-contamination with Ribot on the same page).",
+    "expect_status": "multiple_options"
+  },
+  {
+    "id": 42,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "zorblatt 9000 price",
+    "note": "fully made-up product name",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 43,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "how much is the quixotron sofa",
+    "note": "made-up product, natural phrasing",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 44,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "gimme a price on the flumpernickel table",
+    "note": "nonsense product, casual phrasing",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 45,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "vexillator chair 100x50",
+    "note": "made-up product with a real-looking size",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 46,
+    "cat": "cross_brand",
+    "brand": "Cattelan Italia",
+    "query": "awase price",
+    "note": "AWASE is a real BOLZAN product name -- queried while brand=Cattelan Italia, must not leak Bolzan data",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 47,
+    "cat": "cross_brand",
+    "brand": "Cattelan Italia",
+    "query": "cameo maison h.7 price",
+    "note": "Cameo Maison is a real BOLZAN product -- must not leak Bolzan data into Cattelan context",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 48,
+    "cat": "cross_brand",
+    "brand": "Bolzan",
+    "query": "bishop price",
+    "note": "BISHOP is a real CATTELAN product -- queried while brand=Bolzan, must not leak Cattelan data",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 49,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "bishop a price",
+    "note": "BISHOP exists in both 20240 main catalog and 20241 Novita supplement at identical price -- verify single correct answer",
+    "expect_price": "1.089"
+  },
+  {
+    "id": 50,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "greta outdoor price",
+    "note": "GRETA Outdoor exists in both PDFs at identical price, single size/tier only",
+    "expect_price": "1.375"
+  },
+  {
+    "id": 51,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "greta wood pelle",
+    "note": "GRETA Wood -- check if this is a supplement-only or main-catalog product, verify price vs source",
+    "expect_price": "1.456"
+  },
+  {
+    "id": 52,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "bishop c price",
+    "note": "BISHOP size C, cross-check second/third row consistency across both PDF sources",
+    "expect_price": "1.256"
+  },
+  {
+    "id": 53,
+    "cat": "multi_product_new",
+    "brand": "Cattelan Italia",
+    "query": "how much are agatha flex and sofia",
+    "note": "NEW combo: 2 clean unambiguous products, casual phrasing, no explicit size/tier",
+    "expect_note": "both AGATHA FLEX and SOFIA must be addressed, neither silently dropped"
+  },
+  {
+    "id": 54,
+    "cat": "multi_product_new",
+    "brand": "Cattelan Italia",
+    "query": "give me stilo and melody prices",
+    "note": "NEW combo: 2 lighting products, both with letter-only size codes",
+    "expect_note": "both STILO and MELODY must be addressed"
+  },
+  {
+    "id": 55,
+    "cat": "multi_product_new",
+    "brand": "Cattelan Italia",
+    "query": "compare bishop and richard",
+    "note": "NEW combo: 2 unrelated real products, 'compare' phrasing not 'and'-list phrasing",
+    "expect_note": "both BISHOP and RICHARD must be addressed"
+  },
+  {
+    "id": 56,
+    "cat": "multi_product_new",
+    "brand": "Cattelan Italia",
+    "query": "price for kay, tina, and wilma",
+    "note": "NEW combo: 3 products, comma-separated with an Oxford comma",
+    "expect_note": "all 3 of KAY, TINA, WILMA must be addressed, none silently dropped"
+  }
+]

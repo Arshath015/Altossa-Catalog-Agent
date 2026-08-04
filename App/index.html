@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Altossa AI Catalog Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --riso-bg: #131217;
+        --riso-surface: #1c1b21;
+        --riso-pink: #ff3e9a;
+        --riso-yellow: #f5d90a;
+        --riso-text: #f3efe6;
+        --riso-line: #38363f;
+      }
+      body {
+        background: var(--riso-bg);
+        color: var(--riso-text);
+        font-family: 'Inter', system-ui, sans-serif;
+        margin: 0;
+      }
+      .font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
+      .font-data { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+      /* subtle grain texture, classic Riso-print feel, applied over the whole app shell */
+      .riso-grain {
+        position: relative;
+      }
+      .riso-grain::before {
+        content: '';
+        position: absolute; inset: 0; pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+        mix-blend-mode: overlay;
+        opacity: 0.5;
+      }
+      /* Kinetic typography: a brief, one-shot settle-in for the key data
+         moment in a response (the price, the status chip) -- restrained,
+         not a loop or a gimmick. */
+      @keyframes kinetic-settle {
+        0%   { transform: translateY(6px) scale(0.98); opacity: 0; letter-spacing: 0.02em; }
+        60%  { transform: translateY(-1px) scale(1.01); opacity: 1; }
+        100% { transform: translateY(0) scale(1); opacity: 1; letter-spacing: normal; }
+      }
+      .kinetic-in { animation: kinetic-settle 0.38s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+      /* Custom scrollbar matching the dark Riso theme -- the default
+         browser scrollbar reads as a jarring light-gray strip against
+         this palette. */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: var(--riso-bg); }
+      ::-webkit-scrollbar-thumb {
+        background: var(--riso-line);
+        border: 2px solid var(--riso-bg);
+        border-radius: 0;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: var(--riso-pink); }
+      * { scrollbar-color: var(--riso-line) var(--riso-bg); scrollbar-width: thin; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>
