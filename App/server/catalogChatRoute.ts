@@ -111,11 +111,15 @@ router.post('/chat', async (req: Request, res: Response) => {
     ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list)
     : catalogChat.answer(message, brand, lastModelVariant || null);
 
-  // extractIntent returns null on ANY LLM-step failure (missing API key,
-  // network error, timeout, rate limit, bad response) -- never on the
-  // model successfully running and just being unsure (that still returns
-  // a real LlmIntent with product_names: null). So a null intent here
-  // specifically means this reply used the deterministic-only fallback,
+  // extractIntent returns null only once it has tried EVERY configured
+  // Groq key (see groqKeyPool.ts -- key 1, then 2, then 3, in that fixed
+  // order) and all of them failed or were still cooling down from a
+  // prior rate limit -- never on the model successfully running and just
+  // being unsure (that still returns a real LlmIntent with
+  // product_names: null), and never just because ONE key is exhausted
+  // (that fails over to the next key invisibly, no signal shown). So a
+  // null intent here specifically means this reply used the
+  // deterministic-only fallback because the WHOLE key pool is down,
   // which has no typo tolerance and can't combine multiple products in
   // one message the way the LLM path can. Surface that plainly instead of
   // letting the user silently get a lower-quality reply with no signal

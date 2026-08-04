@@ -11,18 +11,36 @@
  * for any reason, the system falls back to the tested deterministic
  * matcher -- it never silently trusts the model's output.
  *
+ * KEY ROTATION: tries up to 3 Groq API keys (GROQ_API_KEY_1/2/3) in fixed
+ * priority order via groqKeyPool.ts -- key 1 first, always, falling over
+ * to key 2 then key 3 only when the one before it is rate-limited or
+ * erroring. Each key's own exhaustion state is tracked independently and
+ * remembered between calls, so a key already known to be exhausted is
+ * skipped with NO network call (a rejected 429 still counts against that
+ * key's own daily quota, so skipping known-bad keys outright matters).
+ * extractIntent() only returns null -- triggering the app's degraded-mode
+ * signal -- once every configured key has been tried (or is still in its
+ * own cooldown window) and none worked; a single exhausted key fails over
+ * invisibly to the caller.
+ *
  * SETUP:
  *   1. npm install dotenv   (if not already installed)
  *   2. Create a file named ".env" in the project root (same folder as
- *      package.json) containing exactly one line:
- *        GROQ_API_KEY=your_actual_key_here
- *   3. Add ".env" to your .gitignore so the key never gets committed.
+ *      package.json) containing up to 3 lines:
+ *        GROQ_API_KEY_1=your_first_key
+ *        GROQ_API_KEY_2=your_second_key
+ *        GROQ_API_KEY_3=your_third_key
+ *      (1 key is enough to run; 2-3 add rate-limit failover.)
+ *   3. Add ".env" to your .gitignore so no key ever gets committed.
  *   4. In your server entry point (App/server/index.ts), add this as the
  *      very first line: `import 'dotenv/config';`
  *
- * Never hardcode the API key in this file or any committed file --
- * it's read from process.env.GROQ_API_KEY at runtime only.
+ * Never hardcode an API key in this file or any committed file -- keys
+ * are read from process.env at runtime only, and never logged, printed,
+ * or included in any response this app sends.
  */
+
+import { getAvailableKeySlots, markKeyExhausted, markKeyHealthy, hasAnyKeyConfigured, GroqKeySlot } from './groqKeyPool';
 
 export interface ChatTurn {
   role: 'user' | 'assistant';
@@ -102,33 +120,33 @@ function buildSystemPrompt(productNames: string[], lastProduct: string | null): 
   ].join('\n');
 }
 
-/**
- * Calls Groq to interpret the user's message. Returns null (not a thrown
- * error) on ANY failure -- missing API key, network issue, timeout, bad
- * JSON, etc -- so the caller can cleanly fall back to deterministic
- * matching without special-casing every possible failure mode.
- */
-export async function extractIntent(
-  message: string,
-  history: ChatTurn[],
-  productNames: string[],
-  lastProduct: string | null = null
-): Promise<LlmIntent | null> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    console.warn('[llmIntent] GROQ_API_KEY not set -- skipping LLM step, using deterministic matching only.');
-    return null;
-  }
+function parseLlmIntent(content: string): LlmIntent | null {
+  const parsed = JSON.parse(content);
+  const productNamesArr: string[] | null = Array.isArray(parsed.product_names)
+    ? parsed.product_names.filter((p: unknown) => typeof p === 'string')
+    : (typeof parsed.product_names === 'string' ? [parsed.product_names] : null);
+  return {
+    product_names: productNamesArr && productNamesArr.length > 0 ? productNamesArr : null,
+    product_name: productNamesArr && productNamesArr.length > 0 ? productNamesArr[0] : null,
+    size: typeof parsed.size === 'string' ? parsed.size : null,
+    fabric_tier: Array.isArray(parsed.fabric_tier)
+      ? parsed.fabric_tier.filter((t: unknown) => typeof t === 'string')
+      : (typeof parsed.fabric_tier === 'string' ? [parsed.fabric_tier] : null),
+    wants_full_list: parsed.wants_full_list === true,
+    clarification_reply: null,
+  };
+}
 
-  const messages = [
-    { role: 'system', content: buildSystemPrompt(productNames, lastProduct) },
-    ...history.slice(-6).map(h => ({ role: h.role, content: h.text })),
-    { role: 'user', content: message },
-  ];
+type GroqCallResult =
+  | { ok: true; intent: LlmIntent | null }
+  | { ok: false; isRateLimit: boolean; errorText: string };
 
+/** One attempt against Groq with ONE specific key. Never logs the key
+ * itself -- only the caller (extractIntent) logs anything, and only a
+ * key INDEX, never this function's `apiKey` parameter. */
+async function callGroqOnce(apiKey: string, messages: unknown[]): Promise<GroqCallResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   try {
     const res = await fetch(GROQ_URL, {
       method: 'POST',
@@ -147,32 +165,63 @@ export async function extractIntent(
     });
 
     if (!res.ok) {
-      console.error(`[llmIntent] Groq API returned ${res.status}: ${await res.text()}`);
-      return null;
+      const errorText = await res.text();
+      return { ok: false, isRateLimit: res.status === 429, errorText };
     }
 
     const data = await res.json();
     const content: string | undefined = data?.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    const parsed = JSON.parse(content);
-    const productNamesArr: string[] | null = Array.isArray(parsed.product_names)
-      ? parsed.product_names.filter((p: unknown) => typeof p === 'string')
-      : (typeof parsed.product_names === 'string' ? [parsed.product_names] : null);
-    return {
-      product_names: productNamesArr && productNamesArr.length > 0 ? productNamesArr : null,
-      product_name: productNamesArr && productNamesArr.length > 0 ? productNamesArr[0] : null,
-      size: typeof parsed.size === 'string' ? parsed.size : null,
-      fabric_tier: Array.isArray(parsed.fabric_tier)
-        ? parsed.fabric_tier.filter((t: unknown) => typeof t === 'string')
-        : (typeof parsed.fabric_tier === 'string' ? [parsed.fabric_tier] : null),
-      wants_full_list: parsed.wants_full_list === true,
-      clarification_reply: null,
-    };
+    if (!content) return { ok: true, intent: null };
+    return { ok: true, intent: parseLlmIntent(content) };
   } catch (err) {
-    console.error('[llmIntent] Failed to get/parse Groq response, falling back to deterministic matching:', err);
-    return null;
+    return { ok: false, isRateLimit: false, errorText: err instanceof Error ? err.message : String(err) };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Calls Groq to interpret the user's message, trying each configured API
+ * key in priority order (key 1 first) until one succeeds. Returns null
+ * (not a thrown error) only once EVERY configured key has failed or is
+ * still in its own cooldown from a previous failure -- missing keys,
+ * network issues, timeouts, bad JSON, and rate limits are all handled
+ * the same way here, so the caller can cleanly fall back to
+ * deterministic matching without special-casing any of them.
+ */
+export async function extractIntent(
+  message: string,
+  history: ChatTurn[],
+  productNames: string[],
+  lastProduct: string | null = null
+): Promise<LlmIntent | null> {
+  if (!hasAnyKeyConfigured()) {
+    console.warn('[llmIntent] No GROQ_API_KEY_1/2/3 set -- skipping LLM step, using deterministic matching only.');
+    return null;
+  }
+
+  const availableSlots: GroqKeySlot[] = getAvailableKeySlots();
+  if (availableSlots.length === 0) {
+    console.warn('[llmIntent] All configured Groq keys are currently cooling down from a prior rate limit -- skipping LLM step, using deterministic matching only.');
+    return null;
+  }
+
+  const messages = [
+    { role: 'system', content: buildSystemPrompt(productNames, lastProduct) },
+    ...history.slice(-6).map(h => ({ role: h.role, content: h.text })),
+    { role: 'user', content: message },
+  ];
+
+  for (const slot of availableSlots) {
+    const result = await callGroqOnce(slot.apiKey, messages);
+    if (result.ok) {
+      markKeyHealthy(slot);
+      return result.intent;
+    }
+    markKeyExhausted(slot, result.errorText, result.isRateLimit);
+    console.warn(`[llmIntent] Groq key ${slot.index} ${result.isRateLimit ? 'rate-limited' : 'failed'}, ${slot === availableSlots[availableSlots.length - 1] ? 'no more keys to try' : 'failing over to next key'}.`);
+  }
+
+  // Every available key failed on this call.
+  return null;
 }
