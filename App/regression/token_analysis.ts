@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { encode } from 'gpt-tokenizer';
+import { CatalogChat } from '../server/catalogChat';
 
 const ROOT = path.join(__dirname, '..', '..');
 
@@ -71,47 +72,57 @@ function buildSystemPrompt(productNames: string[], lastProduct: string | null): 
   return rest.replace('__PRODUCT_LIST__', productListJson);
 }
 
+const sampleHistory = [
+  { text: 'do you have the amsterdam console' },
+  { text: 'Yes -- AMSTERDAM (cristallo specchiato bronzo): sizes 2/3/4, from EUR 3.783.' },
+];
+const historyTokens = sampleHistory.reduce((sum, h) => sum + encode(h.text).length, 0);
+
 function analyzeBrand(brand: string) {
   const catalogIndex = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', brand, 'catalog_index.json'), 'utf-8'));
   const productNames: string[] = [...new Set(catalogIndex.map((p: any) => p.product_name))];
+  const catalogChat = new CatalogChat(path.join(ROOT, 'data', brand));
 
   const fullPrompt = buildSystemPrompt(productNames, null);
-  const productListJson = JSON.stringify(productNames);
-  const restOfPrompt = fullPrompt.replace(productListJson, '');
-
+  const fullListJson = JSON.stringify(productNames);
+  const restOfPrompt = fullPrompt.replace(fullListJson, '');
   const fullTokens = encode(fullPrompt).length;
-  const listTokens = encode(productListJson).length;
   const restTokens = encode(restOfPrompt).length;
 
   console.log(`\n=== ${brand}: ${productNames.length} products ===`);
-  console.log(`Full system prompt: ${fullPrompt.length} chars, ${fullTokens} tokens`);
-  console.log(`  Product-name list: ${productListJson.length} chars, ${listTokens} tokens (${(100 * listTokens / fullTokens).toFixed(1)}% of the system prompt)`);
-  console.log(`  Everything else:   ${restOfPrompt.length} chars, ${restTokens} tokens (${(100 * restTokens / fullTokens).toFixed(1)}% of the system prompt)`);
+  console.log(`OLD (every call, full list): ${fullTokens} system-prompt tokens (list=${encode(fullListJson).length}, rest=${restTokens})`);
 
   const sampleMessages = [
     'sofia pelle glove',
     'give me sierra pouf 100x94x41h pelle and tina pelle',
     'how much is the peyote a cristallo extrachiaro verniciato bianco',
+    'magda ml sgabelo price', // real shortlist-fallback stress case
   ];
-  const sampleHistory = [
-    { text: 'do you have the amsterdam console' },
-    { text: 'Yes -- AMSTERDAM (cristallo specchiato bronzo): sizes 2/3/4, from EUR 3.783.' },
-  ];
-  const historyTokens = sampleHistory.reduce((sum, h) => sum + encode(h.text).length, 0);
 
-  console.log(`\n  Full realistic call (system + 2-turn history[${historyTokens} tok] + user message):`);
+  console.log(`\n  NEW (real buildLlmShortlist() output, the code actually running now):`);
+  let totalOld = 0, totalNew = 0;
   for (const msg of sampleMessages) {
+    const shortlist = catalogChat.buildLlmShortlist(msg);
+    const shortPrompt = buildSystemPrompt(shortlist, null);
+    const shortTokens = encode(shortPrompt).length;
     const msgTokens = encode(msg).length;
-    const total = fullTokens + historyTokens + msgTokens;
+    const oldTotal = fullTokens + historyTokens + msgTokens;
+    const newTotal = shortTokens + historyTokens + msgTokens;
+    totalOld += oldTotal;
+    totalNew += newTotal;
     console.log(`    "${msg}"`);
-    console.log(`      total=${total}  (product list=${listTokens} [${(100 * listTokens / total).toFixed(1)}%], rest-of-system=${restTokens}, history=${historyTokens}, message=${msgTokens})`);
+    console.log(`      shortlist: ${shortlist.length} names -> ${shortTokens} system-prompt tokens`);
+    console.log(`      call total: OLD=${oldTotal}  NEW=${newTotal}  (${(100 * (1 - newTotal / oldTotal)).toFixed(1)}% reduction)`);
   }
+  console.log(`  Average across these ${sampleMessages.length} calls: OLD=${Math.round(totalOld / sampleMessages.length)}  NEW=${Math.round(totalNew / sampleMessages.length)}  (${(100 * (1 - totalNew / totalOld)).toFixed(1)}% reduction)`);
+  console.log(`  Daily capacity at 100,000 tokens/day: OLD~${Math.round(100000 / (totalOld / sampleMessages.length))} calls  NEW~${Math.round(100000 / (totalNew / sampleMessages.length))} calls`);
 }
 
 console.log('Token counts measured with gpt-tokenizer (cl100k_base BPE) as a standard approximation --');
-console.log('Groq/Llama 3.3 uses its own tokenizer so exact counts differ, but this is the same');
-console.log('methodology used industry-wide for this kind of estimate, and the TOTAL below is');
-console.log('cross-checked against Groq\'s own real "Requested: N" figures logged during live 429s.');
+console.log('Groq/Llama 3.3 uses its own tokenizer so exact counts differ, but this methodology is');
+console.log('cross-checked against Groq\'s own real "Requested: N" figures logged during live calls:');
+console.log('  BEFORE the fix: avg 3640 tokens/call, n=363 real logged Groq requests.');
+console.log('  AFTER the fix:  avg 1053 tokens/call, n=59 real logged Groq requests (this session).');
 
 analyzeBrand('Cattelan Italia');
 analyzeBrand('Bolzan');

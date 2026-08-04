@@ -86,7 +86,26 @@ router.post('/chat', async (req: Request, res: Response) => {
   // matching -- the app never breaks and never trusts an LLM-invented
   // price, only its guess at WHICH row to look up (and even that guess
   // gets validated inside answerFromIntent).
-  const intent = await extractIntent(message, history || [], catalogChat.getProductNames(), lastProduct || null);
+  //
+  // COST: the full product list dominates the token cost of every call
+  // (measured: 75.8% of the system prompt for Cattelan Italia's 533
+  // products, resent unchanged on every single message). So the first
+  // attempt uses a cheap SHORTLIST of candidate names (buildLlmShortlist
+  // -- exact mentions + similarity scoring + fuzzy edit-distance typo
+  // matching, all reused from the same logic that already resolves these
+  // deterministically elsewhere in the app) instead of the whole catalog.
+  // If that shortlisted call comes back with no confident match, retry
+  // ONCE with the full list -- this is the safety valve for the rare case
+  // where the shortlist itself missed the right candidate (an unusually
+  // aggressive typo the fuzzy threshold didn't catch), so a shortlist
+  // miss costs one extra full-price call instead of silently losing the
+  // product the way Bug 3's original silent-drop did.
+  const shortlist = catalogChat.buildLlmShortlist(message);
+  let intent = await extractIntent(message, history || [], shortlist, lastProduct || null);
+  if (intent && (!intent.product_names || intent.product_names.length === 0)) {
+    console.log(`[shortlist-fallback] "${message}" -- shortlist of ${shortlist.length} had no confident match, retrying with full ${catalogChat.getProductNames().length}-product list`);
+    intent = await extractIntent(message, history || [], catalogChat.getProductNames(), lastProduct || null);
+  }
 
   const result: ChatResult = intent
     ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list)

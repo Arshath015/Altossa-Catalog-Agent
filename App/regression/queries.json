@@ -507,5 +507,45 @@
     "query": "price for kay, tina, and wilma",
     "note": "NEW combo: 3 products, comma-separated with an Oxford comma",
     "expect_note": "all 3 of KAY, TINA, WILMA must be addressed, none silently dropped"
+  },
+  {
+    "id": 57,
+    "cat": "shortlist_stress",
+    "brand": "Cattelan Italia",
+    "query": "magda ml couture sgabello price",
+    "note": "STRESS TEST for LLM pre-filtering: MAGDA family has 12 highly similar names (MAGDA/MAGDA Couture/MAGDA ML/MAGDA ML Couture/MAGDA Sgabello/etc). Confirms the ~20-item shortlist sent to the LLM still contains and correctly resolves to the exact right sibling, not a shorter/different one.",
+    "expect_product": [
+      "MAGDA ML Couture Sgabello"
+    ],
+    "expect_row_count": 16
+  },
+  {
+    "id": 58,
+    "cat": "shortlist_stress",
+    "brand": "Cattelan Italia",
+    "query": "magda barre and magda ml barre prices",
+    "note": "STRESS TEST: 2 highly similar real products (differ only by 'ML') named in ONE multi-product query -- confirms shortlisting doesn't reintroduce Bug 3's silent-drop when the two named products are nearly identical strings.",
+    "expect_product": [
+      "MAGDA Barré",
+      "MAGDA ML Barré"
+    ],
+    "expect_prices_subset": [
+      "956",
+      "785"
+    ]
+  },
+  {
+    "id": 59,
+    "cat": "shortlist_stress",
+    "brand": "Cattelan Italia",
+    "query": "magda ml sgabelo price",
+    "note": "STRESS TEST: typo (dropped 'l' in 'Sgabello') targeting ONE specific member of the 12-way MAGDA overlap family -- confirms the fuzzy edit-distance layer of buildLlmShortlist() still surfaces the correct specific sibling to the LLM, not a different family member or nothing at all.",
+    "expect_product": [
+      "MAGDA ML Sgabello"
+    ],
+    "expect_prices_subset": [
+      "966",
+      "1.402"
+    ]
   }
 ]

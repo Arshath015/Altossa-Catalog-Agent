@@ -52,6 +52,12 @@ interface Query {
   expect_all_prices?: string[];
   expect_no_fabricated_price?: boolean;
   expect_note?: string;
+  /** Product name(s) that MUST all appear in resp.product_name (comma-
+   * joined for multi-product) -- a stronger check than price/row-count
+   * alone for name-overlap stress tests, e.g. confirming the shortlist
+   * resolved to "MAGDA ML Sgabello" specifically and not one of its 11
+   * near-identical siblings that also happen to have 16 rows. */
+  expect_product?: string[];
 }
 
 interface PriceRow {
@@ -141,6 +147,15 @@ async function main() {
       expectationsMet = q.expect_status.includes(resp.status || '');
     } else if (q.expect_row_count !== undefined) {
       expectationsMet = matches.length === q.expect_row_count;
+    }
+    // expect_product ANDs with whatever check ran above (or stands alone
+    // if that's the only expectation given) -- confirms the shortlist/
+    // resolver landed on the CORRECT specific product, not just any
+    // product that happens to satisfy the price/row-count check (a real
+    // risk when several near-identical siblings share a row count).
+    if (q.expect_product) {
+      const productMatch = q.expect_product.every(p => (resp.product_name || '').includes(p));
+      expectationsMet = expectationsMet === null ? productMatch : expectationsMet && productMatch;
     }
 
     results.push({ query: q, response: resp, fabricated, expectationsMet });

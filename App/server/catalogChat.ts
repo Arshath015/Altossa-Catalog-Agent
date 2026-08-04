@@ -382,6 +382,79 @@ export class CatalogChat {
     return [...this.productNames];
   }
 
+  /** Cheap, standard edit-distance (Levenshtein) between two short strings. */
+  private levenshtein(a: string, b: string): number {
+    const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+    for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[a.length][b.length];
+  }
+
+  /** Finds real product names with a word closely matching (edit distance
+   * <= maxDistance) a word in the query -- catches typos the exact/
+   * whole-word matchers in `matchProducts`/`detectNamedProductsInText`
+   * miss entirely (transposed letters, a doubled or dropped letter).
+   * Confirmed sufficient for every typo pattern seen this session:
+   * "wlima"->"wilma" (distance 2, a transposition), "kaay"->"kay"
+   * (distance 1, doubled letter), "bishp"->"bishop" and "hystrx"->
+   * "hystrix" and "agata"->"agatha" (distance 1, a dropped letter each).
+   * Sorted closest-first. */
+  private fuzzyMatchProducts(query: string, maxDistance = 2): string[] {
+    const qWords = normalize(query).split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+    if (qWords.length === 0) return [];
+    const results: { name: string; dist: number }[] = [];
+    for (const name of this.productNames) {
+      const nameWords = normalize(name).split(/[^a-z0-9]+/).filter(Boolean);
+      let best = Infinity;
+      for (const qw of qWords) {
+        for (const nw of nameWords) {
+          if (Math.abs(qw.length - nw.length) > maxDistance) continue;
+          const d = this.levenshtein(qw, nw);
+          if (d < best) best = d;
+        }
+      }
+      if (best <= maxDistance) results.push({ name, dist: best });
+    }
+    return results.sort((a, b) => a.dist - b.dist).map(r => r.name);
+  }
+
+  /** Builds a short candidate list to send the LLM instead of the entire
+   * catalog's product names -- the product list dominates the token cost
+   * of every call (measured: 75.8% of the system prompt for Cattelan
+   * Italia's 533 products), and it's resent from scratch on every single
+   * message regardless of how specific the query is.
+   *
+   * Combines three sources, each already proven this session, so this is
+   * strictly a re-use of existing matching logic rather than new
+   * heuristics: exact real-name mentions (`detectNamedProductsInText`,
+   * from the Bug 3 fix), whole-word/token-overlap scoring
+   * (`matchProducts`), and fuzzy edit-distance matching (above, new --
+   * specifically to preserve typo tolerance, since the first two are both
+   * exact/substring-based and would otherwise silently exclude a heavily
+   * typo'd product from ever reaching the LLM at all).
+   *
+   * This is a CHEAP FIRST PASS, not a hard cap on what the LLM is allowed
+   * to find -- see catalogChatRoute.ts, which retries with the full list
+   * whenever the shortlisted call comes back with no confident match, so
+   * a shortlist miss costs one extra full-price call on a rare query
+   * instead of silently losing the product forever. */
+  buildLlmShortlist(query: string, limit = 20): string[] {
+    const ranked: string[] = [];
+    const seen = new Set<string>();
+    const add = (name: string) => {
+      if (!seen.has(name)) { seen.add(name); ranked.push(name); }
+    };
+    this.detectNamedProductsInText(query).forEach(add);
+    this.matchProducts(query).forEach(m => add(m.name));
+    this.fuzzyMatchProducts(query).forEach(add);
+    return ranked.slice(0, limit);
+  }
+
   /**
    * Get image URLs for a product. If specific rows are passed AND the
    * catalog has per-page image data, scope the result to just the PDF
