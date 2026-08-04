@@ -112,7 +112,11 @@ async function postChat(brand: string, message: string): Promise<ChatResponse> {
 }
 
 async function main() {
-  const queries: Query[] = JSON.parse(fs.readFileSync(path.join(__dirname, 'queries.json'), 'utf-8'));
+  // Override to run a subset (e.g. just the previously-failing typo
+  // queries) without burning quota re-running all 59, e.g.:
+  //   REGRESSION_QUERIES_FILE=/path/to/subset.json npm run regression
+  const queriesFile = process.env.REGRESSION_QUERIES_FILE || path.join(__dirname, 'queries.json');
+  const queries: Query[] = JSON.parse(fs.readFileSync(queriesFile, 'utf-8'));
   const brandRowKeys = new Map<string, Set<string>>();
   for (const q of queries) {
     if (!brandRowKeys.has(q.brand)) brandRowKeys.set(q.brand, loadBrandRowKeys(q.brand));
