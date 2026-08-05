@@ -23,7 +23,8 @@
     "check-coverage": "tsx App/regression/check_coverage.ts",
     "stress-v2": "tsx App/regression/stress_v2.ts",
     "check-multi-product-isolation": "tsx App/regression/check_multi_product_isolation.ts",
-    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation",
+    "check-tier-isolation-stress": "tsx App/regression/check_tier_isolation_stress.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }
