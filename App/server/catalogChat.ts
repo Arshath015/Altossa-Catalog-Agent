@@ -187,12 +187,30 @@ export function extractTiers(query: string): string[] {
 // mark "ø", metric units). Stripped out when extracting a size's own
 // meaningful code/qualifier words (below).
 const SIZE_UNIT_TOKENS = new Set(['h', 'mt', 'mq', 'cm', 'ø']);
-// Single-letter codes that double as common English function words --
-// "a" is by far the biggest real risk ("give me A price for..."), so a
-// bare occurrence of one of these is only trusted as a size signal when
-// it's clearly positional (right after the product name or a signal word
-// like "size"/"style"), never just because it appears anywhere in the text.
-const RISKY_SINGLE_LETTER_CODES = new Set(['a', 'i', 'o', 'u']);
+// Common short English words that can double as a real size-code token --
+// "a" was the original known risk ("give me A price for..."), but a
+// systematic scan of both brands' real size codes found the SAME
+// collision at 2-4 letters too: PASCAL's "ME 255x252x114h" (code "me")
+// silently narrowed 30 clean rows down to 2 on "give me all prices for
+// PASCAL" -- the word "me" in the query's own phrasing, nothing to do
+// with the product, coincidentally matched a real size-code prefix.
+// KATANA's "UP" variants, SPINNAKER's "so" (from "soffitto"), Bolzan's
+// Pouf Ares/Edith "to" (from "Riv.to") are the same pattern. A bare
+// occurrence of any of these is only trusted as a size signal when it's
+// clearly positional (right after the product name or a signal word like
+// "size"/"style"), never just because it appears anywhere in the text.
+const RISKY_SIZE_CODE_WORDS = new Set([
+  'a', 'i', 'o', 'u',
+  'me', 'my', 'is', 'am', 'be', 'we', 'us', 'or', 'if', 'in', 'on', 'at',
+  'to', 'so', 'no', 'go', 'do', 'up', 'it', 'as', 'an', 'the', 'and',
+  'not', 'but', 'out', 'get', 'has', 'had', 'was', 'who', 'how', 'why',
+  'him', 'her', 'his', 'its', 'our', 'let', 'put', 'via', 'she', 'may',
+  'say', 'too', 'own', 'new', 'use', 'way', 'now', 'old', 'see', 'one',
+  'two', 'big', 'top', 'ask', 'try', 'any', 'add', 'day', 'need', 'come',
+  'long', 'than', 'more', 'much', 'like', 'just', 'also', 'this', 'that',
+  'with', 'from', 'have', 'will', 'been', 'were', 'then', 'when', 'all',
+  'for', 'give', 'price', 'prices',
+]);
 
 /** Pull the meaningful non-numeric "code"/"qualifier" words out of a real
  * size string -- e.g. "A 200x100x73h" -> ["a"], "240x120x74h sag" ->
@@ -227,21 +245,33 @@ function extractSizeTokens(sizeStr: string): string[] {
 /** Find every word in the raw query that's safe to treat as a candidate
  * size-code/qualifier signal (to be intersected against extractSizeTokens
  * of each candidate row, by the caller). Two ways a word qualifies:
- *   1. It's 2+ characters -- low collision risk with ordinary English, so
- *      it's trusted anywhere in the query (e.g. "sag", "biscuit", "la").
+ *   1. It's not a common English word (not in RISKY_SIZE_CODE_WORDS) --
+ *      low collision risk, so it's trusted anywhere in the query (e.g.
+ *      "sag", "biscuit", "la").
  *   2. It's the single word immediately after the product's own name, or
  *      immediately after a signal word ("size"/"style"/"version"/
- *      "option"/"model"/"code") -- trusted even if it's one of the risky
- *      single-letter words ("a", "i", "o", "u"), since that position is
- *      specifically how people actually say a size letter ("peyote a",
- *      "richard b", "melody size c") rather than using it as an article.
+ *      "option"/"model"/"code") -- trusted even if it IS a common word
+ *      that also happens to be a real code ("me", "up", "so", ...), since
+ *      that position is specifically how people actually say a size code
+ *      ("peyote a", "richard b", "melody size c") rather than using the
+ *      word in its ordinary English sense.
  */
 function findSizeSignalTokens(rawQuery: string, productName: string): Set<string> {
   const q = normalize(rawQuery);
   const signals = new Set<string>();
+  // Every query naming this product contains the product's own name as a
+  // word, trivially -- that's not a size preference, just which product
+  // was asked about, so it must never count as a signal on its own.
+  // Confirmed needed: ARENA's own size labels are "ARENA BOND"/"ARENA
+  // DOUBLE BOND", which reuse the word "arena" -- so a plain "give me all
+  // prices for ARENA" was silently narrowing out the third, differently-
+  // labeled size ("ø120x29h") just because the query happened to contain
+  // the word "arena" (to name the product at all), which coincidentally
+  // matched those two size labels' own leading word.
+  const productNameTokens = new Set(normalize(productName).split(/[^a-z0-9]+/).filter(Boolean));
 
   for (const tok of q.split(/[^a-z0-9]+/)) {
-    if (tok.length >= 2 && !RISKY_SINGLE_LETTER_CODES.has(tok)) signals.add(tok);
+    if (tok.length >= 2 && !RISKY_SIZE_CODE_WORDS.has(tok) && !productNameTokens.has(tok)) signals.add(tok);
   }
 
   const signalWordRe = /\b(?:size|style|version|option|model|code)\s+([a-z0-9]+)/gi;
@@ -819,19 +849,27 @@ export class CatalogChat {
       this.prices.filter(r => r.product_name === productName).map(r => r.fabric_tier).filter((t): t is string => !!t)
     )];
     const normalizedRawQuery = normalize(rawQueryHint);
-    const rawTierHitsAll = realTierValues.filter(t => containsWholeWord(normalizedRawQuery, normalize(t)));
-    // Prefer the most specific match when multiple real tier values are
-    // nested substrings of each other (e.g. "Pelle" and "Pelle Glove" are
-    // BOTH literally present as whole words in "sofia pelle glove" --
-    // keep only "Pelle Glove", the objectively more complete match).
-    // Same containment reasoning as the product-name fix above.
-    const rawTierHits = rawTierHitsAll.filter(t =>
-      !rawTierHitsAll.some(other => other !== t && containsWholeWord(normalize(other), normalize(t)))
-    );
+    const rawTierHits = realTierValues.filter(t => containsWholeWord(normalizedRawQuery, normalize(t)));
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
 
     if (tiersWithRawHits.length > 0) {
-      const resolvedTiers = this.resolveTiersForProduct(productName, tiersWithRawHits);
+      const resolvedTiersAll = this.resolveTiersForProduct(productName, tiersWithRawHits);
+      // Prefer the most specific match when multiple RESOLVED real tier
+      // values are nested substrings of each other (e.g. "Pelle" and
+      // "Pelle Glove" both resolve from a single "pelle glove" mention --
+      // keep only "Pelle Glove", the objectively more complete match).
+      // Deliberately applied here, AFTER resolving every source (the
+      // LLM's own structured guess, the deterministic whitelist, AND the
+      // raw-text scan) to real tier values -- not just within the raw
+      // scan's own hits. Confirmed the LLM's own fabric_tier guess can
+      // independently return BOTH "Pelle" and "Pelle Glove" for one
+      // "pelle glove" mention (non-deterministically -- "wlima pelle
+      // glove" showed 2 rows on one run, 1 row on another), which the
+      // earlier, narrower raw-scan-only version of this fix didn't catch
+      // since that contamination never touched rawTierHits at all.
+      const resolvedTiers = resolvedTiersAll.filter(t =>
+        !resolvedTiersAll.some(other => other !== t && containsWholeWord(normalize(other), normalize(t)))
+      );
       if (resolvedTiers.length > 0) {
         rows = rows.filter(r => resolvedTiers.includes(normalize(r.fabric_tier)));
       }
