@@ -172,8 +172,22 @@ export function extractSize(query: string): string | null {
 /** Extract a known fabric tier mentioned in free text -- as a real whole
  * word/phrase, never a raw substring (otherwise single-letter tiers like
  * 'e' would false-match inside ordinary words like "bed"). */
-export function extractTiers(query: string): string[] {
-  const q = normalize(query);
+export function extractTiers(query: string, excludeNames: string[] = []): string[] {
+  // Strip any known product name(s) out of the query FIRST -- several of
+  // this catalog's own product names contain a hyphenated single-letter
+  // segment that collides with a real bare tier code (confirmed: Bolzan's
+  // "Bend-e Fabric" -- the "-e" is part of the product's own name, but
+  // containsWholeWord treats "-" as a word boundary, so it silently
+  // matched tier "E" and narrowed 36 rows down to 6 on a plain "give me
+  // all prices for Bend-e Fabric"). Same root cause and same fix pattern
+  // as the raw-tier-scan stripping already done in lookupForProduct, just
+  // needed here too since this function runs earlier, on the unstripped
+  // query, at every one of its call sites in answer().
+  let q = normalize(query);
+  for (const name of excludeNames) {
+    const n = normalize(name);
+    if (n) q = q.replace(new RegExp(escapeRegex(n), 'gi'), ' ');
+  }
   const found: string[] = [];
   for (const tier of KNOWN_TIERS) {
     if (containsWholeWord(q, tier) && !found.includes(tier)) found.push(tier);
@@ -528,7 +542,7 @@ export class CatalogChat {
     const namedProducts = this.detectNamedProductsInText(query);
     if (namedProducts.length > 1) {
       const size = extractSize(query);
-      const tiers = extractTiers(query);
+      const tiers = extractTiers(query, namedProducts);
       const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
       return this.buildMultiProductResult(namedProducts, [], size, tiers, query, brand, wantsFullList);
     }
@@ -575,14 +589,16 @@ export class CatalogChat {
       }
       const productName = maximal[0].name;
       const size = extractSize(query);
-      const tiers = extractTiers(query);
-      return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant);
+      const tiers = extractTiers(query, [productName]);
+      const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+      return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant, wantsFullList);
     }
 
     const productName = topMatches[0].name;
     const size = extractSize(query);
-    const tiers = extractTiers(query);
-    return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant);
+    const tiers = extractTiers(query, [productName]);
+    const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+    return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant, wantsFullList);
   }
 
   /**
@@ -848,8 +864,21 @@ export class CatalogChat {
     const realTierValues = [...new Set(
       this.prices.filter(r => r.product_name === productName).map(r => r.fabric_tier).filter((t): t is string => !!t)
     )];
+    // Strip the product's own name out of the query text before scanning
+    // for tier mentions -- every query naming this product trivially
+    // contains its name, so a tier word that only "matches" because it's
+    // PART OF the product's own name (not a separate mention) must never
+    // count. Confirmed needed: Bolzan's "Poltrona e accessori Flag" (the
+    // Italian word "e" = "and") and "Noah Extra large" both collided with
+    // real tier names ("E", "Extra") that are simply substrings of the
+    // product's own name, silently narrowing a "give me all prices for X"
+    // request down to just that one tier -- same root cause as the
+    // ARENA/PASCAL size-token fixes, here in the tier-matching path.
     const normalizedRawQuery = normalize(rawQueryHint);
-    const rawTierHits = realTierValues.filter(t => containsWholeWord(normalizedRawQuery, normalize(t)));
+    const queryMinusProductName = normalize(productName)
+      ? normalizedRawQuery.replace(new RegExp(escapeRegex(normalize(productName)), 'gi'), ' ')
+      : normalizedRawQuery;
+    const rawTierHits = realTierValues.filter(t => containsWholeWord(queryMinusProductName, normalize(t)));
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
 
     if (tiersWithRawHits.length > 0) {
@@ -1085,8 +1114,18 @@ export class CatalogChat {
         // asking a generic "how much is X" almost always wants, not a
         // confusing mix of the bed price and unrelated base-mechanism
         // surcharges.
+        //
+        // NEVER when wantsFullList is true, though -- confirmed via
+        // check-coverage.ts (built for the Cattelan WILMA/PASCAL/ARENA
+        // fixes) that this narrowing was firing even on an explicit "give
+        // me all prices for X", silently dropping an entire real variant
+        // block (Bolzan's "Jack" -- 117 clean rows expected, only 103
+        // returned, because the bare "Jack" variant was auto-narrowed
+        // away in favor of "Jack / Struttura in ferro" even though the
+        // user asked for everything). A full-list request means every
+        // variant, main and addon alike -- that's what "all" means.
         const mainVariants = distinctVariants.filter(v => !isAddonVariant(v));
-        if (mainVariants.length === 1) {
+        if (mainVariants.length === 1 && !wantsFullList) {
           rows = rows.filter(r => r.model_variant === mainVariants[0]);
         }
       }
