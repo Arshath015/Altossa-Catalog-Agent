@@ -844,7 +844,6 @@ export class CatalogChat {
     // casing, and might be a single string or an array (e.g. "Extra and
     // Plus" -> ["Extra", "Plus"]) -- normalize to an array either way.
     const tierArray = Array.isArray(tier) ? tier : (tier ? [tier] : []);
-    const normalizedTiers = tierArray.map(normalize).filter(Boolean);
     // Same "and"-clause exclusion as answer()'s own single-product path --
     // this is a SEPARATE call site (the LLM validated exactly one real
     // product name, e.g. it didn't extract a typo'd sibling like "wlima"
@@ -855,6 +854,28 @@ export class CatalogChat {
     // Glove" (WILMA's) even with a live, successful LLM call, because the
     // LLM's own product_names guess also only surfaced GRETA Wood here.
     const scopedQuery = this.excludeUnrelatedAndClause(rawQuery, validProductName);
+    // A THIRD gap in the same bug family, found after the multi-product
+    // combiner's shared-tier-array fix (buildMultiProductResult): this
+    // exact function is ALSO called directly whenever answerFromIntentMulti
+    // resolves only ONE valid product name -- but the incoming `tier`
+    // array is still the LLM's raw guess for the WHOLE original message,
+    // which can contain a value belonging to a SECOND, unresolved product
+    // (e.g. the LLM found only "GRETA Wood" in product_names but still
+    // returned fabric_tier: ["Pelle","Pelle Glove"] for the 2-product
+    // message). Confirmed by direct reproduction: this call site is what
+    // the multi-product combiner's fix never touched. Same scoping
+    // principle as that fix -- keep a tier value only if it's textually
+    // present in THIS product's own scoped clause -- but falls back to
+    // the FULL unfiltered array (not to nothing) when the scoped subset
+    // is empty, unlike the multi-product combiner: an ordinary single-
+    // product query with no "and"-clause at all (the vast majority of
+    // calls to this function) leaves scopedQuery === rawQuery, and an
+    // LLM-normalized tier that doesn't literally appear in the raw text
+    // (the pre-existing, separately-documented tier-punctuation gap)
+    // must not be silently discarded just because this fix exists.
+    const scopedTierArray = tierArray.filter(t => containsWholeWord(normalize(scopedQuery), normalize(t)));
+    const effectiveTierArray = scopedTierArray.length > 0 ? scopedTierArray : tierArray;
+    const normalizedTiers = effectiveTierArray.map(normalize).filter(Boolean);
     return this.lookupForProduct(validProductName, size, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList);
   }
 
