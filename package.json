@@ -19,6 +19,9 @@
     "dev:server": "tsx App/server/index.ts",
     "dev:client": "vite",
     "regression": "tsx App/regression/run.ts",
+    "check-images": "tsx App/regression/check_images.ts",
+    "check-coverage": "tsx App/regression/check_coverage.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }
