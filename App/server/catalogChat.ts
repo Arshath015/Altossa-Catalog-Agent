@@ -583,9 +583,28 @@ export class CatalogChat {
       // RICHARD's or RITZ Lounge's size. No size in this product's own
       // clause means no size constraint for this product, full stop.
       const scopedSize = extractSize(scopedQuery);
+      // Scope the LLM's own shared `tier` guess the same way -- it's a
+      // SINGLE flat array for the WHOLE multi-product message with no
+      // per-product correspondence at all. Confirmed real and separate
+      // from the raw-text-scan leak fixed above: with live conversation
+      // history, the LLM returned product_names: ["GRETA Wood","WILMA"]
+      // (correctly, both!) alongside fabric_tier: ["Pelle","Pelle
+      // Glove"] as one shared list -- and this shared array was being
+      // passed UNFILTERED to every product's own lookup, so it still
+      // contaminated GRETA Wood's tier even though the raw-text scoping
+      // above was already correct. Only keep a shared tier value for
+      // THIS product if it's textually present (whole phrase) in this
+      // product's own already-scoped clause -- purely narrows toward
+      // what this product's own text actually supports, never invents
+      // one; if none of the shared values match this product's clause,
+      // this product gets no LLM-tier signal at all and falls back to
+      // the raw-text-scan safety net inside lookupForProduct (which
+      // re-derives independently from this same scoped text anyway).
+      const tierArray = Array.isArray(tier) ? tier : (tier ? [tier] : []);
+      const scopedTierArray = tierArray.filter(t => containsWholeWord(normalize(scopedQuery), normalize(t)));
       return {
         name,
-        result: this.answerFromIntent(name, scopedSize, tier, scopedQuery, brand, null, wantsFullList),
+        result: this.answerFromIntent(name, scopedSize, scopedTierArray.length > 0 ? scopedTierArray : null, scopedQuery, brand, null, wantsFullList),
       };
     });
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
