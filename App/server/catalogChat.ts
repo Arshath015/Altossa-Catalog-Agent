@@ -385,6 +385,53 @@ export class CatalogChat {
     return [...new Set(result)];
   }
 
+  /** For a SINGLE resolved product (the plain, non-multi-product path),
+   * excludes an "and"-joined clause that does NOT mention this product's
+   * own name -- closing the other half of the tier-leak bug below,
+   * WITHOUT trying to guess what that other clause refers to.
+   *
+   * A whole-catalog fuzzy guess (e.g. "does the other clause's first
+   * word resemble some OTHER real product's name closely enough to be a
+   * typo?") was prototyped for this exact purpose and rejected: ordinary
+   * domain vocabulary keeps coincidentally resembling some short,
+   * single-word product name at edit distance 1 in a catalog this size
+   * -- "glove" is distance 1 from "GLOBE", "price" is distance 1 from
+   * "PRIVE" -- so guessing "this looks like a typo'd product name" from
+   * vocabulary alone risks inventing a phantom product out of an
+   * ordinary tier/price word, which would be a WORSE failure than the
+   * bug being fixed.
+   *
+   * Splitting ONLY on the literal word "and" (never a bare comma) is
+   * deliberate and was verified against this project's entire query
+   * history (queries.json + stress_v2_queries.json): every "and"-joined
+   * query across both files (20 total) names 2+ PRODUCTS -- 0% use "and"
+   * to join two modifiers of one single product (that pattern uses a
+   * comma instead, e.g. "160x200, Extra fabric", which is exactly why
+   * comma-splitting stays scoped to the ALREADY-multi-product-confirmed
+   * path in scopeQueryPerProduct below, not here). Also safe for the one
+   * same-name-repeated case in the corpus ("cody 1 and cody l") -- since
+   * "cody" appears in both clauses, nothing gets excluded.
+   *
+   * This closes the case where `buildMultiProductResult`'s scoping is
+   * never even reached: a sibling's name is a typo (e.g. "wlima") and no
+   * LLM call resolved it this time, so `detectNamedProductsInText` only
+   * ever finds ONE real name and the plain single-product path runs
+   * instead -- previously with the FULL unscoped query, reproducing the
+   * exact tier-leak bug even after the multi-product fix (confirmed:
+   * "gve me greta wood pelle and wlima pelle glove" still returned GRETA
+   * Wood's tier as "Pelle Glove" -- WILMA's -- instead of GRETA's own
+   * correct "Pelle", specifically because this single-product path was
+   * never touched by that first fix). */
+  private excludeUnrelatedAndClause(rawQuery: string, productName: string): string {
+    const segments = rawQuery.split(/\band\b/gi).map(s => s.trim()).filter(Boolean);
+    if (segments.length <= 1) return rawQuery;
+    const own = segments.filter(seg => containsWholeWord(normalize(seg), normalize(productName)));
+    if (own.length > 0 && own.length < segments.length) {
+      return own.join(' ');
+    }
+    return rawQuery;
+  }
+
   /** Splits a multi-product raw query into per-product clauses on list
    * connectors ("and" / "," / "&") and assigns each of this message's
    * CONFIRMED real product names to whichever clause(s) actually mention
@@ -486,9 +533,28 @@ export class CatalogChat {
     const scopedPerProduct = this.scopeQueryPerProduct(rawQuery, validNames);
     const perProduct = validNames.map(name => {
       const scopedQuery = scopedPerProduct.get(name) ?? rawQuery;
+      // Re-derive size from THIS product's own scoped clause ONLY --
+      // never fall back to the original shared `size`, which was
+      // extracted from the WHOLE raw query and can belong to a SIBLING
+      // instead (e.g. "sierra pouf 100x94x41h pelle and tina pelle" --
+      // the size belongs to Sierra pouf only; TINA's own clause has no
+      // size at all). Confirmed root cause of TINA (which has exactly 1
+      // real size) sometimes safely refusing instead of resolving
+      // directly: Sierra pouf's "100x94x41h" was leaking into TINA's
+      // lookup too via the shared param, and TINA has no row at that
+      // size, so it correctly (but unnecessarily) fell back to "not that
+      // exact combination" instead of just using its one real size.
+      // A first version of this fix fell back to the shared `size` when
+      // the scoped clause had none, which was wrong: existing test id 12
+      // ("bishop, richard a 245x234x102 pelle, and ritz lounge 118")
+      // explicitly expects BISHOP -- which names no size of its own -- to
+      // show its own ambiguous size options, NOT silently borrow
+      // RICHARD's or RITZ Lounge's size. No size in this product's own
+      // clause means no size constraint for this product, full stop.
+      const scopedSize = extractSize(scopedQuery);
       return {
         name,
-        result: this.answerFromIntent(name, size, tier, scopedQuery, brand, null, wantsFullList),
+        result: this.answerFromIntent(name, scopedSize, tier, scopedQuery, brand, null, wantsFullList),
       };
     });
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
@@ -672,17 +738,19 @@ export class CatalogChat {
         };
       }
       const productName = maximal[0].name;
-      const size = extractSize(query);
-      const tiers = extractTiers(query, [productName]);
+      const scopedQuery = this.excludeUnrelatedAndClause(query, productName);
+      const size = extractSize(scopedQuery);
+      const tiers = extractTiers(scopedQuery, [productName]);
       const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
-      return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant, wantsFullList);
+      return this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList);
     }
 
     const productName = topMatches[0].name;
-    const size = extractSize(query);
-    const tiers = extractTiers(query, [productName]);
+    const scopedQuery = this.excludeUnrelatedAndClause(query, productName);
+    const size = extractSize(scopedQuery);
+    const tiers = extractTiers(scopedQuery, [productName]);
     const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
-    return this.lookupForProduct(productName, size, tiers, brand, query, lastModelVariant, wantsFullList);
+    return this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList);
   }
 
   /**
@@ -722,7 +790,17 @@ export class CatalogChat {
     // Plus" -> ["Extra", "Plus"]) -- normalize to an array either way.
     const tierArray = Array.isArray(tier) ? tier : (tier ? [tier] : []);
     const normalizedTiers = tierArray.map(normalize).filter(Boolean);
-    return this.lookupForProduct(validProductName, size, normalizedTiers, brand, rawQuery, lastModelVariant, wantsFullList);
+    // Same "and"-clause exclusion as answer()'s own single-product path --
+    // this is a SEPARATE call site (the LLM validated exactly one real
+    // product name, e.g. it didn't extract a typo'd sibling like "wlima"
+    // either) that was missed by that fix: it calls lookupForProduct
+    // directly with the raw, unscoped rawQuery, never going through
+    // answer() at all. Confirmed necessary: "gve me greta wood pelle and
+    // wlima pelle glove" still returned GRETA Wood's tier as "Pelle
+    // Glove" (WILMA's) even with a live, successful LLM call, because the
+    // LLM's own product_names guess also only surfaced GRETA Wood here.
+    const scopedQuery = this.excludeUnrelatedAndClause(rawQuery, validProductName);
+    return this.lookupForProduct(validProductName, size, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList);
   }
 
   /**

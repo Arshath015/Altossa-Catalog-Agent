@@ -21,6 +21,7 @@ poppler-26.02.0/
 # fixtures and run.ts/stress_v2.ts logic are the actual versioned source).
 App/regression/last-run.json
 App/regression/stress_v2-run.json
+App/regression/check_multi_product_isolation-run.json
 
 *.log
 
