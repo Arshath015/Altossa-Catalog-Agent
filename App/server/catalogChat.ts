@@ -403,10 +403,31 @@ export class CatalogChat {
     brand: string,
     wantsFullList: boolean
   ): ChatResult {
-    const perProduct = validNames.map(name => ({
-      name,
-      result: this.answerFromIntent(name, size, tier, rawQuery, brand, null, wantsFullList),
-    }));
+    const perProduct = validNames.map(name => {
+      // Strip every OTHER named product's own text out of the shared raw
+      // query before resolving THIS one -- otherwise a sibling product's
+      // name can supply a false tier-scan signal for this product (same
+      // root cause as the two product's-own-name-vs-tier fixes above,
+      // just at the multi-product call site, where the raw query still
+      // contains every named product's text, not just this one's).
+      // Confirmed: "give me all prices for bend-e fabric and noah extra
+      // large" -- Noah's per-product tier scan saw "bend-e" left in the
+      // query text and matched the real tier "E" (from the "-e" hyphen
+      // segment); Bend-e's own scan saw "noah extra large" left in the
+      // text and matched the real tier "Extra" -- each silently narrowed
+      // to a single wrong tier instead of the full list both explicitly
+      // asked for.
+      const siblingNames = validNames.filter(n => n !== name);
+      let cleanedQuery = normalize(rawQuery);
+      for (const sib of siblingNames) {
+        const n = normalize(sib);
+        if (n) cleanedQuery = cleanedQuery.replace(new RegExp(escapeRegex(n), 'gi'), ' ');
+      }
+      return {
+        name,
+        result: this.answerFromIntent(name, size, tier, cleanedQuery, brand, null, wantsFullList),
+      };
+    });
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
     const combinedImages = [...new Set(perProduct.flatMap(p => p.result.image_urls || []))];
     const notFoundLines = unresolvedMentions.map(n => `${n}: couldn't find a matching product in the catalog.`);
