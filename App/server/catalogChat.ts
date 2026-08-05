@@ -305,12 +305,43 @@ export class CatalogChat {
   private catalogIndex: CatalogEntry[];
   private prices: PriceRow[];
   private productNames: string[];
+  /** Every distinct real fabric_tier VALUE across this brand's whole
+   * catalog (not just one product), longest-first -- used to strip a
+   * recognized tier phrase out of a query BEFORE fuzzy product-name
+   * matching runs (see buildLlmShortlist), so a word that's really just
+   * part of a real tier phrase (e.g. "glove" in "Pelle Glove") never gets
+   * evaluated as a standalone typo candidate against the whole catalog. */
+  private realTierPhrases: string[];
 
   /** @param dataDir folder containing catalog_index.json and prices.json for one brand */
   constructor(private dataDir: string) {
     this.catalogIndex = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog_index.json'), 'utf-8'));
     this.prices = JSON.parse(fs.readFileSync(path.join(dataDir, 'prices.json'), 'utf-8'));
     this.productNames = [...new Set(this.catalogIndex.map(p => p.product_name))];
+    this.realTierPhrases = [...new Set(this.prices.map(r => r.fabric_tier).filter((t): t is string => !!t))]
+      .sort((a, b) => normalize(b).length - normalize(a).length);
+  }
+
+  /** Removes any recognized real tier phrase (longest-match-first, whole
+   * phrase, case/accent-insensitive) from the query text -- purely for
+   * feeding a cleaner signal into fuzzy product-name matching, never used
+   * for anything price-affecting. Confirmed necessary: "wlima pelle
+   * glove" put GLOBE (edit distance 1 from the literal word "glove") at
+   * the TOP of the LLM's candidate shortlist, ahead of WILMA itself
+   * (distance 2) -- because "Pelle Glove" is a real catalog-wide tier
+   * value, and the standalone word "glove" within it was being fuzzy-
+   * matched against the whole catalog with no awareness it was already
+   * part of a real, fully-explained tier phrase. Same failure family as
+   * the already-logged MAGDA ML/CRISTAL spurious-extra-product findings
+   * from an earlier round. */
+  private stripKnownTierPhrases(query: string): string {
+    let q = normalize(query);
+    for (const tier of this.realTierPhrases) {
+      const t = normalize(tier);
+      if (t.length < 4) continue; // too short to safely strip without other collateral risk
+      q = q.replace(new RegExp(`(?:^|\\W)${escapeRegex(t)}(?:$|\\W)`, 'gi'), ' ');
+    }
+    return q;
   }
 
   /** Find the best-matching product name(s) for a free-text query, sorted best-first. */
@@ -645,7 +676,12 @@ export class CatalogChat {
     };
     this.detectNamedProductsInText(query).forEach(add);
     this.matchProducts(query).forEach(m => add(m.name));
-    this.fuzzyMatchProducts(query).forEach(add);
+    // Strip known real tier phrases before fuzzy-matching specifically --
+    // exact/substring matching above is unaffected (a real product name
+    // never looks like a tier phrase), only the fuzzy typo-tolerance pass
+    // needs this, since that's the one that goes word-by-word against
+    // the whole catalog with no context at all.
+    this.fuzzyMatchProducts(this.stripKnownTierPhrases(query)).forEach(add);
     return ranked.slice(0, limit);
   }
 
