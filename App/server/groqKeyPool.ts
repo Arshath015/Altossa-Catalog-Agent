@@ -1,7 +1,7 @@
 /**
  * groqKeyPool.ts
  * ---------------
- * Manages failover across multiple Groq API keys (GROQ_API_KEY_1..3) so
+ * Manages failover across multiple Groq API keys (GROQ_API_KEY_1..4) so
  * one key's daily rate limit doesn't take the LLM-assisted matching path
  * down for the rest of the day. Tries keys in a FIXED priority order
  * (key 1 first, always -- not round-robin) and remembers each key's own
@@ -27,7 +27,7 @@ const FALLBACK_429_COOLDOWN_MS = 5 * 60_000; // 429 with no parseable retry hint
 
 function loadKeySlots(): GroqKeySlot[] {
   const slots: GroqKeySlot[] = [];
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 4; i++) {
     const key = process.env[`GROQ_API_KEY_${i}`];
     if (key) slots.push({ index: i, apiKey: key, exhaustedUntil: null });
   }
