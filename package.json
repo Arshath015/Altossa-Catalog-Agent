@@ -21,7 +21,8 @@
     "regression": "tsx App/regression/run.ts",
     "check-images": "tsx App/regression/check_images.ts",
     "check-coverage": "tsx App/regression/check_coverage.ts",
-    "regression:full": "npm run regression && npm run check-images && npm run check-coverage",
+    "stress-v2": "tsx App/regression/stress_v2.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }
