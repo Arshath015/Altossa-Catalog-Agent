@@ -385,6 +385,76 @@ export class CatalogChat {
     return [...new Set(result)];
   }
 
+  /** Splits a multi-product raw query into per-product clauses on list
+   * connectors ("and" / "," / "&") and assigns each of this message's
+   * CONFIRMED real product names to whichever clause(s) actually mention
+   * it -- so tier/size extraction for one product never sees another
+   * product's clause at all, not just that other product's name (which
+   * the earlier, narrower version of this fix stripped, but left its
+   * tier words behind). Exact whole-phrase match first; a name only
+   * resolved via typo-correction (its real spelling literally isn't in
+   * the raw text, e.g. "wlima" -> WILMA) falls back to fuzzy
+   * (Levenshtein) token matching -- but ONLY against this message's
+   * OTHER already-confirmed names, never the whole catalog. That
+   * restriction is deliberate and was verified necessary: a whole-catalog
+   * fuzzy check was tried first and rejected, because a plain tier clause
+   * like "extra fabric" fuzzy-matches several real but UNRELATED Bolzan
+   * products at distance 0 ("Noah Extra large", "Bend-e Fabric" etc --
+   * "extra"/"fabric" are literal words in those names), which would have
+   * wrongly excluded a genuine tier clause for an ordinary single-product
+   * query. Restricting the fuzzy fallback to just the OTHER names
+   * actually named in THIS message avoids that false-positive entirely.
+   * When a name can't be confidently isolated to a subset of clauses, its
+   * original unscoped rawQuery is used instead of guessing wrong. */
+  private scopeQueryPerProduct(rawQuery: string, names: string[]): Map<string, string> {
+    const result = new Map<string, string>();
+    if (names.length <= 1) {
+      for (const name of names) result.set(name, rawQuery);
+      return result;
+    }
+    const segments = rawQuery.split(/,|\band\b|&/gi).map(s => s.trim()).filter(Boolean);
+    if (segments.length <= 1) {
+      for (const name of names) result.set(name, rawQuery);
+      return result;
+    }
+
+    const claimed = new Set<number>();
+    const unresolved: string[] = [];
+    for (const name of names) {
+      const idx = segments.findIndex((seg, i) => !claimed.has(i) && containsWholeWord(normalize(seg), normalize(name)));
+      if (idx !== -1) {
+        claimed.add(idx);
+        result.set(name, segments[idx]);
+      } else {
+        unresolved.push(name);
+      }
+    }
+
+    for (const name of unresolved) {
+      const nameTokens = normalize(name).split(/[^a-z0-9]+/).filter(Boolean);
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < segments.length; i++) {
+        if (claimed.has(i)) continue;
+        const segTokens = normalize(segments[i]).split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+        for (const nt of nameTokens) {
+          for (const st of segTokens) {
+            if (Math.abs(nt.length - st.length) > 2) continue;
+            const d = this.levenshtein(nt, st);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+          }
+        }
+      }
+      if (bestIdx !== -1 && bestDist <= 2) {
+        claimed.add(bestIdx);
+        result.set(name, segments[bestIdx]);
+      } else {
+        result.set(name, rawQuery);
+      }
+    }
+    return result;
+  }
+
   /** Shared multi-product combiner: given 2+ CONFIRMED real product names
    * (from any source -- the raw-text scan, a validated LLM guess, or
    * both) plus any names that were clearly NAMED but never resolved to a
@@ -403,29 +473,22 @@ export class CatalogChat {
     brand: string,
     wantsFullList: boolean
   ): ChatResult {
+    // Scope each product's own raw-query text to just ITS clause before
+    // resolving it -- stripping only the sibling's NAME (the previous
+    // version of this fix) isn't enough, because a sibling's own TIER
+    // words are still left in the text too. Confirmed: "greta wood pelle
+    // and wlima pelle glove" -- GRETA Wood's tier scan saw "pelle glove"
+    // (WILMA's clause, left in the text) alongside its own correct
+    // "pelle", and the "prefer the more specific tier" containment rule
+    // picked "Pelle Glove" over GRETA's own real answer "Pelle" -- same
+    // root cause as the Bend-e Fabric/Noah Extra large bug, just with a
+    // sibling's TIER leaking in instead of its NAME.
+    const scopedPerProduct = this.scopeQueryPerProduct(rawQuery, validNames);
     const perProduct = validNames.map(name => {
-      // Strip every OTHER named product's own text out of the shared raw
-      // query before resolving THIS one -- otherwise a sibling product's
-      // name can supply a false tier-scan signal for this product (same
-      // root cause as the two product's-own-name-vs-tier fixes above,
-      // just at the multi-product call site, where the raw query still
-      // contains every named product's text, not just this one's).
-      // Confirmed: "give me all prices for bend-e fabric and noah extra
-      // large" -- Noah's per-product tier scan saw "bend-e" left in the
-      // query text and matched the real tier "E" (from the "-e" hyphen
-      // segment); Bend-e's own scan saw "noah extra large" left in the
-      // text and matched the real tier "Extra" -- each silently narrowed
-      // to a single wrong tier instead of the full list both explicitly
-      // asked for.
-      const siblingNames = validNames.filter(n => n !== name);
-      let cleanedQuery = normalize(rawQuery);
-      for (const sib of siblingNames) {
-        const n = normalize(sib);
-        if (n) cleanedQuery = cleanedQuery.replace(new RegExp(escapeRegex(n), 'gi'), ' ');
-      }
+      const scopedQuery = scopedPerProduct.get(name) ?? rawQuery;
       return {
         name,
-        result: this.answerFromIntent(name, size, tier, cleanedQuery, brand, null, wantsFullList),
+        result: this.answerFromIntent(name, size, tier, scopedQuery, brand, null, wantsFullList),
       };
     });
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
