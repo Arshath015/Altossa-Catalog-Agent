@@ -101,15 +101,63 @@ router.post('/chat', async (req: Request, res: Response) => {
   // miss costs one extra full-price call instead of silently losing the
   // product the way Bug 3's original silent-drop did.
   const shortlist = catalogChat.buildLlmShortlist(message);
-  let intent = await extractIntent(message, history || [], shortlist, lastProduct || null);
+
+  // The lastProduct "assume they still mean X" anchor is only trustworthy
+  // when the CURRENT message itself doesn't already name a real product --
+  // the moment it does, that's strong evidence this is a fresh,
+  // self-contained reference, and feeding a stale anchor in anyway only
+  // risks the LLM substituting an old (possibly multi-product, comma-
+  // joined) name for one it should resolve fresh from the shortlist/
+  // message text itself. Confirmed real risk, not hypothetical: this is
+  // exactly the shape of a user-reported hypothesis ("TINA leaking into a
+  // GRETA Wood/WILMA query" after a prior "SIERRA pouf, TINA" turn) --
+  // GRETA Wood IS named exactly in that message, so under this rule the
+  // anchor is omitted entirely for that call, closing off that channel
+  // regardless of whether it was ever the actual cause. Uses the same
+  // deterministic exact-name scan already used elsewhere (no LLM call
+  // needed to decide this).
+  const currentMessageNamesOwnProduct = catalogChat.detectNamedProductsInText(message).length > 0;
+  const effectiveLastProduct = currentMessageNamesOwnProduct ? null : (lastProduct || null);
+
+  // Logged unconditionally (not just for multi-product calls) -- cheap,
+  // and this is exactly the trail needed to catch a real recurrence of
+  // the anchor-contamination hypothesis in production instead of trying
+  // to reconstruct it after the fact from memory.
+  console.log(
+    `[lastProduct-anchor] message=${JSON.stringify(message)} clientLastProduct=${JSON.stringify(lastProduct || null)} ` +
+    `usedInPrompt=${JSON.stringify(effectiveLastProduct)} reason=${currentMessageNamesOwnProduct ? 'omitted (message already names a real product)' : (effectiveLastProduct ? 'included (message names nothing on its own)' : 'none available')}`
+  );
+
+  let intent = await extractIntent(message, history || [], shortlist, effectiveLastProduct);
   if (intent && (!intent.product_names || intent.product_names.length === 0)) {
     console.log(`[shortlist-fallback] "${message}" -- shortlist of ${shortlist.length} had no confident match, retrying with full ${catalogChat.getProductNames().length}-product list`);
-    intent = await extractIntent(message, history || [], catalogChat.getProductNames(), lastProduct || null);
+    intent = await extractIntent(message, history || [], catalogChat.getProductNames(), effectiveLastProduct);
   }
 
   const result: ChatResult = intent
     ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list)
     : catalogChat.answer(message, brand, lastModelVariant || null);
+
+  // Full raw request/response capture for every MULTI-PRODUCT resolution
+  // specifically -- this is the exact class of call where cross-product
+  // contamination (tier leak, shared-array leak, or a stale anchor
+  // substituting a wrong product) can happen. Captures enough to diagnose
+  // a real recurrence without needing to reconstruct the session
+  // afterward: the raw client-supplied lastProduct/history, what actually
+  // went into the prompt, the LLM's raw product_names/fabric_tier/size
+  // guess, and the final per-product tier/price breakdown actually
+  // returned.
+  const isMultiProduct = result.status === 'multi_product' || (intent?.product_names && intent.product_names.length > 1);
+  if (isMultiProduct) {
+    const perProductBreakdown = (result.matches || []).map(m => `${m.product_name}:${m.fabric_tier}=€${m.price_eur}`);
+    console.log(
+      `[multi-product-capture] message=${JSON.stringify(message)} ` +
+      `clientLastProduct=${JSON.stringify(lastProduct || null)} usedLastProduct=${JSON.stringify(effectiveLastProduct)} ` +
+      `historyLen=${(history || []).length} ` +
+      `llmProductNames=${JSON.stringify(intent?.product_names ?? null)} llmFabricTier=${JSON.stringify(intent?.fabric_tier ?? null)} llmSize=${JSON.stringify(intent?.size ?? null)} ` +
+      `finalRows=${JSON.stringify(perProductBreakdown)}`
+    );
+  }
 
   // extractIntent returns null only once it has tried EVERY configured
   // Groq key (see groqKeyPool.ts -- key 1, then 2, then 3, in that fixed
