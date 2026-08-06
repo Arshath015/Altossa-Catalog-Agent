@@ -25,7 +25,8 @@
     "check-multi-product-isolation": "tsx App/regression/check_multi_product_isolation.ts",
     "check-tier-isolation-stress": "tsx App/regression/check_tier_isolation_stress.ts",
     "check-tier-label": "tsx App/regression/check_tier_label.ts",
-    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label",
+    "check-orphaned-flags": "tsx App/regression/check_orphaned_flags.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label && npm run check-orphaned-flags",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }

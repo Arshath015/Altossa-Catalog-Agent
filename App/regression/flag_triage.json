@@ -1,0 +1,391 @@
+{
+  "_readme": "Permanent triage ledger for App/parse_prices.py's Cattelan-format review_flags mechanism (a block the parser declined to guess at rather than risk parsing wrong). Every product name that has EVER appeared in a review flag must have an entry here recording what was found. This is the tracked follow-up list that check_orphaned_flags.ts enforces -- a fresh flag on a product not listed here fails the build, forcing triage to happen instead of being silently forgotten (the exact bug found 2026-08-06: SAN MARCO/BLUEBELL/NAHUN/REGATA/LAVANDER were flagged but never followed up, and the app kept serving accessory-only data for them for an unknown period). Add a brand's product_name to CATTELAN_FORMAT_BRANDS in check_orphaned_flags.ts when a new brand (e.g. Bonaldo) starts using --format cattelan, so its flags get tracked from day one.",
+  "_status_meaning": {
+    "real_gap": "The flagged block was a genuine, entirely-missing price table. Fixed by hand-transcribing it into manual_additions.json (verified against the real page image, complete row set including any pre-existing correct rows since merge_manual_additions.py replaces the whole product).",
+    "partial": "The main price data was already correct; only a smaller secondary table (e.g. a Cavo aggiuntivo/Accessori row) was missing. Fixed the same way as real_gap, just a smaller row set.",
+    "false_alarm": "Checked the raw source text (and page image where the text alone was ambiguous) and confirmed prices.json already has the complete, correct data. The flag was about some other non-price element on the page, or a row count that looked suspicious but was correct. Nothing added to manual_additions.json."
+  },
+  "Cattelan Italia": {
+    "SAN MARCO": {
+      "status": "real_gap",
+      "note": "Entire main grid (16 rows: sizes 1/2/L1/L2 x 4 Paralume tiers) was missing; only 6 Accessori rows existed. User-reported. Transcribed from page image p25, 2026-08-06."
+    },
+    "BLUEBELL": {
+      "status": "real_gap",
+      "note": "Entire main grid (6 rows: 3 sizes x 2 Struttura tiers) was missing; only 4 Accessori rows existed. Same pattern as SAN MARCO. Transcribed from page image p313, 2026-08-06."
+    },
+    "NAHUN": {
+      "status": "real_gap",
+      "note": "Entire main grid (10 rows: 5 sizes x 2 Struttura tiers) was missing; only 4 Accessori rows existed. Transcribed from page image p329, 2026-08-06."
+    },
+    "REGATA": {
+      "status": "real_gap",
+      "note": "Entire main grid (20 rows: 5 sizes x 4 Struttura tiers) was missing; only 4 Accessori rows existed. Transcribed from page image p334, 2026-08-06."
+    },
+    "LAVANDER": {
+      "status": "real_gap",
+      "note": "Entire main grid (12 rows: 4 sizes x 3 Struttura tiers, M11/OP69/Brushed Bronze-Grey) was missing; only 1 Cassetto optional row existed. 3-row wrapped header (Piedini/Struttura/Ante); column-2 value cross-validated via price monotonicity. Transcribed from page image p235, 2026-08-06."
+    },
+    "BIARRITZ": {
+      "status": "partial",
+      "note": "Main row (50x40x51h = 1.600) was already correct; only the small Accessori table (Cavo aggiuntivo 1 mt = 65) was missing. Confirmed via raw text data/Cattelan Italia/text/biarritz.txt line 39. Fixed 2026-08-06."
+    },
+    "APOLLO": {
+      "status": "false_alarm",
+      "note": "15 rows with varied real sizes already present and correct; flag was about a different, non-price block on the page. Confirmed via raw text."
+    },
+    "BABAN": {
+      "status": "false_alarm",
+      "note": "Only 4 rows looked suspicious by count alone, but that IS the complete real data (1 size x 2 tiers + 1 accessory x 2 tiers). Confirmed via raw text."
+    },
+    "SPILLO": {
+      "status": "false_alarm",
+      "note": "Single TRIS row (Struttura tier, 1.371) is the complete real data for SPILLO; the flag actually originates from the neighboring STANDARD product block on the same page text. Confirmed via raw text data/Cattelan Italia/text/spillo.txt."
+    },
+    "CODY": {
+      "status": "false_alarm",
+      "note": "Main grid (1/L/8/S2/8 x 2 Paralume tiers) and Accessori table both already fully and correctly captured; flag concerns the Accessori table's own unlabeled header, not missing data. Confirmed via raw text data/Cattelan Italia/text/cody.txt."
+    },
+    "BOTERO Keramik": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GIANO Keramik": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GORDON": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "HYSTRIX": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "MARATHON": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "PLANER Keramik": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "PLANER Round": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "RIBOT Keramik Bistrot": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "RITZ Lounge": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SATURNO Keramik Bistrot": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SPYDER": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SPYDER Keramik": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "TYRON Keramik Drive": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "COCOON TROUSSE Keramik": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "COCOON TROUSSE Leather": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "BUTTERFLY Consolle": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "NETTUNO": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "AGATHA FLEX": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "HOLLY": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "ITALIA": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "ITALIA Couture": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "KAY": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "NORMA": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "NORMA Couture": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SOFIA": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "TINA": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "WILMA": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "ISABEL Sgabello": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "MAGDA ML Sgabello": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "NORMA Couture Sgabello": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "BENNY": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "DYLAN": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "LUKAS": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "NELSON": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SIMON": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GIANO Marble": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SKORPIO Marble": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "SKORPIO Marble Round": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "TYRON Marble": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "YODA Marble": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "BRITNEY Turn": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "CHARLOTTE": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GISELLE": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GISELLE Lounge": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "GRETA Wood": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "RICHARD": {
+      "status": "real_gap",
+      "note": "Pre-existing entry from the original 67-product manual_additions.json batch (round 14, before the 2026-08-06 orphaned-flags audit). Already hand-transcribed and verified prior to this ledger existing; backfilled here so the parser flag it still triggers on re-extraction is not orphaned. Not individually re-documented this round -- presence of real, varied price data in manual_additions.json is the evidence of resolution."
+    },
+    "ATRIUM Keramik": {
+      "status": "false_alarm",
+      "note": "All 7 real size rows (1/1sag/2/2sag/300x130 polygon/300x150 bisc/320x138 sag), single EUR column, already present and correct. Confirmed via raw text data/Cattelan Italia/text/atrium_keramik.txt."
+    },
+    "BOTERO Wood": {
+      "status": "partial",
+      "note": "Not a missing table -- a data-corruption bug (same class as the 2026-08-04 audit): the 'Y 220x110x75h' row's size label wrapped across physical text lines, and the parser fell back to using the row's own price (4.119) as the size field. Fixed by correcting the size label; price/tier were already correct. Rest of the 15-row grid (U/Y/B series) was already complete. Confirmed via raw text."
+    },
+    "BUTTERFLY": {
+      "status": "real_gap",
+      "note": "Entire first price table (2 tops x 2 base finishes x 6 sizes = 24 values) and the bisellato+MIST table (2 sizes x 4 values = 8) were missing; only the bisellato-inverso table (4 rows) was captured. Transcribed 32 new rows from raw text data/Cattelan Italia/text/butterfly.txt, 2026-08-06."
+    },
+    "DRAGON Keramik Premium": {
+      "status": "false_alarm",
+      "note": "Single table, 3 sizes x 2 tiers = 6 rows, all present and correct. Confirmed via raw text."
+    },
+    "GIANO Crystalart": {
+      "status": "false_alarm",
+      "note": "Single table, 3 sizes x 2 tiers = 6 rows, all present and correct. Confirmed via raw text."
+    },
+    "LANCER": {
+      "status": "false_alarm",
+      "note": "All 3 top variants (trasparente, trasparente extrachiaro, bisellato inverso), 30 rows total, already present and correct. Confirmed via raw text."
+    },
+    "PAPEL Keramik": {
+      "status": "false_alarm",
+      "note": "Single table, 10 sizes x 2 tiers = 20 rows, all present and correct. Confirmed via raw text."
+    },
+    "PAPELITO Wood": {
+      "status": "partial",
+      "note": "Same corruption bug as BOTERO Wood: the 'Y 220x110x74,5h' row's size label wrapped across lines and the parser used the row's own price (4.188) as the size field for both tier columns. Fixed by correcting the size label. Rest of the 12-row grid already complete. Confirmed via raw text."
+    },
+    "PLANER": {
+      "status": "real_gap",
+      "note": "Entire first price table (2 tops x 3 base finishes x 12 sizes = 72 values) was missing; only the bisellato-inverso table (6 rows) was captured. Transcribed 72 new rows from raw text data/Cattelan Italia/text/planer.txt, 2026-08-06."
+    },
+    "SENATOR Keramik": {
+      "status": "false_alarm",
+      "note": "Single table, 8 sizes x 1 EUR column = 8 rows, all present and correct. Confirmed via raw text."
+    },
+    "SKORPIO": {
+      "status": "real_gap",
+      "note": "Two entire price tables missing: the main trasparente/trasparente-extrachiaro grid (13 sizes x 6 columns = 78 values) and the bisellato+MIST table (4 sizes x 6 columns = 24 values); only the bisellato-inverso table (6 rows) was captured. Transcribed 102 new rows from raw text data/Cattelan Italia/text/skorpio.txt, 2026-08-06."
+    },
+    "CAMILLA Lounge": {
+      "status": "real_gap",
+      "note": "Main 'Seduta' tier table (12 rows) was correct; the secondary 6-column 'Divani' fabric-tier table (3 sizes x 6 = 18 rows) was entirely missing due to the duplicate-column-name parser flag. Transcribed from raw text, 2026-08-06."
+    },
+    "CHRISHELL ML": {
+      "status": "real_gap",
+      "note": "Only the '08 Cromo' frame-variant table (4 rows) was captured; the GFM-frame-variant table (same size, same 4 fabric tiers, different prices -- 4 rows) was entirely missing. Per the NORMA ML precedent, flagged all 8 rows ambiguous=true since (size, fabric_tier) now collides across the two frame tables. Transcribed from raw text, 2026-08-06."
+    },
+    "GRETA": {
+      "status": "real_gap",
+      "note": "Main 'Schienale' size table (4 rows) was correct; the secondary 'Telaio' 6-column Divani fabric-tier table (1 size x 6 = 6 rows) was entirely missing. Transcribed from raw text, 2026-08-06."
+    },
+    "GRETA Lounge": {
+      "status": "real_gap",
+      "note": "Same pattern as GRETA: main size table (4 rows) correct, secondary 'Telaio' Divani table (6 rows) missing. Transcribed from raw text, 2026-08-06."
+    },
+    "MARIEL ML": {
+      "status": "real_gap",
+      "note": "Same pattern as CHRISHELL ML: only the '08 Cromo' table (4 rows) was captured, the GFM-frame table (4 rows) was missing. All 8 rows flagged ambiguous=true. Transcribed from raw text, 2026-08-06."
+    },
+    "MIRANDA Lounge": {
+      "status": "real_gap",
+      "note": "Same pattern as CAMILLA Lounge: main 'Seduta' table (12 rows) correct, secondary Divani table (3 sizes x 6 = 18 rows) missing. Transcribed from raw text, 2026-08-06."
+    },
+    "NORMA ML": {
+      "status": "real_gap",
+      "note": "Of 3 frame-variant tables (GFM.../OP17/69, '08', '06'), only the first and third ('06') were captured (32 rows, correctly ambiguous=true); the '08' table (4 sizes x 4 tiers = 16 rows) was entirely missing. Added 16 rows, ambiguous=true per the pre-existing collision convention. Transcribed from raw text, 2026-08-06."
+    },
+    "RHONDA Lounge": {
+      "status": "real_gap",
+      "note": "Same pattern as CAMILLA Lounge: main 'Seduta' table (12 rows) correct, secondary Divani table (3 sizes x 6 = 18 rows) missing. Transcribed from raw text, 2026-08-06."
+    },
+    "RUBY Lounge": {
+      "status": "real_gap",
+      "note": "Main table (3 rows) correct; secondary 'Base frNC/frRB' Divani table (1 size x 6 = 6 rows) entirely missing. Transcribed from raw text, 2026-08-06."
+    },
+    "SCARLETT ML": {
+      "status": "real_gap",
+      "note": "Same pattern as CHRISHELL ML/MARIEL ML: only '08 Cromo' table (4 rows) captured, GFM-frame table (4 rows) missing, all 8 rows now ambiguous=true. Transcribed from raw text, 2026-08-06."
+    },
+    "ABSOLUT": {
+      "status": "partial",
+      "note": "Main grid (8 rows) and Cassetto optional (1 row) were correct; the 'Top optional in cristallo versione 2/3' secondary table (2 sizes x 2 finishes = 4 rows) was missing. Transcribed from raw text, 2026-08-06."
+    },
+    "METROPOL": {
+      "status": "partial",
+      "note": "Main row and Cassetto optional were correct; the 'Top optional in cristallo' row (2 finishes = 2 rows) was missing. Transcribed from raw text, 2026-08-06."
+    },
+    "FREEWAY": {
+      "status": "false_alarm",
+      "note": "All 10 rows (montanti, staffe, BOX 90/120) present and correct. Confirmed via raw text."
+    },
+    "CLOUDINE": {
+      "status": "false_alarm",
+      "note": "All 10 rows (main grid + S2/12 + Cavo aggiuntivo) present and correct. Confirmed via raw text."
+    },
+    "COIMBRA": {
+      "status": "false_alarm",
+      "note": "All 8 rows present and correct. Confirmed via raw text."
+    },
+    "CRISTAL": {
+      "status": "false_alarm",
+      "note": "All 4 rows present and correct. Confirmed via raw text."
+    },
+    "LAMPO": {
+      "status": "false_alarm",
+      "note": "Both rows (GFM73/GFM11) present and correct. Confirmed via raw text."
+    },
+    "MAMBA": {
+      "status": "false_alarm",
+      "note": "Both rows present and correct. Confirmed via raw text."
+    },
+    "MELODY": {
+      "status": "false_alarm",
+      "note": "All 14 rows present and correct (letter-only size codes A-E/LA-LE already handled by the 2026-08-04 audit's fix #4). Confirmed via raw text."
+    },
+    "PLANETA": {
+      "status": "false_alarm",
+      "note": "All 10 rows (S/P/A/T x 220V/110V + Cavo aggiuntivo x 2) present and correct. Confirmed via raw text."
+    },
+    "SABLIER": {
+      "status": "false_alarm",
+      "note": "All 11 rows present and correct. Confirmed via raw text."
+    },
+    "STILO": {
+      "status": "false_alarm",
+      "note": "All 12 rows present and correct. Confirmed via raw text."
+    },
+    "SUNSET": {
+      "status": "false_alarm",
+      "note": "All 7 rows present and correct. Confirmed via raw text."
+    },
+    "AMADEUS": {
+      "status": "real_gap",
+      "note": "Main 'Rivestimento' table (18 rows) correct; secondary 'Piedi GFM18/GFM69' table (6 sizes x 2 tiers = 12 rows, distinct fabric_tier strings so no collision) entirely missing. Transcribed from raw text, 2026-08-06."
+    },
+    "CHOPIN": {
+      "status": "real_gap",
+      "note": "Main 'Seduta' table (3 rows) correct; secondary 'Piedi frNC/frRB' Divani table (1 size x 6 = 6 rows) entirely missing. Transcribed from raw text, 2026-08-06."
+    },
+    "PASCAL": {
+      "status": "real_gap",
+      "note": "A-G Rivestimento tables (50 rows) and MA-MG simple table + Tessuto A Divani table (45 rows) were correct; the Tessuto B/D/F Divani tables for MA-MG (3 variants x 5 sizes x 3 tiers = 45 rows) were entirely missing, since they reuse the exact same fabric_tier strings ('Pelle', 'Pelle Glove / Perfetto Divani', 'Pelle Nabuk / Magnifica Divani') across variants -- flagged ambiguous=true along with the pre-existing colliding rows. Transcribed from raw text, 2026-08-06."
+    },
+    "BILBAO Glass": {
+      "status": "real_gap",
+      "note": "Two entire price tables missing: main trasparente/trasparente-extrachiaro grid (5 sizes x 6 columns = 30 values) and bisellato+MIST table (4 sizes x 6 columns = 24 values); only the bisellato-inverso table (6 rows) was captured. Transcribed 54 new rows from raw text data/Cattelan Italia/text/bilbao_glass.txt, 2026-08-06."
+    },
+    "SIERRA pouf": {
+      "status": "real_gap",
+      "note": "Main 'Rivestimento' table (9 rows) correct; secondary 6-column Divani fabric-tier table (3 sizes x 6 = 18 rows) entirely missing -- this is the same product referenced as already-fixed in the original 2026-08-04 corruption audit for a DIFFERENT missing-table incident; this is a second, independently-discovered gap on the same product. Transcribed from raw text, 2026-08-06."
+    }
+  },
+  "Bolzan": {}
+}

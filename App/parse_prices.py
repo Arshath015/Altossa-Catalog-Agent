@@ -867,6 +867,11 @@ def main():
     ap.add_argument("--out", default=None,
                      help="Output path for the combined prices JSON "
                           "(default: prices.json next to catalog_index.json)")
+    ap.add_argument("--flags-out", default=None,
+                     help="Optional output path for review_flags as structured "
+                          "JSON (page/product_name/brand/reason), for tooling "
+                          "like the orphaned-flags regression check to consume "
+                          "instead of scraping stdout text.")
     ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
@@ -896,7 +901,7 @@ def main():
         if args.format == "cattelan":
             heading_text = p.get("index_heading", p["product_name"])
             rows, flags = parse_file_cattelan(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
-            review_flags.extend(flags)
+            review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
         else:
             rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)
         if not rows:
@@ -957,9 +962,18 @@ def main():
         print(f"\n{len(review_flags)} block(s) flagged during Cattelan-format parsing "
               f"for manual review (skipped rather than guessed -- these need hand "
               f"transcription into manual_additions.json after checking the real page):")
-        for page, name, reason in review_flags:
+        for page, name, reason, brand in review_flags:
             page_str = f"p{page}" if page is not None else "p?"
             print(f"   - [{page_str}] {name}: {reason}")
+
+    if args.flags_out:
+        flags_out_path = Path(args.flags_out)
+        flags_out_path.write_text(json.dumps(
+            [{"page": page, "product_name": name, "brand": brand, "reason": reason}
+             for page, name, reason, brand in review_flags],
+            ensure_ascii=False, indent=2
+        ), encoding="utf-8")
+        print(f"Wrote {len(review_flags)} review flag(s) to: {flags_out_path}")
 
 
 if __name__ == "__main__":
