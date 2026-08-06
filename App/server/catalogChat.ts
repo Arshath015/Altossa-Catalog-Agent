@@ -876,7 +876,23 @@ export class CatalogChat {
     const scopedTierArray = tierArray.filter(t => containsWholeWord(normalize(scopedQuery), normalize(t)));
     const effectiveTierArray = scopedTierArray.length > 0 ? scopedTierArray : tierArray;
     const normalizedTiers = effectiveTierArray.map(normalize).filter(Boolean);
-    return this.lookupForProduct(validProductName, size, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList);
+    // Same leak, same call site, different field: `size` here is ALSO
+    // the LLM's raw guess for the WHOLE original message, and can belong
+    // to a SECOND, unresolved product (e.g. product_names: ["GRETA
+    // Wood"] only, but size: "51x59" -- WILMA's size, from an unresolved
+    // "wlima" reference in the same message). Confirmed by direct
+    // reproduction: GRETA Wood's OWN size ("62x62x78h") is textually
+    // right there in its own scoped clause, yet the shared, wrong size
+    // param overrode it, producing "not that exact size/fabric
+    // combination" instead of resolving directly. Prefer this product's
+    // own extracted size when its own clause has one at all; only fall
+    // back to the shared value when it doesn't (same fallback reasoning
+    // as the tier fix just above -- the ordinary single-product case,
+    // where extractSize's fairly permissive regex might still miss a
+    // size the LLM inferred from less literal phrasing).
+    const ownSize = extractSize(scopedQuery);
+    const effectiveSize = ownSize ?? size;
+    return this.lookupForProduct(validProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList);
   }
 
   /**
