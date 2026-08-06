@@ -452,15 +452,50 @@ export class CatalogChat {
    * "gve me greta wood pelle and wlima pelle glove" still returned GRETA
    * Wood's tier as "Pelle Glove" -- WILMA's -- instead of GRETA's own
    * correct "Pelle", specifically because this single-product path was
-   * never touched by that first fix). */
-  private excludeUnrelatedAndClause(rawQuery: string, productName: string): string {
+   * never touched by that first fix).
+   *
+   * Also returns whatever got excluded (`excludedClause`), so the caller
+   * can surface it as an honest "I noticed more but couldn't identify
+   * it" note instead of silently dropping it -- this path bypasses
+   * `buildMultiProductResult`'s own "couldn't find X" notification
+   * entirely (it's a different function), which is what let a named-but-
+   * unresolved second product vanish with zero trace even after the
+   * tier/size leak itself was fixed. Never claims the excluded text IS a
+   * specific product -- just that something was there and wasn't
+   * matched, which stays true and non-committal even in the rare case
+   * the excluded clause was never a product reference at all (e.g. "...
+   * and the matching lamp") -- confirmed intentional, not an oversight:
+   * making that clause-detection any smarter would mean fuzzy-matching
+   * it against the whole catalog, exactly the false-positive risk
+   * (GLOBE/glove, PRIVE/price) already rejected above. */
+  private excludeUnrelatedAndClause(rawQuery: string, productName: string): { scopedQuery: string; excludedClause: string | null } {
     const segments = rawQuery.split(/\band\b/gi).map(s => s.trim()).filter(Boolean);
-    if (segments.length <= 1) return rawQuery;
+    if (segments.length <= 1) return { scopedQuery: rawQuery, excludedClause: null };
     const own = segments.filter(seg => containsWholeWord(normalize(seg), normalize(productName)));
     if (own.length > 0 && own.length < segments.length) {
-      return own.join(' ');
+      const excluded = segments.filter(seg => !own.includes(seg));
+      return { scopedQuery: own.join(' '), excludedClause: excluded.join(' and ') };
     }
-    return rawQuery;
+    return { scopedQuery: rawQuery, excludedClause: null };
+  }
+
+  /** Appends an honest, actionable note when `excludeUnrelatedAndClause`
+   * found text it couldn't match to a product -- restores the "never
+   * silently drop a named product" guarantee (Bug 3, round 1) for this
+   * single-product fallback path, which bypasses buildMultiProductResult's
+   * own unresolved-mentions notification entirely (a different function,
+   * never reached here). Deliberately names the actual excluded text so
+   * the person can see exactly what wasn't understood and act on it --
+   * "try naming it more precisely" alone isn't actionable without that.
+   * Never claims the excluded text IS a specific product, since it might
+   * not be (see excludeUnrelatedAndClause's own doc comment). A no-op
+   * when excludedClause is null, so safe to wrap every result with. */
+  private withUnresolvedClauseNote(result: ChatResult, excludedClause: string | null): ChatResult {
+    if (!excludedClause) return result;
+    return {
+      ...result,
+      message: `${result.message}\n\n(Also mentioned "${excludedClause}" but couldn't match it to a real product in the catalog -- try naming it more precisely, or double-check the spelling.)`,
+    };
   }
 
   /** Splits a multi-product raw query into per-product clauses on list
@@ -793,19 +828,25 @@ export class CatalogChat {
         };
       }
       const productName = maximal[0].name;
-      const scopedQuery = this.excludeUnrelatedAndClause(query, productName);
+      const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(query, productName);
       const size = extractSize(scopedQuery);
       const tiers = extractTiers(scopedQuery, [productName]);
       const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
-      return this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList);
+      return this.withUnresolvedClauseNote(
+        this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+        excludedClause
+      );
     }
 
     const productName = topMatches[0].name;
-    const scopedQuery = this.excludeUnrelatedAndClause(query, productName);
+    const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(query, productName);
     const size = extractSize(scopedQuery);
     const tiers = extractTiers(scopedQuery, [productName]);
     const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
-    return this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList);
+    return this.withUnresolvedClauseNote(
+      this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+      excludedClause
+    );
   }
 
   /**
@@ -853,7 +894,7 @@ export class CatalogChat {
     // wlima pelle glove" still returned GRETA Wood's tier as "Pelle
     // Glove" (WILMA's) even with a live, successful LLM call, because the
     // LLM's own product_names guess also only surfaced GRETA Wood here.
-    const scopedQuery = this.excludeUnrelatedAndClause(rawQuery, validProductName);
+    const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(rawQuery, validProductName);
     // A THIRD gap in the same bug family, found after the multi-product
     // combiner's shared-tier-array fix (buildMultiProductResult): this
     // exact function is ALSO called directly whenever answerFromIntentMulti
@@ -892,7 +933,19 @@ export class CatalogChat {
     // size the LLM inferred from less literal phrasing).
     const ownSize = extractSize(scopedQuery);
     const effectiveSize = ownSize ?? size;
-    return this.lookupForProduct(validProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList);
+    // Restores the same "never silently drop a named product" note as
+    // answer()'s own single-product branches -- this call site is reached
+    // directly from answerFromIntentMulti's single-name shortcut (the
+    // LLM confidently named only ONE product), so an excluded "and"-
+    // clause here is equally real evidence of an unresolved second
+    // reference the LLM didn't catch either. Safe when called from
+    // buildMultiProductResult's own per-product loop too: that caller
+    // already passes an individually-scoped clause with no "and" left in
+    // it, so excludedClause is always null in that context.
+    return this.withUnresolvedClauseNote(
+      this.lookupForProduct(validProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+      excludedClause
+    );
   }
 
   /**

@@ -46,21 +46,29 @@ interface Case {
    * used to build the PARTIAL-LLM (first only) and FULL-LLM (all) sims. */
   realNames: string[];
   expected: Expected[];
+  /** DETERMINISTIC mode only (forced Groq-cooldown state -- CatalogChat.answer()
+   * never touches Groq at all, so this is a guaranteed reproduction, not
+   * timing-dependent): when a case names a typo'd second product that
+   * detectNamedProductsInText can never resolve without a live LLM, the
+   * single-product fallback must still surface an honest "couldn't match"
+   * note for it rather than silently dropping it. Substring expected to
+   * appear in the response message (case-insensitive). */
+  expectUnresolvedNoteContains?: string;
 }
 
 const cc = new CatalogChat(`./data/${BRAND}`);
 
 let id = 0;
 const CASES: Case[] = [];
-function addCase(cat: string, query: string, realNames: string[], expected: Expected[]) {
-  CASES.push({ id: ++id, cat, query, realNames, expected });
+function addCase(cat: string, query: string, realNames: string[], expected: Expected[], expectUnresolvedNoteContains?: string) {
+  CASES.push({ id: ++id, cat, query, realNames, expected, expectUnresolvedNoteContains });
 }
 
 // ===== 2-product different-tier combos (20) =====
 addCase('2prod', 'gve me greta wood pelle and wlima pelle glove', ['GRETA Wood', 'WILMA'], [
   { product: 'GRETA Wood', tier: 'Pelle', price: '1.456' },
   { product: 'WILMA', tier: 'Pelle Glove', price: '985' },
-]);
+], 'wlima');
 addCase('2prod', 'wilma pelle glove and greta wood pelle', ['WILMA', 'GRETA Wood'], [
   { product: 'WILMA', tier: 'Pelle Glove', price: '985' },
   { product: 'GRETA Wood', tier: 'Pelle', price: '1.456' },
@@ -115,22 +123,22 @@ addCase('2prod', 'chrishell pelle glove and kay pelle', ['CHRISHELL', 'KAY'], [
 ]);
 addCase('2prod', 'wlima pelle glove and sofia pelle', ['WILMA', 'SOFIA'], [
   { product: 'WILMA', tier: 'Pelle Glove', price: '985' },
-]); // SOFIA has 4 sizes for Pelle -- checked separately as tier-only below
+], 'wlima'); // SOFIA has 4 sizes for Pelle -- checked separately as tier-only below
 addCase('2prod', 'wilma pelle and sofia pelle glove', ['WILMA', 'SOFIA'], [
   { product: 'WILMA', tier: 'Pelle', price: '935' },
 ]);
 addCase('2prod', 'kaay pelle and dafne pelle glove', ['KAY', 'DAFNE'], [
   { product: 'KAY', tier: 'Pelle', price: '559' },
   { product: 'DAFNE', tier: 'Pelle Glove', price: '1.453' },
-]);
+], 'kaay');
 addCase('2prod', 'hystrx cristallo trasparente and ginger pelle glove', ['HYSTRIX', 'GINGER'], [
   { product: 'HYSTRIX', tier: 'Cristallo trasparente', price: '6.800' },
   { product: 'GINGER', tier: 'Pelle Glove', price: '990' },
-]);
+], 'hystrx');
 addCase('2prod', 'agata pelle and chris pelle glove', ['AGATHA FLEX', 'CHRIS'], [
   { product: 'AGATHA FLEX', tier: 'Pelle', price: '925' },
   { product: 'CHRIS', tier: 'Pelle Glove', price: '1.063' },
-]);
+], 'agata');
 addCase('2prod', 'miranda wheels pelle and rachel wood pelle glove', ['MIRANDA Wheels', 'RACHEL Wood'], [
   { product: 'MIRANDA Wheels', tier: 'Pelle', price: '1.233' },
   { product: 'RACHEL Wood', tier: 'Pelle Glove', price: '1.121' },
@@ -215,7 +223,7 @@ for (let i = 0; i < 3; i++) {
   addCase('repeat', 'gve me greta wood pelle and wlima pelle glove', ['GRETA Wood', 'WILMA'], [
     { product: 'GRETA Wood', tier: 'Pelle', price: '1.456' },
     { product: 'WILMA', tier: 'Pelle Glove', price: '985' },
-  ]);
+  ], 'wlima');
 }
 for (let i = 0; i < 3; i++) {
   addCase('repeat', 'sierra pouf 100x94x41h pelle and tina pelle glove', ['SIERRA pouf', 'TINA'], [
@@ -280,10 +288,18 @@ async function main() {
   const liveResults: { id: number; query: string; degraded: boolean | undefined; status: string | undefined; problems: string[] }[] = [];
 
   for (const c of CASES) {
-    // Mode 1: DETERMINISTIC
+    // Mode 1: DETERMINISTIC -- CatalogChat.answer() never touches Groq at
+    // all, so this is a guaranteed forced-degraded-mode reproduction,
+    // not dependent on real quota timing.
     const detResult = cc.answer(c.query, BRAND, null);
     const detProblems = checkExpected(detResult.matches, c.expected);
     if (detProblems.length > 0) gatingFailures.push(`[${c.id}:${c.cat}:deterministic] "${c.query}" -- ${detProblems.join(' | ')}`);
+    if (c.expectUnresolvedNoteContains) {
+      const noteOk = (detResult.message || '').toLowerCase().includes(c.expectUnresolvedNoteContains.toLowerCase());
+      if (!noteOk) {
+        gatingFailures.push(`[${c.id}:${c.cat}:deterministic-note] "${c.query}" -- expected an honest "couldn't match" note mentioning "${c.expectUnresolvedNoteContains}" (a named-but-unresolved typo'd product must never be silently dropped), got message: ${JSON.stringify(detResult.message)}`);
+      }
+    }
 
     // Mode 2: PARTIAL-LLM (only first real name resolved)
     const mergedTiers = [...new Set(c.expected.map(e => e.tier).filter(Boolean))];
