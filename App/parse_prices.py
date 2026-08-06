@@ -206,6 +206,18 @@ def _parse_cattelan_block(lines, i, seg_start, seg_end, page_of_line, product_na
 
     col_texts: list[list[str]] = [[] for _ in range(eur_count)]
     filled = [False] * eur_count
+    # Which recognized category WORD (e.g. "Base", "Top", "Rivestimento",
+    # "Struttura", "Seduta") each column's fabric_tier text actually came
+    # from -- purely for DISPLAY (the chat UI hardcodes a "FABRIC" column
+    # header regardless of product type, which is wrong for anything that
+    # isn't upholstery: a marble table's price varies by "Base" finish, a
+    # crystal table's by "Top" material, neither of which is "fabric" at
+    # all). Populated ADDITIVELY alongside the existing col_texts fill
+    # logic below, from the SAME line, using the SAME already-verified
+    # _LABEL_WORD_RE -- never changes which text ends up in col_texts
+    # itself (that position-based matching logic is untouched), only
+    # records which leading word (if any) that line's text started with.
+    col_label_words: list[str | None] = [None] * eur_count
     top_label = None
     fill_lines = 0  # how many distinct lines contributed at least one new column fill
     k = i - 1
@@ -263,6 +275,23 @@ def _parse_cattelan_block(lines, i, seg_start, seg_end, page_of_line, product_na
             top_label = top_text or None
         if new_fills:
             fill_lines += 1
+            # Same line, same regex already used to strip a leading
+            # category word in the eur_count==1 branch of
+            # _match_line_to_cols above -- applied here to the RAW line
+            # text (not the position-matched chunk) purely to record
+            # which word it was. A multi-line-wrapped label (e.g.
+            # "Base" on its own physical line, values on the next) means
+            # this specific line might not itself start with the word --
+            # in that case label_word is None and the column's label
+            # just stays unset, same as it already does today; this is
+            # additive display metadata, not a new correctness
+            # requirement.
+            label_m = _LABEL_WORD_RE.match(cand_strip)
+            label_word = label_m.group(1).strip() if label_m else None
+            if label_word:
+                for _, col in new_fills:
+                    if col_label_words[col] is None:
+                        col_label_words[col] = label_word
         for text, col in new_fills:
             col_texts[col].insert(0, text)
             filled[col] = True
@@ -432,6 +461,7 @@ def _parse_cattelan_block(lines, i, seg_start, seg_end, page_of_line, product_na
                     "variant_context": None,
                     "size": size,
                     "fabric_tier": base_chunks[col] if eur_count > 1 else None,
+                    "tier_label": col_label_words[col] if eur_count > 1 else None,
                     "code": None,
                     "price_eur": price,
                     "source_pdf_page": page_of_line[t],
@@ -780,6 +810,7 @@ def parse_file(path, product_name, brand, all_product_names=None):
                             "variant_context": context,
                             "size": size,
                             "fabric_tier": None,
+                            "tier_label": None,
                             "code": code,
                             "price_eur": price,
                             "source_pdf_page": page_of_line[i],
@@ -803,6 +834,22 @@ def parse_file(path, product_name, brand, all_product_names=None):
                                 "variant_context": context,
                                 "size": size,
                                 "fabric_tier": label,
+                                # Unlike Cattelan's format, Bolzan's price
+                                # tables have no separate category-word
+                                # header at all above the tier rows -- just
+                                # the tier value itself ("B e TCL"/"Plus"/
+                                # "Extra", straight from KNOWN_TIERS) with
+                                # nothing above it to capture. Confirmed by
+                                # reading Bolzan's raw source text directly
+                                # (Ceylon, a bed): no "Base"/"Top"/
+                                # "Rivestimento" word anywhere near the
+                                # table. Bolzan is exclusively upholstered
+                                # furniture (beds/sofas/seating), so
+                                # "FABRIC" -- the chat UI's existing
+                                # hardcoded column header, used whenever
+                                # tier_label is None -- is already accurate
+                                # here; this is not an oversight to fill in.
+                                "tier_label": None,
                                 "code": code,
                                 "price_eur": price,
                                 "source_pdf_page": page_of_line[i],

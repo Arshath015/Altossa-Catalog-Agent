@@ -21,9 +21,37 @@ interface PriceRow {
   model_variant: string | null;
   size: string | null;
   fabric_tier: string | null;
+  /** Real source-PDF category word for this row's fabric_tier value
+   * ("Base", "Top", "Rivestimento", "Struttura"...) -- null when not
+   * confidently recoverable or when the product has no fabric_tier
+   * dimension at all. Falls back to "FABRIC" for display in that case. */
+  tier_label: string | null;
   code: string | null;
   price_eur: string;
   ambiguous: boolean;
+}
+
+/** The column header to show for a row's fabric_tier value. Three cases,
+ * not two -- collapsing them into one hardcoded "FABRIC" is the exact bug
+ * this fixes:
+ *   1. A real source-PDF label was recovered ("Base", "Top",
+ *      "Rivestimento"...) -- show it.
+ *   2. No label recovered, but real fabric_tier VALUES exist (either a
+ *      genuinely upholstered item, where "FABRIC" is accurate, or an
+ *      unlabeled edge case where the data is real but the label word
+ *      wasn't confidently recoverable) -- "FABRIC" as a fallback, same
+ *      as the status quo, not a regression.
+ *   3. NO row has a fabric_tier value at all -- the product has no such
+ *      dimension whatsoever (e.g. BOTERO Wood Round: price only varies
+ *      by size). Showing "FABRIC" above a column of "—" placeholders is
+ *      actively wrong, not just imprecise -- match the "—" placeholder
+ *      convention already used for a missing value elsewhere in this
+ *      table instead of inventing a category that isn't there. */
+function tierColumnHeader(rows: PriceRow[]): string {
+  const real = rows.find(r => r.tier_label)?.tier_label;
+  if (real) return real.toUpperCase();
+  const hasAnyTierValue = rows.some(r => r.fabric_tier);
+  return hasAnyTierValue ? 'FABRIC' : '—';
 }
 
 interface ChatResult {
@@ -280,7 +308,7 @@ function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShow
             <thead className="bg-[var(--riso-surface)] text-stone-400">
               <tr>
                 <th className="text-left px-3 py-1.5 font-medium">SIZE</th>
-                <th className="text-left px-3 py-1.5 font-medium">FABRIC</th>
+                <th className="text-left px-3 py-1.5 font-medium">{tierColumnHeader(message.result.matches)}</th>
                 <th className="text-left px-3 py-1.5 font-medium">CODE</th>
                 <th className="text-right px-3 py-1.5 font-medium">PRICE</th>
               </tr>
@@ -394,7 +422,7 @@ function PriceGridSingleProduct({ rows }: { rows: PriceRow[] }) {
               <table className="w-full font-data text-xs">
                 <thead className="bg-[var(--riso-surface)] text-stone-400">
                   <tr>
-                    <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">FABRIC</th>
+                    <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(variantRows)}</th>
                     {sizes.map(s => (
                       <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
                         {s || '—'}
@@ -455,7 +483,7 @@ function PriceGridSingleProduct({ rows }: { rows: PriceRow[] }) {
                       <table className="w-full font-data text-xs">
                         <thead className="bg-[var(--riso-surface)] text-stone-400">
                           <tr>
-                            <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">FABRIC</th>
+                            <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(variantRows)}</th>
                             {sizes.map(s => (
                               <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
                                 {s || '—'}

@@ -40,6 +40,17 @@ export interface PriceRow {
   variant_context: string | null;
   size: string | null;
   fabric_tier: string | null;
+  /** The REAL source-PDF category word this row's fabric_tier value came
+   * from -- e.g. "Base" (a table's steel base finish), "Top" (a table's
+   * crystal/marble top material), "Rivestimento"/"Seduta" (upholstery),
+   * "Struttura" (frame). Null when no such word was confidently
+   * recoverable, or when the product genuinely has no fabric_tier
+   * dimension at all (fabric_tier is also null in that case) -- the UI
+   * falls back to "FABRIC" only when this is null, since that's still
+   * accurate for Bolzan (exclusively upholstered furniture) and for
+   * Cattelan's own upholstered items. Never affects price/tier/size
+   * data itself -- purely a display label. */
+  tier_label: string | null;
   code: string | null;
   price_eur: string;
   ambiguous: boolean;
