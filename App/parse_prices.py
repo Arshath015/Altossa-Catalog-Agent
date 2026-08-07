@@ -576,14 +576,60 @@ BONALDO_TIER_ROW_NOCODE_RE = re.compile(
 # and the row grammar underneath (subheader -> optional material-category
 # line(s), skipped by the block parser same as any other unrecognized
 # line -> CODICE+price rows) is otherwise identical to the classic
-# RIVESTIMENTO/CODICE/GAMBE chair shape. Each of these 5 words was
-# individually verified against real page text before being whitelisted
-# here -- do not add more without the same check (the catalog has many
-# OTHER numbered "CARATTERISTICHE TECNICHE" callout words, e.g. PIANO/
-# RIPIANO/CONTENITORE/TOP/MONTANTE, that were seen during this search but
-# NOT confirmed to follow this same simple grammar -- Roll's MONTANTE in
-# particular looks like a genuinely different multi-named-column shape).
-_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE')
+# RIVESTIMENTO/CODICE/GAMBE chair shape. Each of these words was
+# individually verified against a real rendered page image before being
+# whitelisted here -- do not add more without the same check (the catalog
+# has many OTHER numbered "CARATTERISTICHE TECNICHE" callout words, e.g.
+# RIPIANI INTERNI/CONTENITORE/TOP/MONTANTE, that were seen during this
+# search but NOT YET confirmed to follow this same simple grammar --
+# Roll's MONTANTE in particular looks like a genuinely different
+# multi-named-column shape, not this one).
+#   - PIANO: added 2026-08-07, visually confirmed on Gauss p.189 (its own
+#     independently-priced "PIANO" sub-table, separate from RIPIANO/
+#     CASSETTO on the same page) and Isabey desk p.14. NOTE: adding PIANO
+#     alone (without RIPIANO/CASSETTO) silently absorbed Gauss's and
+#     Scriba's own RIPIANO/CASSETTO sub-tables into their PIANO block
+#     (values still correct, but mislabeled tier_label/size) until those
+#     words were ALSO whitelisted -- confirmed via a full-corpus scan of
+#     every PIANO-gaining product for a same-page sibling sub-block word;
+#     only these 2 of 32 were affected. PIANO/RIPIANO/CASSETTO were kept
+#     as 3 separate code changes (each independently visually verified)
+#     but deliberately generated/regression-tested/committed together as
+#     ONE change, not 3, specifically because of this cross-dependency.
+#   - RIPIANO: added 2026-08-07, visually confirmed on Gauss p.189 (its
+#     own "RIPIANO" ceramica sub-table, separate CODICE/price list from
+#     PIANO/CASSETTO) and Scriba p.191 ("Scriba ripiano" -- Cuoio, YØAX,
+#     372, its own single-row RIPIANO sub-table separate from PIANO's
+#     Noce Canaletto/JØAX/3.254).
+#   - CASSETTO: added 2026-08-07, visually confirmed on Gauss p.189 (its
+#     own "▽ CASSETTO" sub-table -- "Nella stessa finitura della base",
+#     YØAZ, 292 -- separate from PIANO/RIPIANO on the same page).
+_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO')
+# A NARROW, explicit, individually-confirmed set of OTHER real section
+# trigger words -- NOT parsed themselves (not whitelisted above), but
+# recognized as a block-boundary stop so a scan for a DIFFERENT
+# whitelisted word's own block doesn't silently absorb their content.
+# Confirmed real, found 2026-08-07 investigating a RIPIANO regression:
+# Roll's page (p.223-228) prints "Roll Montante a parete / Roll Montante
+# a soffitto    MONTANTE" and "Roll Contenitore    CONTENITORE" between
+# its two RIPIANO sub-tables -- without stopping there, the RIPIANO scan
+# kept consuming their content as if it belonged to RIPIANO, producing
+# genuinely corrupted rows (a price like "6.112" ending up in the
+# `fabric_tier` field).
+#
+# A first attempt used a fully generic "<name-like text>  <ANY ALL-CAPS
+# WORD>$" pattern instead of this closed set -- reverted after it broke
+# Tree/Acquerelli/Gocce/Pepita (all pre-existing, already-whitelisted-word
+# blocks): their own real content incidentally contains a bare "CODICE"
+# line in a position that happens to fit the same "name + all-caps word"
+# shape, which isn't a real section boundary at all. A closed set,
+# individually confirmed the same way the trigger-word whitelist itself
+# is, avoids that false-positive class entirely.
+_BONALDO_OTHER_SECTION_WORDS = ('MONTANTE', 'CONTENITORE')
+_BONALDO_OTHER_SECTION_RE = re.compile(
+    r'^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \'"-]*\s{2,}(?:'
+    + '|'.join(_BONALDO_OTHER_SECTION_WORDS) + r')\s*$'
+)
 # The classic 2-axis header's trailing word was hardcoded to "GAMBE" alone,
 # but that's just the most common of several real words the catalog uses
 # for this same 2nd-axis-of-materials grammar (RIVESTIMENTO tier rows x a
@@ -601,6 +647,12 @@ _BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNIC
 #   - SCHIENALE: Olos Office p.64 -- same grammar, 2nd axis is backrest
 #     material (Frassino/Noce) rather than leg material.
 _BONALDO_CLASSIC_2AXIS_WORDS = ('GAMBE', 'ASTA', 'SCHIENALE')
+# Fixed nav/section words that render in full uppercase just like a real
+# product heading would -- excluded so they're never mistaken for one.
+_BONALDO_NON_HEADING_WORDS = {
+    'CARATTERISTICHE TECNICHE', 'A/Z', 'NEW', 'SEDIE', 'TAVOLI', 'COMPLEMENTI',
+    'ILLUMINAZIONE', 'DIVANI', 'POLTRONE & POUF', 'LETTI', 'INDEX',
+}
 # Anchored to the WHOLE line (name-like text, 2+ spaces, trigger word, end
 # of line) -- NOT just "trigger word present anywhere" -- because several
 # of these words (esp. STRUTTURA/BASE) also appear constantly as numbered
@@ -608,15 +660,29 @@ _BONALDO_CLASSIC_2AXIS_WORDS = ('GAMBE', 'ASTA', 'SCHIENALE')
 # inside CARATTERISTICHE TECNICHE blocks elsewhere on the same page.
 # Those callout lines always start with a digit+period, which the
 # name-like leading character class here excludes, so they're safely
-# rejected without needing a separate digit check.
+# rejected without needing a separate digit check. The trigger word is
+# captured in its own group so callers can read the REAL trigger even
+# when a trailing nav-badge word follows it (see next paragraph) --
+# `.split()[-1]` would otherwise pick up the badge instead.
+#
+# An OPTIONAL trailing nav-badge word (same _BONALDO_NON_HEADING_WORDS
+# set already used to reject a badge as a heading candidate elsewhere) is
+# tolerated after the trigger word -- confirmed real, found 2026-08-07:
+# Roll's "Roll Ripiano 90    RIPIANO    DIVANI" has a "DIVANI" sidebar
+# badge bleeding onto the SAME vertical position as the real header line,
+# past the trigger word. Without this, the strict end-of-line anchor
+# rejected the whole line as not a header at all, silently skipping this
+# entire real sub-table (0 rows, no flag, since the outer scan just moved
+# on to the next line rather than ever recognizing this as a block start).
 _BONALDO_SIMPLE_HEADER_RE_TEXT = (
     # Leading whitespace tolerated (confirmed real: Dune TV stand's "BASE
     # SAGOMATA"/"BASE A ZOCCOLO" sub-model headers are indented, unlike
     # every header seen while first building this) -- still safe from the
     # numbered-callout false positive, since a callout's first non-space
     # character is always a DIGIT, not a letter.
-    r'^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \'"-]*\s{2,}(?:'
-    + '|'.join(_BONALDO_SIMPLE_HEADER_WORDS) + r')\s*$'
+    r'^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \'"-]*\s{2,}('
+    + '|'.join(_BONALDO_SIMPLE_HEADER_WORDS) + r')'
+    r'(?:\s{2,}(?:' + '|'.join(re.escape(w) for w in _BONALDO_NON_HEADING_WORDS) + r'))?\s*$'
 )
 _BONALDO_CLASSIC_2AXIS_RE_TEXT = (
     r'RIVESTIMENTO.*CODICE.*(?:' + '|'.join(_BONALDO_CLASSIC_2AXIS_WORDS) + r')'
@@ -635,7 +701,10 @@ def _bonaldo_header_trigger_word(line):
         return 'Rivestimento'
     m = re.match(_BONALDO_SIMPLE_HEADER_RE_TEXT, line, re.IGNORECASE)
     if m:
-        return m.group(0).strip().split()[-1].capitalize()
+        # group(1) is the real trigger word specifically -- NOT
+        # group(0).split()[-1], which would pick up a trailing nav-badge
+        # word (e.g. "DIVANI") instead whenever one bleeds onto the line.
+        return m.group(1).capitalize()
     return None
 BONALDO_FOOTER_START_RE = re.compile(r'n\s*[°º]\s*per\s*box', re.IGNORECASE)
 # The footer's SECOND line (packaging m3/kg + client-fabric yardage,
@@ -644,13 +713,6 @@ BONALDO_FOOTER_START_RE = re.compile(r'n\s*[°º]\s*per\s*box', re.IGNORECASE)
 # being misread as a code-less tier-row price (confirmed via real
 # output: a phantom "COL m2" row with the previous tier's leftover code).
 BONALDO_FOOTER_CONT_RE = re.compile(r'\bCOM\s?m\b|\bCOL\s?m2\b|\bBONALDO\b|\bESCLUSA\b', re.IGNORECASE)
-
-# Fixed nav/section words that render in full uppercase just like a real
-# product heading would -- excluded so they're never mistaken for one.
-_BONALDO_NON_HEADING_WORDS = {
-    'CARATTERISTICHE TECNICHE', 'A/Z', 'NEW', 'SEDIE', 'TAVOLI', 'COMPLEMENTI',
-    'ILLUMINAZIONE', 'DIVANI', 'POLTRONE & POUF', 'LETTI', 'INDEX',
-}
 
 
 def _bonaldo_heading_candidate(line):
@@ -819,6 +881,26 @@ def _parse_bonaldo_chair_block(lines, i, seg_end, page_of_line, product_name, br
                        f"chair-shape sub-header near line {j} ('{lines[j].strip()}') has no "
                        f"size/model name -- skipped rather than guessed"))
         return [], j + 1
+    # The REPEAT-detection path below (_bonaldo_match_subheader) already
+    # guards against a material-category line ("Legno impiallacciato",
+    # "Cuoio") being wrongly treated as a fresh sub-variant name, by
+    # requiring it to start with product_name -- but this INITIAL search
+    # had no equivalent guard, so a block whose first real content line
+    # (after the header) is a material category instead of a genuine
+    # repeat-name line got that category's own name as current_size.
+    # Confirmed real: Scriba's RIPIANO block (p.191) goes straight from
+    # its header line to a bare "Cuoio" category line with no intervening
+    # "Scriba"/"Scriba ripiano" repeat line at all, so every row's `size`
+    # came out "Cuoio" instead of the real product name -- values (code/
+    # price) were still correct, only this display label was wrong. Falls
+    # back to the header line's OWN leading name text (guaranteed
+    # product-related, since it's part of what matched this header in the
+    # first place) whenever the lookahead candidate doesn't start with
+    # product_name. Found 2026-08-07 while individually verifying RIPIANO.
+    if not current_size.upper().startswith(product_name.strip().upper()):
+        header_name = re.split(r'\s{2,}', lines[i].strip())[0].strip()
+        if header_name.upper().startswith(product_name.strip().upper()):
+            current_size = header_name
     # Zero groups is a real, verified shape (Dune/Obel/Mistral/Camillo-style
     # "simple list" products -- a single finish list with no leg/material
     # dimension at all, unlike chairs' RIVESTIMENTO x GAMBE combinations).
@@ -856,9 +938,12 @@ def _parse_bonaldo_chair_block(lines, i, seg_end, page_of_line, product_name, br
             # ahead here.
             k += 1
             continue
-        if BONALDO_CHAIR_HEADER_RE.search(line):
-            # a genuinely NEW header (different group shape) -- stop here
-            # so the caller parses it as its own block
+        if BONALDO_CHAIR_HEADER_RE.search(line) or _BONALDO_OTHER_SECTION_RE.match(line):
+            # A genuinely NEW header -- either a recognized shape (stop so
+            # the caller parses it as its own block) or a confirmed OTHER
+            # section word (stop so it's silently skipped rather than
+            # wrongly absorbed into this block -- see
+            # _BONALDO_OTHER_SECTION_WORDS).
             break
         m = BONALDO_TIER_ROW_RE.match(line.rstrip())
         if m:
