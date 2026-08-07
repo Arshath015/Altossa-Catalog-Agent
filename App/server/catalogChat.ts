@@ -154,6 +154,24 @@ function containsWholeWord(haystack: string, needle: string): boolean {
   return re.test(haystack);
 }
 
+// Generic furniture-category words that recur across many UNRELATED
+// Bonaldo products as a literal part of their English names -- e.g.
+// "Avant-Garde chair" and "Colibrì chair" are completely different
+// product families that just happen to both be chairs. Confirmed via a
+// full-catalog word-frequency scan: each of these appears in 4+
+// otherwise-unrelated product names. A shared match on one of these
+// ALONE is too weak a signal to treat as a real candidate -- it's what
+// let a fully made-up query like "how much is the Vexalon armchair"
+// surface 4 unrelated real armchairs instead of correctly reporting no
+// match (Cattelan/Bolzan don't have this problem: neither uses generic
+// English category words as part of real product names the way Bonaldo
+// does). Not claimed exhaustive -- extend if a new collision turns up,
+// same as every other curated word list in this file.
+const GENERIC_CATEGORY_WORDS = new Set([
+  'table', 'chair', 'armchair', 'console', 'office', 'bench', 'pouf',
+  'stand', 'mirror', 'lounge', 'coffee', 'wood', 'tv',
+]);
+
 /** Simple token-overlap similarity score between a query and a candidate name. Higher = better match. */
 export function similarity(query: string, candidate: string): number {
   const q = normalize(query);
@@ -169,9 +187,22 @@ export function similarity(query: string, candidate: string): number {
   // hands resolution to the existing "maximal" tie-break in answer().
   if (qTokens.length > 0 && qTokens.every(t => cTokens.includes(t))) return 80;
   if (cTokens.length > 0 && cTokens.every(t => qTokens.includes(t))) return 80;
-  const overlap = qTokens.filter(t => cTokens.includes(t)).length;
-  if (overlap === 0) return 0;
-  return (overlap / Math.max(qTokens.length, cTokens.length)) * 60;
+  const overlap = qTokens.filter(t => cTokens.includes(t));
+  if (overlap.length === 0) return 0;
+  // If every shared word is a generic category word, AND the query has
+  // some OTHER word that's neither generic nor ordinary filler (reusing
+  // RISKY_SIZE_CODE_WORDS below -- "price", "give", "how", "much", etc.)
+  // and doesn't appear in this candidate at all, that leftover word is
+  // real signal the person meant something specific this candidate isn't
+  // -- don't count the shared generic word alone as a match. A bare
+  // "chair" (nothing left over) or "chair price" ("price" is ordinary
+  // filler) still match as before -- this only suppresses the case where
+  // the query looks like it's naming something specific that isn't here.
+  if (overlap.every(t => GENERIC_CATEGORY_WORDS.has(t))) {
+    const leftover = qTokens.filter(t => !overlap.includes(t) && !cTokens.includes(t) && !RISKY_SIZE_CODE_WORDS.has(t));
+    if (leftover.length > 0) return 0;
+  }
+  return (overlap.length / Math.max(qTokens.length, cTokens.length)) * 60;
 }
 
 /** Extract a size like "160x200" (WIDTHxDEPTH) or "240x120x74" (WIDTHxDEPTHxHEIGHT,
