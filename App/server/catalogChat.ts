@@ -1226,9 +1226,28 @@ export class CatalogChat {
     // request down to just that one tier -- same root cause as the
     // ARENA/PASCAL size-token fixes, here in the tier-matching path.
     const normalizedRawQuery = normalize(rawQueryHint);
-    const queryMinusProductName = normalize(productName)
+    let queryMinusProductName = normalize(productName)
       ? normalizedRawQuery.replace(new RegExp(escapeRegex(normalize(productName)), 'gi'), ' ')
       : normalizedRawQuery;
+    // Also strip this product's own MODEL VARIANT names (e.g. Bonaldo's
+    // leg-material option "Metallo Special") before scanning for tier
+    // mentions -- a variant name can coincidentally share a word with a
+    // real, independent fabric tier ("Special") elsewhere in this same
+    // product's own data, which would otherwise get double-counted as an
+    // extra requested tier nobody asked for. Confirmed real: "avant-garde
+    // chair metallo special capri" returned both the "Special" AND
+    // "Capri" tier rows instead of just "Capri". The specific variant
+    // hasn't been narrowed down yet at this point in the flow, so every
+    // one of this product's variant names is stripped, not just the
+    // eventual winner -- safe, since this only ever removes text that's
+    // part of a variant's own name, never a genuine tier mention.
+    const realModelVariants = [...new Set(
+      this.prices.filter(r => r.product_name === productName).map(r => r.model_variant).filter((v): v is string => !!v)
+    )];
+    for (const v of realModelVariants) {
+      const nv = normalize(v);
+      if (nv) queryMinusProductName = queryMinusProductName.replace(new RegExp(escapeRegex(nv), 'gi'), ' ');
+    }
     const rawTierHits = realTierValues.filter(t => containsWholeWord(queryMinusProductName, normalize(t)));
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
 
