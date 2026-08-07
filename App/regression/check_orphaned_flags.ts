@@ -36,11 +36,14 @@ import { execFileSync } from 'child_process';
 const ROOT = path.join(__dirname, '..', '..');
 const LEDGER_PATH = path.join(__dirname, 'flag_triage.json');
 
-// Brands whose catalog is parsed with --format cattelan (the only format
-// that produces review_flags). Add a brand here the day it starts using
-// this pipeline (e.g. Bonaldo) so its flags are tracked from day one --
-// also add a matching entry (even if just `{}`) to flag_triage.json.
-const CATTELAN_FORMAT_BRANDS = ['Cattelan Italia'];
+// Brands whose catalog is parsed with a --format that produces review_flags
+// (currently: cattelan, bonaldo). Add a brand here the day it starts using
+// one of these formats so its flags are tracked from day one -- also add a
+// matching entry (even if just `{}`) to flag_triage.json.
+const FLAG_PRODUCING_BRANDS: Record<string, string> = {
+  'Cattelan Italia': 'cattelan',
+  'Bonaldo': 'bonaldo',
+};
 
 interface Flag {
   page: number | null;
@@ -50,11 +53,11 @@ interface Flag {
 }
 
 interface LedgerEntry {
-  status: 'real_gap' | 'partial' | 'false_alarm';
+  status: 'real_gap' | 'partial' | 'false_alarm' | 'known_gap';
   note: string;
 }
 
-function runParserForFlags(brand: string): Flag[] {
+function runParserForFlags(brand: string, format: string): Flag[] {
   const catalogIndexPath = path.join(ROOT, 'data', brand, 'catalog_index.json');
   if (!fs.existsSync(catalogIndexPath)) {
     console.log(`  (skipping ${brand}: no catalog_index.json found)`);
@@ -67,7 +70,7 @@ function runParserForFlags(brand: string): Flag[] {
     execFileSync('python', [
       path.join(ROOT, 'App', 'parse_prices.py'),
       catalogIndexPath,
-      '--format', 'cattelan',
+      '--format', format,
       '--out', tmpPrices,
       '--flags-out', tmpFlags,
     ], { stdio: 'pipe' });
@@ -92,9 +95,9 @@ function main() {
   let totalFlags = 0;
   let totalFlaggedProducts = 0;
 
-  for (const brand of CATTELAN_FORMAT_BRANDS) {
+  for (const [brand, format] of Object.entries(FLAG_PRODUCING_BRANDS)) {
     console.log(`\n=== ${brand}: re-running parser for current review flags ===`);
-    const flags = runParserForFlags(brand);
+    const flags = runParserForFlags(brand, format);
     totalFlags += flags.length;
 
     const manualPath = path.join(ROOT, 'data', brand, 'manual_additions.json');
