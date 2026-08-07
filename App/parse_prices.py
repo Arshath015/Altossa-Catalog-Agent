@@ -1271,7 +1271,14 @@ BONALDO_SOFA_HEADER_RE = re.compile(r'\bRIVESTIMENTO\b')
 # every tier-price row starts with exactly one of these labels, in this
 # order. NOT free-form finish names the way chair-shape's rows are.
 _BONALDO_SOFA_TIERS = (
-    '800 - COM', '900', 'Class', 'Must', 'Special',
+    # Both forms confirmed real: modular sofas print the bare "800 - COM"
+    # (Bonamour, Superhiro); the "MISURA RETE" bed-frame family (Cuff,
+    # Holden, Basket p.503/43/489) prints the longer "800 - Ecopelle -
+    # COM" instead -- found 2026-08-07 as the reason Cuff's own FIRST
+    # tier row (its cheapest, most common one) was silently dropped
+    # entirely: the fixed-string match required an exact "800 - COM"
+    # prefix, which this family's real text never contains.
+    '800 - Ecopelle - COM', '800 - COM', '900', 'Class', 'Must', 'Special',
     'Capri', 'Procida', 'Panarea',
     # Both forms confirmed real: "Ponza Nabuk/Anilina" (Superhiro),
     # bare "Ponza Nabuk" with no suffix at all (Seki).
@@ -1285,12 +1292,28 @@ _BONALDO_SOFA_TIER_RE = re.compile(
     # the shorter one first would truncate the longer real label.
     r'^\s*(' + '|'.join(re.escape(t) for t in sorted(_BONALDO_SOFA_TIERS, key=len, reverse=True)) + r')\b\s*(.*)$'
 )
-# A dimension-diagram callout ("62 cm - 24\"    70 cm - 28\"") can share a
-# physical line with a real tier row purely by vertical-position
-# coincidence, pushing the tier label off the line-start anchor (confirmed
-# real: Seki's "Class" row). Stripped before tier-matching, same principle
-# as _BONALDO_DIM_INFO_ANYWHERE_RE for table-shape.
-_BONALDO_SOFA_DIM_PREFIX_RE = re.compile(r'^\s*(?:\d+\s*cm\s*-\s*\d+["”]?\s*)+')
+# A dimension-diagram callout can share a physical line with a real tier
+# row purely by vertical-position coincidence, pushing the tier label off
+# the line-start anchor (confirmed real: Seki's "Class" row). Stripped
+# before tier-matching, same principle as _BONALDO_DIM_INFO_ANYWHERE_RE
+# for table-shape. Four real shapes confirmed so far, all handled by one
+# pattern (a CHAIN of "NN - " before "cm", and a trailing "- NN\"" after
+# it, both independently optional around the required "NN cm"):
+#   - "62 cm - 24\""                    (Seki's original motivating case)
+#   - "220 cm"                          (Cuff's Panarea row, p.503 -- no
+#                                         trailing inches at all)
+#   - "128 - 158 cm"                    (Cuff's Must row, p.503 -- a
+#                                         width RANGE, dash BEFORE "cm"
+#                                         instead of after)
+#   - "194 - 200 - 220 - 234 cm"        (Holden's Must row, p.49 -- a
+#                                         chain of FOUR numbers, not just
+#                                         one pair, before "cm")
+# All found 2026-08-07. All four previously left this prefix un-stripped,
+# silently dropping the entire row with NO flag raised at all (worse than
+# the usual "skipped rather than guessed" flag -- these just vanished).
+_BONALDO_SOFA_DIM_PREFIX_RE = re.compile(
+    r'^\s*(?:(?:\d+\s*-\s*)*\d+\s*cm\s*(?:-\s*\d+["”]?)?\s*)+'
+)
 # A trailing " dx"/" sx" mirror-image suffix on an otherwise plain size
 # label (confirmed real: "230 x 100 sx", "144 x 96 dx") -- stripped when
 # matching a repeated size label back to its own bare column header.
@@ -1309,7 +1332,36 @@ _BONALDO_BARE_PRICE_ROW_RE = re.compile(r'^\s*((?:[\d.,]+\s+)*[\d.,]+)\s*$')
 # only a SINGLE space (Bonamour's Schienale: "144 x H 63 140 x H 63"),
 # which the generic chunk splitter (built for names/codes, which don't
 # have this problem) wrongly merges into one label.
-_BONALDO_SOFA_SIZE_RE = re.compile(r'\d+(?:\s*x\s*H?\s*\d+)?')
+_BONALDO_SOFA_SIZE_RE = re.compile(
+    # Bounded on both sides so a digit EMBEDDED inside an adjacent
+    # alphanumeric code (e.g. the "4" inside "L4WQ") can never match --
+    # confirmed real bug found 2026-08-07: without this, a RIVESTIMENTO
+    # line whose real size columns are on a DIFFERENT line (see
+    # _bonaldo_sofa_size_lookback) and which instead has inline CODICE
+    # codes directly after it (Cuff/Holden/Basket/James/Oris) got a
+    # phantom single-column "size" scraped from inside the first code's
+    # own digit, silently breaking column-count alignment for everything
+    # downstream. Deliberately NOT just a leading \b (word boundary),
+    # since \d and a letter are both \w -- no boundary exists between "L"
+    # and "4" in "L4WQ" for \b to catch.
+    r'(?<!\S)\d+(?:\s*x\s*H?\s*\d+)?(?!\S)'
+)
+# A code-shaped chunk (the same _BONALDO_CODE pattern used everywhere
+# else) appearing directly after RIVESTIMENTO instead of any genuine size
+# -- the header line IS the code row itself, with no separate "CODICE"
+# line anywhere (confirmed real: Cuff p.503, Holden/Basket/James/Oris
+# p.43-513, all "MISURA RETE" bed-frame products). Matched against whole
+# chunks (not raw substring search like the size regex) since codes are
+# always cleanly space-delimited here.
+_BONALDO_SOFA_INLINE_CODE_RE = re.compile(_BONALDO_CODE)
+# A genuine printed size label used ONLY by _bonaldo_sofa_size_lookback,
+# one physical line above a RIVESTIMENTO-with-inline-codes header (see
+# above) -- confirmed real in BOTH forms on the same page for Cuff/Holden:
+# metric ("90x200cm", "154 x 205 cm") and imperial ("35” x 79”",
+# using U+201D RIGHT DOUBLE QUOTATION MARK as the inch mark, confirmed via
+# direct byte inspection of the extracted text -- not the ASCII \" alone).
+_BONALDO_SOFA_SIZE_LABEL_METRIC_RE = re.compile(r'\d+\s*x\s*\d+\s*cm', re.IGNORECASE)
+_BONALDO_SOFA_SIZE_LABEL_IMPERIAL_RE = re.compile(r'\d+[”"]\s*x\s*\d+[”"]')
 
 
 def _bonaldo_chunks_with_positions(text):
@@ -1324,12 +1376,20 @@ def _bonaldo_chunks_with_positions(text):
 
 def _bonaldo_sofa_header_names_sizes(line):
     """Parse a sofa "<name(s)>  RIVESTIMENTO  <size1>  <size2> ..." header
-    line into (names_with_pos, sizes_with_pos) -- both lists of
-    (character_position, text). Returns (None, None) if `line` isn't a
-    real sofa header."""
+    line into (names_with_pos, sizes_with_pos, inline_codes) -- the first
+    two are lists of (character_position, text), the third a bool. Returns
+    (None, None, False) if `line` isn't a real sofa header.
+
+    When no genuine size columns follow RIVESTIMENTO on this same line,
+    also checks for CODE-shaped chunks there instead (confirmed real:
+    Cuff/Holden/Basket/James/Oris -- this header line IS the code row
+    itself, with the real size labels on a line ABOVE it instead; see
+    _bonaldo_sofa_size_lookback). When that's what's found, `sizes`
+    actually holds the (position, code) pairs and `inline_codes` is True
+    -- the caller is responsible for treating them as codes, not sizes."""
     m = BONALDO_SOFA_HEADER_RE.search(line)
     if not m:
-        return None, None
+        return None, None, False
     names = [(pos, txt.strip()) for pos, txt in _bonaldo_chunks_with_positions(line[:m.start()]) if txt.strip()]
     # A bare digit/digit-with-period chunk before RIVESTIMENTO is never a
     # real element name -- it's diagram-annotation noise landing on the
@@ -1346,7 +1406,13 @@ def _bonaldo_sofa_header_names_sizes(line):
     # name here, just its own two size-labeled columns).
     names = [(pos, txt) for pos, txt in names if not re.match(r'^\d+\.?$', txt)]
     sizes = [(mm.start() + m.end(), mm.group()) for mm in _BONALDO_SOFA_SIZE_RE.finditer(line[m.end():])]
-    return names, sizes
+    if sizes:
+        return names, sizes, False
+    code_chunks = [(pos, txt) for pos, txt in _bonaldo_chunks_with_positions(line[m.end():])
+                   if re.fullmatch(_BONALDO_SOFA_INLINE_CODE_RE, txt.strip())]
+    if code_chunks:
+        return names, [(pos + m.end(), txt) for pos, txt in code_chunks], True
+    return names, [], False
 
 
 def _bonaldo_sofa_column_owners(names, sizes, lookahead_lines):
@@ -1513,38 +1579,116 @@ def _bonaldo_sofa_variant_context_lookback(lines, i, seg_start, product_name):
     return None
 
 
+def _bonaldo_sofa_size_lookback(lines, i, seg_start, n_expected):
+    """Scan upward from line i (a RIVESTIMENTO-with-inline-codes header --
+    see _bonaldo_sofa_header_names_sizes) for the real size-label line.
+    Confirmed real (Cuff p.503, Holden p.43): this shape's genuine size
+    columns print on a line ABOVE the header instead of after RIVESTIMENTO
+    on the same line, with a "(e materasso consigliato)" caption and/or an
+    imperial-unit duplicate row often sitting in between. Prefers a metric
+    ("...cm") line when one is found within the window (matches the unit
+    convention every other Bonaldo size already uses); falls back to an
+    imperial ("...”") line only if no metric line with the right column
+    count ever appears. Returns a list of size-label strings, left to
+    right, or None if no line with exactly `n_expected` size-shaped chunks
+    is found within the window -- caller flags rather than guesses."""
+    imperial_fallback = None
+    k = i - 1
+    scanned = 0
+    # Wide enough to survive the extra blank-line padding some blocks have
+    # between their own metric size line and RIVESTIMENTO -- confirmed
+    # real: Cuff's SECOND block ("Cuff plus", p.503) has its metric line
+    # 16 physical lines above RIVESTIMENTO, vs. 8 for the first block on
+    # the same page. A narrower window (15) missed it and silently fell
+    # back to the imperial line instead, which is real data but not the
+    # metric convention every other Bonaldo size already uses.
+    while k >= seg_start and scanned < 30:
+        scanned += 1
+        chunks = [txt.strip() for _, txt in _bonaldo_chunks_with_positions(lines[k])]
+        metric = [c for c in chunks if _BONALDO_SOFA_SIZE_LABEL_METRIC_RE.fullmatch(c)]
+        if len(metric) == n_expected:
+            return metric
+        if imperial_fallback is None:
+            imperial = [c for c in chunks if _BONALDO_SOFA_SIZE_LABEL_IMPERIAL_RE.fullmatch(c)]
+            if len(imperial) == n_expected:
+                imperial_fallback = imperial
+        k -= 1
+    return imperial_fallback
+
+
+def _bonaldo_sofa_has_nearby_codice_row(lines, i, seg_end):
+    """True if a literal "CODICE" row appears within a few lines after
+    line i. Used to reject a false-positive inline-codes read (see
+    _bonaldo_sofa_header_names_sizes) -- confirmed real: Bodo p.445 has
+    "Bodo PIEDI  RIVESTIMENTO  PIEDI  BASE GIREVOLE" (PIEDI/BASE GIREVOLE
+    are ELEMENT NAMES, not codes) immediately followed by a genuine
+    "CODICE  PBOF  PBOD" row -- but "PIEDI" alone happens to fit the same
+    3-5-letter code shape as a real code (this catalog's codes CAN be
+    pure letters, e.g. "TBMC"), so the header line alone can't tell the
+    two apart. A nearby real CODICE row is the deciding signal: when one
+    exists, the trailing header chunks are names for the EXISTING
+    names+CODICE-row path to use, not inline codes for the new path."""
+    for k in range(i + 1, min(seg_end, i + 6)):
+        if any(txt.strip().upper() == 'CODICE' for _, txt in _bonaldo_chunks_with_positions(lines[k])):
+            return True
+    return False
+
+
 def _parse_bonaldo_sofa_block(lines, i, seg_start, seg_end, page_of_line, product_name, brand, flags):
     """Parse one sofa "<name(s)>  RIVESTIMENTO  <size1> ..." header block
     starting at line i, through its CODICE row and fixed tier-price
     ladder, returning next_i for the caller to resume from."""
-    names, sizes = _bonaldo_sofa_header_names_sizes(lines[i])
+    names, sizes, inline_codes = _bonaldo_sofa_header_names_sizes(lines[i])
+    if inline_codes and _bonaldo_sofa_has_nearby_codice_row(lines, i, seg_end):
+        inline_codes = False
+        sizes = []
     if not sizes:
         flags.append((page_of_line[i], product_name,
                        f"sofa-shape header near line {i} has 'RIVESTIMENTO' but no size "
                        f"column(s) recognized -- skipped rather than guessed"))
         return [], i + 1
-    col_sizes = [s for _, s in sizes]
-    col_positions = [pos for pos, _ in sizes]
-    variant_context = _bonaldo_sofa_variant_context_lookback(lines, i, seg_start, product_name)
 
-    # Wide enough to survive intervening blank/nav-sidebar lines (confirmed
-    # real: Superhiro's "Pouf"/"Cuscino" repeat line sits 12 lines after
-    # its own header, separated by a "POLTRONE & POUF" sidebar badge).
-    lookahead = lines[i + 1:min(seg_end, i + 20)]
-    owners = _bonaldo_sofa_column_owners(names, sizes, lookahead)
-    if owners is None:
-        flags.append((page_of_line[i], product_name,
-                       f"sofa-shape header near line {i} has {len(names)} element names "
-                       f"sharing one header row but they could not be matched to their own "
-                       f"size column(s) -- skipped rather than guessed"))
-        return [], i + 1
+    if inline_codes:
+        # Cuff/Holden/Basket/James/Oris-style: `sizes` actually holds the
+        # (position, code) pairs found directly on the RIVESTIMENTO line
+        # itself -- there is no separate CODICE row anywhere for this
+        # shape, and the real size labels are on a line above instead.
+        col_positions = [pos for pos, _ in sizes]
+        codes_by_column = [[code] for _, code in sizes]
+        col_sizes = _bonaldo_sofa_size_lookback(lines, i, seg_start, len(sizes))
+        if col_sizes is None:
+            flags.append((page_of_line[i], product_name,
+                           f"sofa-shape header near line {i} has inline codes on its "
+                           f"RIVESTIMENTO line but no matching size-label line found above "
+                           f"-- skipped rather than guessed"))
+            return [], i + 1
+        owners = [None] * len(sizes)  # no element-name dimension in this shape
+        variant_context = _bonaldo_sofa_variant_context_lookback(lines, i, seg_start, product_name)
+        k = i + 1
+    else:
+        col_sizes = [s for _, s in sizes]
+        col_positions = [pos for pos, _ in sizes]
+        variant_context = _bonaldo_sofa_variant_context_lookback(lines, i, seg_start, product_name)
 
-    codes_by_column, k = _bonaldo_sofa_codes_for_columns(lines, i + 1, seg_end, col_positions)
-    if codes_by_column is None:
-        flags.append((page_of_line[i], product_name,
-                       f"sofa-shape header near line {i} has no CODICE row found before "
-                       f"the next header -- skipped rather than guessed"))
-        return [], k
+        # Wide enough to survive intervening blank/nav-sidebar lines
+        # (confirmed real: Superhiro's "Pouf"/"Cuscino" repeat line sits
+        # 12 lines after its own header, separated by a "POLTRONE & POUF"
+        # sidebar badge).
+        lookahead = lines[i + 1:min(seg_end, i + 20)]
+        owners = _bonaldo_sofa_column_owners(names, sizes, lookahead)
+        if owners is None:
+            flags.append((page_of_line[i], product_name,
+                           f"sofa-shape header near line {i} has {len(names)} element names "
+                           f"sharing one header row but they could not be matched to their "
+                           f"own size column(s) -- skipped rather than guessed"))
+            return [], i + 1
+
+        codes_by_column, k = _bonaldo_sofa_codes_for_columns(lines, i + 1, seg_end, col_positions)
+        if codes_by_column is None:
+            flags.append((page_of_line[i], product_name,
+                           f"sofa-shape header near line {i} has no CODICE row found before "
+                           f"the next header -- skipped rather than guessed"))
+            return [], k
 
     rows = []
     unrecognized = 0
@@ -1560,7 +1704,15 @@ def _parse_bonaldo_sofa_block(lines, i, seg_start, seg_end, page_of_line, produc
         dim_m = _BONALDO_SOFA_DIM_PREFIX_RE.match(rstripped)
         prefix_len = dim_m.end() if dim_m else 0
         m = _BONALDO_SOFA_TIER_RE.match(rstripped[prefix_len:])
-        bare_m = _BONALDO_BARE_PRICE_ROW_RE.match(rstripped) if not m else None
+        # Matched against the PREFIX-STRIPPED remainder, same as `m` above
+        # -- confirmed real bug, found 2026-08-07: a dimension-prefixed
+        # BARE price row (Cuff's "Must" row, p.503: "128 - 158 cm   220 cm
+        # 3.095   3.285", no label at all on this line) previously always
+        # failed here since matching against the untouched `rstripped`
+        # (still containing "cm"/"-" text from the prefix) can never
+        # satisfy _BONALDO_BARE_PRICE_ROW_RE's "whole string is just
+        # digits" requirement -- silently dropping the row with no flag.
+        bare_m = _BONALDO_BARE_PRICE_ROW_RE.match(rstripped[prefix_len:]) if not m else None
         if m:
             tier_name = m.group(1)
             # Keep price positions in the ORIGINAL line's coordinate space
@@ -1591,7 +1743,11 @@ def _parse_bonaldo_sofa_block(lines, i, seg_start, seg_end, page_of_line, produc
                     continue
         elif bare_m:
             price_tokens = re.findall(r'[\d.,]+', bare_m.group(1))
-            pairs = [(mmm.start(), None, mmm.group()) for mmm in re.finditer(r'[\d.,]+', bare_m.group(1))]
+            # Offset by prefix_len for the same reason the `m` branch
+            # above does -- bare_m matched against the prefix-stripped
+            # remainder, but col_positions were calibrated from the
+            # header line, which knows nothing about this line's prefix.
+            pairs = [(mmm.start() + prefix_len, None, mmm.group()) for mmm in re.finditer(r'[\d.,]+', bare_m.group(1))]
             matched = _bonaldo_match_pairs_to_columns(pairs, col_positions) if pairs else {}
             if len(price_tokens) != len(col_positions) or not matched:
                 k += 1

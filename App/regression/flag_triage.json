@@ -490,15 +490,7 @@
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
-    "Basket": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Belloalto": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Belloalto bed": {
       "status": "known_gap",
       "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
@@ -519,10 +511,6 @@
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Blend": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Blend bed": {
       "status": "known_gap",
       "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
@@ -557,10 +545,6 @@
     "Bull": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Campo": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
     "Canova": {
       "status": "known_gap",
@@ -678,10 +662,6 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Fluff": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Foil": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
@@ -717,14 +697,6 @@
     "Harpe": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Holden": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Honeymoon": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
     "Innesti coffee table": {
       "status": "known_gap",
@@ -934,17 +906,9 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Oris": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Outline": {
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
-    },
-    "Owen": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
     "Paddle": {
       "status": "known_gap",
@@ -1022,14 +986,6 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Rigoletto": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "River": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Roger": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
@@ -1098,14 +1054,6 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Tara": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Thin": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Tirella": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
@@ -1113,14 +1061,6 @@
     "Tiziano": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Tonight": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Tonight air": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
     "Tree": {
       "status": "known_gap",
@@ -1134,13 +1074,13 @@
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
-    "Youniverse": {
-      "status": "known_gap",
-      "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
     "Youpi lounge": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+    },
+    "Bodo": {
+      "status": "known_gap",
+      "note": "Sofa-shape header ('Bodo PIEDI  RIVESTIMENTO  PIEDI  BASE GIREVOLE') has named element columns (PIEDI/BASE GIREVOLE -- foot-style options) with no size dimension at all, same class as Cuff bench and pouf's POUF/PANCA gap -- a genuinely different, undocumented shape (named columns, no size axis), correctly flagged rather than force-fit. Zero rows returned, not silently wrong. Found 2026-08-07 while building the Finding-C bed-size-grid fix; not in scope for that fix (see bonaldo_index_and_structure memory)."
     }
   }
 }
