@@ -864,9 +864,25 @@ export class CatalogChat {
       // This does NOT fire for genuinely unrelated ties (e.g. "GRETA
       // Outdoor" vs "NAPOLEON Keramik Outdoor" both matching on the word
       // "outdoor") since neither contains the other -- those still ask.
-      const maximal = topMatches.filter(m =>
-        topMatches.every(other => other.name === m.name || containsWholeWord(m.name, other.name))
-      );
+      //
+      // Uses TOKEN-SET containment (every word of the shorter name
+      // appears somewhere in the longer one, any order) rather than a
+      // literal contiguous-phrase check -- same root cause and same fix
+      // shape as the similarity() fix earlier this session: confirmed
+      // real, found investigating the Bonaldo coverage-gate integration,
+      // "Innesti coffee table" doesn't contain "Innesti table" as a
+      // contiguous phrase (the word "coffee" sits in between), so the
+      // exact, verbatim product name still asked to clarify against its
+      // own shorter sibling instead of resolving directly.
+      const nameTokens = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
+      const maximal = topMatches.filter(m => {
+        const mTokens = nameTokens(m.name);
+        return topMatches.every(other => {
+          if (other.name === m.name) return true;
+          const otherTokens = nameTokens(other.name);
+          return otherTokens.length > 0 && otherTokens.every(t => mTokens.includes(t));
+        });
+      });
       if (maximal.length !== 1) {
         return {
           status: 'clarify_product',
