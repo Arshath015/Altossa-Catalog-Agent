@@ -608,7 +608,17 @@ BONALDO_TIER_ROW_NOCODE_RE = re.compile(
 #     material-column "▽ TOP" list, Ceramica opaca/finitura seta) and
 #     Partout p.570 (2-group "▽ TOP" -- NOCE/FRASSINO columns, same
 #     group-name mechanism already used by chair-shape's leg groups).
-_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO', 'TOP')
+#   - COLORE: added 2026-08-07, visually confirmed on 4 rugs (all
+#     "Tappeto"): Casablanca p.273, Amman p.52, Lomé p.53, Nairobi p.54 --
+#     each has 3 repeated "<size label>  COLORE" blocks (one per size
+#     variant), all colors within one size sharing the SAME code+price
+#     (color is a free choice, not a price-differentiating axis here).
+#     The header's own leading text is the size label itself, which
+#     required 2 supporting fixes (see _BONALDO_SIMPLE_HEADER_RE_TEXT):
+#     allowing a leading DIGIT (distinguished from a numbered-callout
+#     false positive by checking for an immediately-following period) and
+#     the U+2019 curly-apostrophe inch mark these labels use.
+_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO', 'TOP', 'COLORE')
 # A NARROW, explicit, individually-confirmed set of OTHER real section
 # trigger words -- NOT parsed themselves (not whitelisted above), but
 # recognized as a block-boundary stop so a scan for a DIFFERENT
@@ -683,8 +693,17 @@ _BONALDO_SIMPLE_HEADER_RE_TEXT = (
     # SAGOMATA"/"BASE A ZOCCOLO" sub-model headers are indented, unlike
     # every header seen while first building this) -- still safe from the
     # numbered-callout false positive, since a callout's first non-space
-    # character is always a DIGIT, not a letter.
-    r'^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \'"-]*\s{2,}('
+    # character is always a DIGIT, not a letter -- EXCEPT a real header
+    # can also legitimately start with a digit itself now (a SIZE label,
+    # e.g. Casablanca's "300 x 400 cm - 118'' x 157''    COLORE", p.273 --
+    # confirmed real, found 2026-08-07 investigating the rug/colore
+    # survey). Distinguished from a numbered callout ("1. RIVESTIMENTO")
+    # by the callout's digit always being immediately followed by a
+    # period -- a size label's leading digit never is (it's followed by
+    # a space, "x", or "cm").  Also allows U+2019 (curly apostrophe),
+    # confirmed real as this catalog's doubled-apostrophe inch mark
+    # ("118''") in size labels -- the plain ASCII \' alone wasn't enough.
+    r'^\s*(?!\d+\.)[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 \'"’-]*\s{2,}('
     + '|'.join(_BONALDO_SIMPLE_HEADER_WORDS) + r')'
     r'(?:\s{2,}(?:' + '|'.join(re.escape(w) for w in _BONALDO_NON_HEADING_WORDS) + r'))?\s*$'
 )
