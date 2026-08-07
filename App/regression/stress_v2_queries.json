@@ -53,5 +53,12 @@
   {"id": 52, "cat": "shortlist_stress", "brand": "Cattelan Italia", "query": "compare wilma and pascal and hystrix", "note": "3-way multi-product, all 3 image sets must be correct and non-overlapping"},
   {"id": 53, "cat": "shortlist_stress", "brand": "Bolzan", "query": "compare jack and noah extra large and bend-e fabric", "note": "3-way multi-product across 3 of this session's fixed products"},
   {"id": 54, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "spinnaker x fissaggio a muro", "note": "SPINNAKER punctuation-mismatch known gap, re-verify unchanged"},
-  {"id": 55, "cat": "tricky_structure", "brand": "Bolzan", "query": "eden basamento h.6 price", "note": "fresh multi-page product, addon variant by height code"}
+  {"id": 55, "cat": "tricky_structure", "brand": "Bolzan", "query": "eden basamento h.6 price", "note": "fresh multi-page product, addon variant by height code"},
+  {"id": 56, "cat": "tricky_structure", "brand": "Bonaldo", "query": "give me all prices for cuff hi open", "note": "sub-model variant matching regression guard, image scoping stress for the Cuff hi open variant specifically"},
+  {"id": 57, "cat": "full_catalog", "brand": "Bonaldo", "query": "give me all prices for casablanca", "note": "CASABLANCA rug/colore shape, 3 sizes x 4 colors, image scoping across all 3 size pages"},
+  {"id": 58, "cat": "nonexistent", "brand": "Bonaldo", "query": "zorblatt chair price", "note": "generic-category-word no-match regression guard, must not surface unrelated real chairs"},
+  {"id": 59, "cat": "cross_brand", "brand": "Cattelan Italia", "query": "cuff price", "note": "CUFF is a real Bonaldo product, must not leak into Cattelan Italia results"},
+  {"id": 60, "cat": "multi_product", "brand": "Bonaldo", "query": "give me cuff hi plus and casablanca 300 x 400 essential taupe", "note": "2-product combo, both must independently narrow to their own variant/color image set with no cross-contamination"},
+  {"id": 61, "cat": "ambiguous_prefix", "brand": "Bonaldo", "query": "chair", "note": "genuine ambiguity, 5 unrelated real chairs share only the generic word \"chair\""},
+  {"id": 62, "cat": "tricky_structure", "brand": "Bonaldo", "query": "innesti", "note": "maximal tie-break token-set fix regression guard, must auto-resolve to Innesti coffee table"}
 ]

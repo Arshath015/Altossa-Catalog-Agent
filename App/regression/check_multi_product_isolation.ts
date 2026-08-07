@@ -99,6 +99,16 @@ const CASES: Case[] = [
       { product: 'RICHARD', tier: 'Pelle', price: '6.037' },
     ],
   },
+  {
+    id: 'bonaldo-chair-rug-tier-isolation',
+    brand: 'Bonaldo',
+    query: 'avant-garde chair metallo special capri and casablanca 300 x 400 essential taupe',
+    note: 'Bonaldo cross-product isolation: structurally different tier dimensions (Avant-Garde chair\'s fabric tier vs Casablanca\'s colore) -- a leaked value would be an obvious, unambiguous mismatch, not a coincidentally-valid one. Also exercises the model-variant/tier collision fix (Metallo Special vs Special) inside a multi-product query.',
+    required: [
+      { product: 'Avant-Garde chair', tier: 'Capri', price: '1.814' },
+      { product: 'Casablanca', tier: 'Essential Taupe', price: '4.006' },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

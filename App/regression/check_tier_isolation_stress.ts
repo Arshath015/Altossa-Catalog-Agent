@@ -54,14 +54,24 @@ interface Case {
    * note for it rather than silently dropping it. Substring expected to
    * appear in the response message (case-insensitive). */
   expectUnresolvedNoteContains?: string;
+  /** Defaults to BRAND (Cattelan Italia) so every existing addCase() call
+   * below is unaffected -- only cases that explicitly pass a brand (e.g.
+   * Bonaldo's own cross-product isolation cases) use a different one. */
+  brand: string;
 }
 
-const cc = new CatalogChat(`./data/${BRAND}`);
+// Lazily instantiated per brand -- most cases are still Cattelan-only, so
+// this avoids loading every brand's data when only testing one.
+const ccByBrand = new Map<string, CatalogChat>();
+function getCc(brand: string): CatalogChat {
+  if (!ccByBrand.has(brand)) ccByBrand.set(brand, new CatalogChat(`./data/${brand}`));
+  return ccByBrand.get(brand)!;
+}
 
 let id = 0;
 const CASES: Case[] = [];
-function addCase(cat: string, query: string, realNames: string[], expected: Expected[], expectUnresolvedNoteContains?: string) {
-  CASES.push({ id: ++id, cat, query, realNames, expected, expectUnresolvedNoteContains });
+function addCase(cat: string, query: string, realNames: string[], expected: Expected[], expectUnresolvedNoteContains?: string, brand: string = BRAND) {
+  CASES.push({ id: ++id, cat, query, realNames, expected, expectUnresolvedNoteContains, brand });
 }
 
 // ===== 2-product different-tier combos (20) =====
@@ -246,6 +256,20 @@ addCase('single', 'spinnaker x fissaggio a muro gfm73 nc gfm11', ['SPINNAKER'], 
 addCase('single', 'bishop price', ['BISHOP'], []); // multi-size, no tier
 addCase('single', 'give me all prices for wilma', ['WILMA'], []); // full grid, checked structurally
 
+// ===== Bonaldo cross-product isolation (2) =====
+// Structurally different tier DIMENSIONS on purpose (Cuff's fabric tier
+// vs Casablanca's colore), unlike most Cattelan pairs above which often
+// share overlapping "Pelle"/"Pelle Glove" vocabulary -- a leaked wrong
+// value here would be an obvious, unambiguous mismatch, not a
+// coincidentally-still-valid value for the other product.
+addCase('2prod', 'give me cuff hi plus and casablanca 300 x 400 essential taupe', ['Cuff', 'Casablanca'], [
+  { product: 'Casablanca', tier: 'Essential Taupe', price: '4.006' },
+], undefined, 'Bonaldo'); // Cuff narrows to the "Cuff hi plus" variant (36 rows, no single price) -- checked structurally, not by exact price here
+addCase('2prod', 'avant-garde chair metallo special capri and casablanca 300 x 400 essential taupe', ['Avant-Garde chair', 'Casablanca'], [
+  { product: 'Avant-Garde chair', tier: 'Capri', price: '1.814' },
+  { product: 'Casablanca', tier: 'Essential Taupe', price: '4.006' },
+], undefined, 'Bonaldo'); // also exercises the model-variant/tier collision fix (Metallo Special vs Special) inside a multi-product query
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----
@@ -265,14 +289,14 @@ function checkExpected(matches: { product_name: string; fabric_tier: string | nu
   return problems;
 }
 
-async function postChat(message: string): Promise<any> {
+async function postChat(brand: string, message: string): Promise<any> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     const res = await fetch(`${BASE_URL}/api/catalog/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brand: BRAND, message, history: [] }),
+      body: JSON.stringify({ brand, message, history: [] }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -288,10 +312,11 @@ async function main() {
   const liveResults: { id: number; query: string; degraded: boolean | undefined; status: string | undefined; problems: string[] }[] = [];
 
   for (const c of CASES) {
+    const cc = getCc(c.brand);
     // Mode 1: DETERMINISTIC -- CatalogChat.answer() never touches Groq at
     // all, so this is a guaranteed forced-degraded-mode reproduction,
     // not dependent on real quota timing.
-    const detResult = cc.answer(c.query, BRAND, null);
+    const detResult = cc.answer(c.query, c.brand, null);
     const detProblems = checkExpected(detResult.matches, c.expected);
     if (detProblems.length > 0) gatingFailures.push(`[${c.id}:${c.cat}:deterministic] "${c.query}" -- ${detProblems.join(' | ')}`);
     if (c.expectUnresolvedNoteContains) {
@@ -303,13 +328,13 @@ async function main() {
 
     // Mode 2: PARTIAL-LLM (only first real name resolved)
     const mergedTiers = [...new Set(c.expected.map(e => e.tier).filter(Boolean))];
-    const partialResult = cc.answerFromIntentMulti([c.realNames[0]], null, mergedTiers, c.query, BRAND, null, false);
+    const partialResult = cc.answerFromIntentMulti([c.realNames[0]], null, mergedTiers, c.query, c.brand, null, false);
     const partialExpected = c.expected.filter(e => e.product === c.realNames[0]);
     const partialProblems = checkExpected(partialResult.matches, partialExpected);
     if (partialProblems.length > 0) gatingFailures.push(`[${c.id}:${c.cat}:partial-llm] "${c.query}" -- ${partialProblems.join(' | ')}`);
 
     // Mode 3: FULL-LLM (all real names resolved)
-    const fullResult = cc.answerFromIntentMulti(c.realNames, null, mergedTiers, c.query, BRAND, null, false);
+    const fullResult = cc.answerFromIntentMulti(c.realNames, null, mergedTiers, c.query, c.brand, null, false);
     const fullProblems = checkExpected(fullResult.matches, c.expected);
     if (fullProblems.length > 0) gatingFailures.push(`[${c.id}:${c.cat}:full-llm] "${c.query}" -- ${fullProblems.join(' | ')}`);
 
@@ -328,12 +353,12 @@ async function main() {
   // Mode 4: LIVE HTTP -- informational only, does not gate
   console.log('\n' + '='.repeat(70));
   console.log('LIVE HTTP spot-check (informational only, quota-dependent, does not gate):');
-  const probe = await postChat('ping');
+  const probe = await postChat(BRAND, 'ping');
   if (probe.error) {
     console.log(`Cannot reach ${BASE_URL} (${probe.error}) -- skipping live spot-check. Start the server: npm run dev:server`);
   } else {
     for (const c of CASES) {
-      const resp = await postChat(c.query);
+      const resp = await postChat(c.brand, c.query);
       const problems = checkExpected(resp.matches, c.expected);
       liveResults.push({ id: c.id, query: c.query, degraded: resp.degraded, status: resp.status, problems });
       console.log(`  [${String(c.id).padStart(2)}] degraded=${resp.degraded ?? false} status=${resp.status || resp.error} ${problems.length > 0 ? 'MISMATCH: ' + problems.join(' | ') : 'ok'}`);

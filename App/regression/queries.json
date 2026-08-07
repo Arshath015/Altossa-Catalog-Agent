@@ -547,5 +547,117 @@
       "966",
       "1.402"
     ]
+  },
+  {
+    "id": 60,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "avant-garde chair metallo special capri",
+    "note": "Regression guard for the model-variant/tier word-collision fix: the leg-material variant \"Metallo Special\" shares the word \"Special\" with a real, independent fabric tier -- must resolve to exactly the Capri tier, not also Special.",
+    "expect_price": "1.814",
+    "expect_product": [
+      "Avant-Garde chair"
+    ]
+  },
+  {
+    "id": 61,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "give me all prices for cuff hi plus",
+    "note": "Regression guard for the sub-model variant matching fix: \"hi plus\" must resolve to the \"Cuff hi plus\" variant (36 rows), not silently fall back to \"Cuff plus\" via a compact-substring false match.",
+    "expect_row_count": 36,
+    "expect_product": [
+      "Cuff"
+    ]
+  },
+  {
+    "id": 62,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "give me all prices for basket hi plus open",
+    "note": "Same fix as id 61, 3-way nesting case: \"Basket hi\"/\"Basket plus\"/\"Basket open\" all compact-match too, must resolve to the fullest \"Basket hi plus open\" variant (36 rows).",
+    "expect_row_count": 36,
+    "expect_product": [
+      "Basket"
+    ]
+  },
+  {
+    "id": 63,
+    "cat": "full_catalog",
+    "brand": "Bonaldo",
+    "query": "give me all prices for casablanca",
+    "note": "CASABLANCA rug/colore shape, 12 rows (3 sizes x 4 colors), verify none truncated -- from the point-2 rug/colore survey.",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Casablanca"
+    ]
+  },
+  {
+    "id": 64,
+    "cat": "size_or_fabric_only",
+    "brand": "Bonaldo",
+    "query": "casablanca 300 x 400",
+    "note": "Size given but no color -- must surface all 4 same-priced color options rather than guessing one.",
+    "expect_status": "multiple_options",
+    "expect_prices": [
+      "4.006"
+    ]
+  },
+  {
+    "id": 65,
+    "cat": "ambiguous_prefix",
+    "brand": "Bonaldo",
+    "query": "chair",
+    "note": "Genuine ambiguity: 5 real, unrelated products (Avant-Garde chair, Colibri chair, Olos chair, Olos chair met, Pi chair) share only the generic word \"chair\", none contains another -- must ask, not guess.",
+    "expect_status": "clarify_product"
+  },
+  {
+    "id": 70,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "innesti",
+    "note": "Regression guard for the maximal tie-break token-set fix: \"Innesti table\" and \"Innesti coffee table\" tie at score 80, and \"Innesti coffee table\" contains every word of \"Innesti table\" (just not as a contiguous phrase -- \"coffee\" sits in between) -- must auto-resolve to the objectively more complete match instead of asking, same as the existing ELIOT Keramik Drive precedent.",
+    "expect_product": [
+      "Innesti coffee table"
+    ]
+  },
+  {
+    "id": 66,
+    "cat": "nonexistent",
+    "brand": "Bonaldo",
+    "query": "how much is the Vexalon armchair",
+    "note": "Regression guard for the generic-category-word fix: a made-up product name combined with a real category word (\"armchair\") that appears in several unrelated real Bonaldo products must still report no match, same as Cattelan/Bolzan.",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 67,
+    "cat": "nonexistent",
+    "brand": "Bonaldo",
+    "query": "gimme a price on the flumpernickel table",
+    "note": "Same fix as id 66, \"table\" category word, casual phrasing with more filler words.",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 68,
+    "cat": "multi_product",
+    "brand": "Bonaldo",
+    "query": "give me cuff hi plus and casablanca 300 x 400 essential taupe",
+    "note": "2 real products in 1 query, each with its own variant/size/color narrowing applied independently -- Cuff must narrow to the \"Cuff hi plus\" variant (36 rows) while Casablanca narrows to its own single color+size row (1 row), no cross-contamination.",
+    "expect_product": [
+      "Casablanca",
+      "Cuff"
+    ],
+    "expect_prices_subset": [
+      "4.006",
+      "3.400"
+    ]
+  },
+  {
+    "id": 69,
+    "cat": "cross_brand",
+    "brand": "Bolzan",
+    "query": "cuff bench and pouf price",
+    "note": "A real BONALDO product name asked of the wrong brand (Bolzan) -- must not cross-match into a different brand's catalog.",
+    "expect_status": "no_product_match"
   }
 ]

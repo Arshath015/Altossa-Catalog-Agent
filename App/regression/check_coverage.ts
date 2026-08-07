@@ -23,7 +23,28 @@ import path from 'path';
 
 const ROOT = path.join(__dirname, '..', '..');
 const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
-const BRANDS = ['Cattelan Italia', 'Bolzan'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo'];
+
+// Products already triaged as `known_gap` in flag_triage.json are an
+// accepted, documented, SAFE backlog (parser returns zero rows / skips
+// the ambiguous row rather than guessing -- never silently wrong; see
+// flag_triage.json's own `_status_meaning.known_gap`) -- used heavily for
+// Bonaldo's initial 197-product batch seeding. Counting every one of
+// those as a fresh "mismatch" here would bury any genuinely NEW finding
+// under ~140+ already-known lines every run. Other statuses (real_gap/
+// partial/false_alarm) are claimed-RESOLVED, so those products are still
+// checked normally -- only `known_gap` is excluded.
+function loadKnownGapProducts(brand: string): Set<string> {
+  const triagePath = path.join(ROOT, 'App', 'regression', 'flag_triage.json');
+  if (!fs.existsSync(triagePath)) return new Set();
+  const triage = JSON.parse(fs.readFileSync(triagePath, 'utf-8'));
+  const brandTriage = triage[brand] || {};
+  return new Set(
+    Object.entries(brandTriage)
+      .filter(([, v]: [string, any]) => v && v.status === 'known_gap')
+      .map(([k]) => k)
+  );
+}
 
 interface PriceRow {
   product_name: string;
@@ -66,6 +87,7 @@ async function checkBrand(brand: string) {
   }
   const prices: PriceRow[] = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
   const realKeys = new Set(prices.map(rowKey));
+  const knownGap = loadKnownGapProducts(brand);
 
   const byProduct = new Map<string, PriceRow[]>();
   for (const r of prices) {
@@ -76,8 +98,10 @@ async function checkBrand(brand: string) {
   const mismatches: string[] = [];
   const fabricated: string[] = [];
   let checked = 0;
+  let skippedKnownGap = 0;
 
   for (const [productName, rows] of byProduct) {
+    if (knownGap.has(productName)) { skippedKnownGap++; continue; }
     const resp = await postChat(brand, `give me all prices for ${productName}`);
     checked++;
     if (resp.error) {
@@ -103,7 +127,7 @@ async function checkBrand(brand: string) {
     await new Promise(r => setTimeout(r, 80));
   }
 
-  console.log(`\n=== ${brand}: ${checked} products checked ===`);
+  console.log(`\n=== ${brand}: ${checked} products checked (${skippedKnownGap} skipped -- already triaged as known_gap) ===`);
   console.log(`Row-count mismatches: ${mismatches.length}`);
   console.log(`Fabricated rows: ${fabricated.length}`);
   if (mismatches.length > 0) {

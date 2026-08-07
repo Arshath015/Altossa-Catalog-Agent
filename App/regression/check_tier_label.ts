@@ -122,6 +122,24 @@ const CASES: Case[] = [
     expectedHeader: '—',
     note: 'Rug priced by size only -- no tier dimension at all, same class as BOTERO Wood Round.',
   },
+  {
+    id: 'avant-garde-upholstered-chair',
+    category: 'upholstered chair (Bonaldo)',
+    brand: 'Bonaldo',
+    query: 'avant-garde chair metallo special capri',
+    productName: 'Avant-Garde chair',
+    expectedHeader: 'RIVESTIMENTO',
+    note: 'Bonaldo real source label -- same category word as Cattelan\'s WILMA case, different catalog entirely.',
+  },
+  {
+    id: 'casablanca-rug-colore',
+    category: 'rug/colore (Bonaldo)',
+    brand: 'Bonaldo',
+    query: 'casablanca 300 x 400',
+    productName: 'Casablanca',
+    expectedHeader: 'COLORE',
+    note: 'Deliberate DIVERGENCE from Cattelan\'s MADRAS rug case above -- unlike Cattelan\'s rugs (no tier dimension at all), Bonaldo\'s rug/colore shape DOES have a real tier dimension (which color), from the point-2 rug/colore survey earlier this session.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
