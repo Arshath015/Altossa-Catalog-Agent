@@ -392,7 +392,7 @@
   "Bonaldo": {
     "Acquerelli": {
       "status": "known_gap",
-      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Aldebaran": {
       "status": "known_gap",
@@ -444,7 +444,7 @@
     },
     "Arragan night collection": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Artika Wood too": {
       "status": "known_gap",
@@ -508,7 +508,7 @@
     },
     "Belt & Cross": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Bernois": {
       "status": "known_gap",
@@ -516,7 +516,7 @@
     },
     "Bio-s": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Blabla mirror": {
       "status": "known_gap",
@@ -532,7 +532,7 @@
     },
     "Bon Ton": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Bonamour": {
       "status": "known_gap",
@@ -632,7 +632,7 @@
     },
     "Dogma": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Doppler K Sideboard": {
       "status": "known_gap",
@@ -644,7 +644,7 @@
     },
     "Dune 250": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Dune TV stand": {
       "status": "known_gap",
@@ -652,7 +652,7 @@
     },
     "Dune TV stand light": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Element": {
       "status": "known_gap",
@@ -680,7 +680,7 @@
     },
     "Flatiron": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Flatiron coffee table": {
       "status": "known_gap",
@@ -700,19 +700,15 @@
     },
     "Frinfri Wood": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Gauss": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Gem": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Geometric Table 400": {
-      "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
     },
     "Globalove": {
       "status": "known_gap",
@@ -720,7 +716,7 @@
     },
     "Gocce": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Grant": {
       "status": "known_gap",
@@ -740,19 +736,11 @@
     },
     "Innesti coffee table": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
-    },
-    "Innesti table": {
-      "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Isabey": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Isabey bedside table": {
-      "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
     },
     "Isabey desk": {
       "status": "known_gap",
@@ -788,7 +776,7 @@
     },
     "Keshi": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Kitai": {
       "status": "known_gap",
@@ -853,10 +841,6 @@
     "Maximilian": {
       "status": "known_gap",
       "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
-    },
-    "Mellow 400": {
-      "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
     },
     "Mistral": {
       "status": "known_gap",
@@ -924,7 +908,7 @@
     },
     "Nubo boiserie": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Olos": {
       "status": "known_gap",
@@ -956,7 +940,7 @@
     },
     "Olos mirror light": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Olos pouf": {
       "status": "known_gap",
@@ -972,7 +956,7 @@
     },
     "Outline": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Owen": {
       "status": "known_gap",
@@ -988,7 +972,7 @@
     },
     "Paddle TV stand light": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Panorama New": {
       "status": "known_gap",
@@ -1016,7 +1000,7 @@
     },
     "Peanut B.X.": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Pepita": {
       "status": "known_gap",
@@ -1048,7 +1032,7 @@
     },
     "Planet, Big Planet": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Rabat": {
       "status": "known_gap",
@@ -1072,7 +1056,7 @@
     },
     "Roll walk-in closet": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Saddle": {
       "status": "known_gap",
@@ -1084,11 +1068,11 @@
     },
     "Salomé": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Salomé light": {
       "status": "known_gap",
-      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json (suffix/size/punctuation mismatch) -- parser can't locate the product's own section and returns zero rows. Individually root-caused in the 26-product list in bonaldo_index_and_structure memory (disambiguating suffix never printed, size/number suffix mismatch, or punctuation mismatch). Deferred cleanup pass planned: a heading-matching fallback (normalize punctuation, try suffix/prefix-stripped comparison)."
+      "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- the general digit/mixed-case/'&'-character heading-detection bugs and 3 punctuation/font-quirk cases (Innesti table/coffee table, Planet Big Planet, Salomé) are already fixed. The remaining handful are a genuinely different, deeper issue: the product's own price data is a shared-page 'variant' of a sibling base product (e.g. Dune TV stand light's data already lives under 'Dune TV stand' with model_variant/size='...light') -- confirmed for Dune TV stand light, Olos mirror light, Salomé light; the sibling's OWN base entry currently fails to parse for Frinfri Wood/Nubo boiserie/Paddle TV stand light (an unimplemented 4th 'PIANO/BASE material combination' table shape), and Arragan night collection / Peanut B.X. need individual page-image verification not yet done. Needs a product-catalog-structure decision (merge the split entries vs. reassign parsed rows by variant), not a parser regex fix -- deliberately not resolved further this pass."
     },
     "Sasso": {
       "status": "known_gap",

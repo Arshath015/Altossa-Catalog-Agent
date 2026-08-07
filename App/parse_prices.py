@@ -648,15 +648,24 @@ def _bonaldo_heading_candidate(line):
     candidate = chunks[0]
     if candidate.upper() in _BONALDO_NON_HEADING_WORDS:
         return None
-    # real headings are short, fully-uppercase, pure alphabetic product
-    # names (spaces allowed, e.g. "MASK GAMBE IN METALLO") -- excludes
-    # the numbered "1. RIVESTIMENTO" / "2. GAMBE" spec-annotation labels
-    # (CARATTERISTICHE TECNICHE callouts), which are also all-uppercase
-    # but contain digits/periods and would otherwise falsely truncate
-    # the scan range before it ever reaches the real price table.
-    if candidate != candidate.upper() or not (2 <= len(candidate) <= 45):
+    # Real headings are short product names, almost always fully-uppercase
+    # (spaces allowed, e.g. "MASK GAMBE IN METALLO"; digits allowed for a
+    # size suffix, e.g. "FLATIRON 180") -- excludes the numbered
+    # "1. RIVESTIMENTO" / "2. GAMBE" spec-annotation labels (CARATTERISTICHE
+    # TECNICHE callouts), which are also all-uppercase but ALWAYS start
+    # with the digit itself, not a letter, so the required leading-letter
+    # anchor below rejects them regardless of digits being allowed elsewhere.
+    # A few products print a lowercase trailing descriptor after an
+    # all-caps product name instead (confirmed real: "ROLL walk-in
+    # closet", "DOGMA H 182 cm") -- only the FIRST word is required to be
+    # uppercase for those, not the whole candidate; this doesn't open the
+    # door to ordinary prose lines (which would also need this first word
+    # to exactly equal or prefix-match a real catalog product name via
+    # _is_known_heading below, which no random capitalized prose word does).
+    first_word = candidate.split(' ', 1)[0]
+    if first_word != first_word.upper() or not (2 <= len(candidate) <= 45):
         return None
-    if not re.fullmatch(r"[A-ZÀ-Ý][A-ZÀ-Ý' .-]*", candidate):
+    if not re.fullmatch(r"[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9'&. -]*", candidate):
         return None
     return candidate
 

@@ -125,6 +125,37 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     "Roll walk-in closet": (576, 578),
 }
 
+# Bonaldo: products whose literal printed page heading doesn't match their
+# catalog product_name closely enough for parse_prices.py's own heading-
+# matching (whole-word prefix match, tolerant of digits/punctuation but not
+# of a totally different word) to find on its own -- verified individually
+# against the real extracted text, not guessed. Populates catalog_index.json's
+# "index_heading" field, which parse_prices.py already reads (falls back to
+# product_name when absent) -- this dict is the only thing that currently
+# writes it for Bonaldo. Found 2026-08-07 while triaging the "own heading not
+# found" flag bucket (see project memory bonaldo_index_and_structure).
+INDEX_HEADING_OVERRIDES: dict[str, str] = {
+    # Punctuation-only mismatch: index name uses a comma, the printed page
+    # heading uses " - " instead ("PLANET - BIG PLANET").
+    "Planet, Big Planet": "PLANET - BIG PLANET",
+    # "Innesti table" and "Innesti coffee table" are two genuinely different
+    # products on two different pages (127 and 245) that both print the
+    # SAME bare "INNESTI" heading with no disambiguating suffix at all --
+    # safe to give both the same override since each is independently
+    # scoped to its own page range already.
+    "Innesti table": "INNESTI",
+    "Innesti coffee table": "INNESTI",
+    # Font/rendering quirk, not a text typo: this page's printed heading
+    # uses U+00C8 (uppercase E GRAVE, "SALOMÈ") where the catalog index's
+    # own product name uses U+00E9 lowercase E ACUTE ("Salomé") -- the two
+    # don't match even after uppercasing, since they're different base
+    # letters. Confirmed via direct byte inspection of the extracted text
+    # (poppler's font-substitution behavior for this one glyph, not
+    # something -enc UTF-8 controls -- a new instance of the same family
+    # of gotchas as the earlier windows_poppler_gotchas memory).
+    "Salomé": "SALOMÈ",
+}
+
 # Bonaldo: products whose name appears in BOTH 00_LISTINO-2026 (main) and
 # BONALDO_INTEGRAZIONE (supplement) do NOT always mean the supplement is a
 # full replacement -- confirmed by hand-comparing all 6 name-overlaps
@@ -707,7 +738,7 @@ def main():
         text_path = out_root / "text" / f"{slug}.txt"
         text_path.write_text("\n\n".join(text_chunks), encoding="utf-8")
 
-        catalog.append({
+        entry = {
             "brand": args.brand,
             "product_name": name,
             "slug": slug,
@@ -719,7 +750,10 @@ def main():
             "images": image_files,
             "page_images": page_images,
             "text_file": str(text_path.relative_to(args.out)),
-        })
+        }
+        if name in INDEX_HEADING_OVERRIDES:
+            entry["index_heading"] = INDEX_HEADING_OVERRIDES[name]
+        catalog.append(entry)
 
     if slug_collisions:
         print(f"\nWARNING: {len(slug_collisions)} product name(s) collided on "
