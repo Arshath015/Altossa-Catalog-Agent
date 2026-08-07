@@ -7,7 +7,7 @@ interface Brand {
 const BRANDS: Brand[] = [
   { name: 'Bolzan', status: 'ready', productCount: 101 },
   { name: 'Cattelan Italia', status: 'ready', productCount: 533 },
-  { name: 'Bonaldo', status: 'soon', productCount: 0 },
+  { name: 'Bonaldo', status: 'ready', productCount: 300 },
   { name: 'Varaschini', status: 'soon', productCount: 0 },
   { name: 'Ditre Italia', status: 'soon', productCount: 0 },
   { name: 'Pianca', status: 'soon', productCount: 0 },
