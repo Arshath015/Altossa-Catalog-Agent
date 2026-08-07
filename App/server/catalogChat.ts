@@ -965,6 +965,34 @@ export class CatalogChat {
   }
 
   /**
+   * Drops a raw-scan-only name from the union whenever it's just a
+   * word-subset fragment of another kept name that the LLM alone
+   * resolved -- e.g. "cuff pouf" union'd ["Cuff bench and pouf"] (LLM)
+   * with ["Cuff"] (literal scan) wrongly looked like 2 products, when
+   * "Cuff" is really just a leftover piece of the one full name the LLM
+   * already found. Never drops an LLM-confirmed name, and never drops a
+   * fragment whose "parent" name was ALSO found independently by the
+   * literal scanner -- that second condition is what protects genuine
+   * multi-product queries like "italia pelle and italia couture pelle",
+   * where the scanner finds BOTH "ITALIA" and "ITALIA Couture" as their
+   * own separate spans (confirmed live: the LLM alone missed "ITALIA"
+   * entirely there, so without this guard the fragment-drop logic would
+   * have silently thrown away a real, explicitly-named second product).
+   */
+  private dropSubsumedFragments(validNames: string[], llmValid: string[], rawNamed: string[]): string[] {
+    const tokensOf = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
+    return validNames.filter(n => {
+      if (llmValid.includes(n) || !rawNamed.includes(n)) return true;
+      const nTokens = tokensOf(n);
+      return !validNames.some(m => {
+        if (m === n || rawNamed.includes(m)) return false;
+        const mTokens = tokensOf(m);
+        return nTokens.length > 0 && nTokens.every(t => mTokens.includes(t));
+      });
+    });
+  }
+
+  /**
    * Handles requests naming MULTIPLE products at once (e.g. "give me
    * Pandora and Selene prices"). This is purely additive: for 0 or 1
    * validated product names, it defers entirely to the existing,
@@ -995,7 +1023,7 @@ export class CatalogChat {
     // at all -- reproduced identically whether the LLM was live or not).
     const llmValid = this.validateProductNames(productNameGuesses);
     const rawNamed = this.detectNamedProductsInText(rawQuery);
-    const validNames = [...new Set([...llmValid, ...rawNamed])];
+    const validNames = this.dropSubsumedFragments([...new Set([...llmValid, ...rawNamed])], llmValid, rawNamed);
 
     // Anything the LLM explicitly named that never resolved to a real
     // product (even after normalized matching) is worth surfacing, not
