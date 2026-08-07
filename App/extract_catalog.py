@@ -156,6 +156,32 @@ INDEX_HEADING_OVERRIDES: dict[str, str] = {
     "Salomé": "SALOMÈ",
 }
 
+# Bonaldo: index entries that are NOT independently-parseable products at
+# all -- each is a "variant" name (a lower/alternate model of a sibling
+# product, e.g. a shorter-height TV stand) that the printed catalog's own
+# alphabetical index happens to list separately, but whose price table is
+# ALWAYS printed combined with its base sibling's on the exact same page,
+# distinguished only by an internal row-level model_variant/size label
+# (e.g. "Dune TV stand"'s own parsed rows already include BOTH
+# model_variant="DUNE" and model_variant="DUNE LIGHT" -- confirmed directly
+# by inspecting parse_file_bonaldo's output, not guessed). Giving one of
+# these its own catalog_index entry can never produce distinct data of its
+# own: at best it silently duplicates rows already attributed to the base
+# product under a second product_name if the heading-matching happened to
+# succeed, at worst (the status quo before this was found) it just sits as
+# a permanent "own heading not found" flag. Found 2026-08-07 in the same
+# "own heading not found" triage as INDEX_HEADING_OVERRIDES above -- see
+# project memory bonaldo_index_and_structure for the full writeup and the
+# remaining un-triaged names in this same flag bucket that might turn out
+# to be more instances of this once their base sibling's own table shape
+# is handled (Frinfri Wood/Nubo boiserie/Paddle TV stand light are
+# suspected but not yet confirmed the same way).
+DUPLICATE_VARIANT_ENTRIES: set[str] = {
+    "Dune TV stand light",   # -> "Dune TV stand", model_variant="DUNE LIGHT"
+    "Olos mirror light",     # -> "Olos mirror", model_variant="<size> LIGHT"
+    "Salomé light",          # -> "Salomé", size="Salomé light"
+}
+
 # Bonaldo: products whose name appears in BOTH 00_LISTINO-2026 (main) and
 # BONALDO_INTEGRAZIONE (supplement) do NOT always mean the supplement is a
 # full replacement -- confirmed by hand-comparing all 6 name-overlaps
@@ -608,6 +634,12 @@ def main():
         # below assumes sorted-by-page input like the other two styles'
         # parsers already return, so sort explicitly here.
         entries.sort(key=lambda x: x[1])
+        dropped = [name for name, _ in entries if name in DUPLICATE_VARIANT_ENTRIES]
+        if dropped:
+            print(f"      -> dropping {len(dropped)} duplicate-variant index "
+                  f"entr{'y' if len(dropped) == 1 else 'ies'} (see "
+                  f"DUPLICATE_VARIANT_ENTRIES): {dropped}")
+        entries = [(name, page) for name, page in entries if name not in DUPLICATE_VARIANT_ENTRIES]
     else:
         entries = parse_index(pdf_path, index_pages)
     print(f"      -> found {len(entries)} products")
