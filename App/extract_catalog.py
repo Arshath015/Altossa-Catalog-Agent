@@ -623,6 +623,20 @@ def main():
     print("[4/5] Extracting per-product PDFs, images, and text...")
     for item in ranges:
         name = item["name"]
+        if args.merge and name in MERGE_KEEP_EXISTING:
+            # This run's own version of this product is known (see
+            # MERGE_KEEP_EXISTING's comment) to be less complete than the
+            # existing one -- skip writing its mini_pdf/images/text now,
+            # not just its catalog_index.json entry later at the merge
+            # step below. Writing them unconditionally here and only
+            # discarding the JSON entry afterward left the FILES on disk
+            # mismatched with the kept entry's page range (confirmed:
+            # Flatiron table's catalog_index entry correctly pointed to
+            # the main catalog's pages 113-115, but flatiron_table.txt on
+            # disk still held the integrazione's pages 8-9 content from
+            # this exact overwrite, silently truncating the price parser
+            # to a fraction of the real data with no error at all).
+            continue
         p_start, p_end = item["printed_start"], item["printed_end"]
 
         pdf_start = page_map.get(p_start, page_fallback(p_start))
@@ -718,19 +732,22 @@ def main():
     catalog_path = out_root / "catalog_index.json"
     if args.merge and catalog_path.exists():
         existing = json.loads(catalog_path.read_text(encoding="utf-8"))
+        # Products in MERGE_KEEP_EXISTING were already skipped entirely
+        # in the extraction loop above (see its own comment) -- their
+        # name never enters `catalog`, so the normal "kept = existing
+        # entries not in new_names" logic below already preserves them
+        # correctly, with no special-casing needed here. (An earlier
+        # version of this fix DID special-case them here, AFTER letting
+        # the extraction loop generate-then-discard their files -- that
+        # order double-counted them into a duplicate catalog_index.json
+        # entry once the extraction loop started skipping them instead.)
+        protected = [n for n in MERGE_KEEP_EXISTING if any(c["product_name"] == n for c in existing)]
+        if protected:
+            print(f"\n[merge] Kept the EXISTING entry (not this run's) for "
+                  f"{protected} -- verified more complete, see "
+                  f"MERGE_KEEP_EXISTING's comment.")
         new_names = {c["product_name"] for c in catalog}
         kept = [c for c in existing if c["product_name"] not in new_names]
-        # A hand-verified exception list (see MERGE_KEEP_EXISTING's own
-        # comment): for these specific product names, the EXISTING entry
-        # is more complete than this run's -- keep it and drop this run's
-        # duplicate instead of the normal "new run wins" behavior.
-        held_back = [c for c in existing if c["product_name"] in MERGE_KEEP_EXISTING]
-        if held_back:
-            print(f"\n[merge] Keeping the EXISTING entry (not this run's) for "
-                  f"{[c['product_name'] for c in held_back]} -- verified more "
-                  f"complete, see MERGE_KEEP_EXISTING's comment.")
-            kept += held_back
-            catalog = [c for c in catalog if c["product_name"] not in MERGE_KEEP_EXISTING]
         print(f"\n[merge] Existing catalog_index.json had {len(existing)} entries. "
               f"{len(existing) - len(kept)} superseded by this run's {len(catalog)} "
               f"entries (same product_name); {len(kept)} untouched entries kept.")
