@@ -179,21 +179,6 @@ def pdftotext_page(pdf_path: str, page: int) -> str:
     return result.stdout.decode("utf-8", errors="replace")
 
 
-def pdftotext_page_raw(pdf_path: str, page: int) -> str:
-    """Same as pdftotext_page but WITHOUT -layout. Bonaldo's alphabetical
-    index is printed in a 2-column newspaper layout, and -layout actively
-    scrambles it (interleaves the two columns' names/numbers onto shared
-    visual lines with the wrong pairing) -- confirmed by direct A/B
-    comparison. The raw (stream-order) text instead comes out as a clean
-    "name, name, name... number, number, number..." run per index chunk,
-    which is what parse_index_bonaldo relies on."""
-    result = subprocess.run(
-        [PDFTOTEXT, "-enc", "UTF-8", "-f", str(page), "-l", str(page), pdf_path, "-"],
-        capture_output=True,
-    )
-    return result.stdout.decode("utf-8", errors="replace")
-
-
 # Bonaldo's index pages intersperse these section/navigation words (its
 # 7 main-catalog top-nav categories, plus the integrazione supplement's
 # own finer-grained ~13 categories) among the real product names -- both
@@ -220,66 +205,125 @@ KNOWN_BONALDO_CATEGORIES = {
 }
 
 
+# The main catalog's index (pages 6-9) prints its A-Z list in TWO
+# side-by-side columns per page (confirmed via real page content: an
+# "F/G" column on the left, a "J/K" column on the right of the SAME
+# page). Both a raw-text-stream approach AND a fixed-character-column
+# -layout split were tried and both broke on real data:
+#   - raw (non-layout) text interleaves the two columns' names and
+#     numbers in an order that does NOT preserve column identity --
+#     confirmed directly: on page 7, "Kayla" (real page 50) got zipped
+#     with "461" and "Liam" (real page 356) got zipped with "50" instead.
+#     Invisible from name/number COUNTS alone (they still matched) and
+#     from a handful of lucky spot-checks (several entries on the same
+#     page zipped correctly by coincidence) -- only a BROAD sample
+#     checked against real page headings surfaced it.
+#   - a fixed character-column split (e.g. always cut at column 63) works
+#     on some pages but slices straight through the middle of real names
+#     on others, because the exact gutter position drifts a few
+#     characters between pages (confirmed: page 8 produced garbled
+#     fragments like "Padd"/"Pean"/"Pror" -- truncated "Paddle"/"Peanut"/
+#     "Prora" -- because its right column starts a few characters to the
+#     left of where page 7's does).
+# The fix that actually holds: read each word's real (x, y) position via
+# `pdftotext -tsv`, not character-grid text. This confirmed something
+# important -- a name and its own page number genuinely share the SAME
+# row (y/"top" coordinate) in the underlying PDF; the apparent
+# name-on-one-line/number-on-the-next staggering seen in plain -layout
+# text was purely a rendering artifact of how poppler merges overlapping
+# vertical space, not a real positional gap. Splitting words into a left
+# half and right half by x-position (using the gap whose MIDPOINT falls
+# closest to the page's own half-width as the cut point -- the true
+# inter-column gutter is NOT always the single widest gap on the page:
+# the intra-column gap between a name and its own right-aligned page
+# number can be wider than the gutter between the two columns, confirmed
+# on every sampled page) and then grouping each half's words by row
+# eliminates both failure modes at once.
+def _bonaldo_index_split_x(lefts: list[float], page_width: float) -> float:
+    """Given every word's left-x on a page, return the x-coordinate to
+    split LEFT-column content from RIGHT-column content. See this
+    section's module-level comment for why "the widest gap" is the wrong
+    heuristic and "the gap closest to the page's own half-width" is the
+    one that held up across every sampled page."""
+    xs = sorted(set(round(x) for x in lefts))
+    if len(xs) < 2:
+        return page_width / 2
+    gaps = [(xs[i], xs[i + 1]) for i in range(len(xs) - 1)]
+    half = page_width / 2
+    best = min(gaps, key=lambda g: abs((g[0] + g[1]) / 2 - half))
+    return (best[0] + best[1]) / 2
+
+
 def parse_index_bonaldo(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Bonaldo's alphabetical index: a flat A-Z list with NO dot
-    leaders and no "p." prefix -- just a name followed later by its own
-    bare page number, in the same relative order (confirmed via raw-text
-    inspection: a whole run of names is followed by a matching-length run
-    of their page numbers, batched anywhere from 1-at-a-time to ~40-at-a-
-    time depending on print-column layout, never out of order). Also
-    intersperses: single uppercase letters (alphabet-group markers, e.g.
-    "A", "B"), known category/nav words, and this page's own footer page
-    number (which must NOT be counted as a product's page number).
+    leaders and no "p." prefix -- just a name and its own page number,
+    laid out in two side-by-side columns per page (see the module-level
+    comment above _bonaldo_index_split_x for why this needs real word
+    positions, not character-grid text). Also skips: single uppercase
+    letters (alphabet-group markers, e.g. "A", "B"), known category/nav
+    words, and this page's own footer page number (which must NOT be
+    counted as a product's page number).
     """
     single_letter_re = re.compile(r"^[A-Z]$")
     entries: list[tuple[str, int]] = []
     for pg in index_pages:
-        text = pdftotext_page_raw(pdf_path, pg)
-        lines = [ln.strip() for ln in text.split("\n")]
-        names: list[str] = []
-        numbers: list[int] = []
-        first_name_seen = False
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            if not line:
-                i += 1
+        result = subprocess.run(
+            [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", str(pg), "-l", str(pg), pdf_path, "-"],
+            capture_output=True,
+        )
+        tsv_text = result.stdout.decode("utf-8", errors="replace")
+        tsv_rows = [ln.rstrip("\r").split("\t") for ln in tsv_text.split("\n") if ln.strip()]
+        if not tsv_rows:
+            continue
+        header = tsv_rows[0]
+        col = {name: i for i, name in enumerate(header)}
+        page_width = None
+        words = []  # (top, left, text)
+        for row in tsv_rows[1:]:
+            if len(row) <= max(col.values()):
                 continue
-            if line.upper() in KNOWN_BONALDO_CATEGORIES or single_letter_re.match(line):
-                i += 1
+            level = row[col["level"]]
+            if level == "1" and page_width is None:
+                page_width = float(row[col["width"]])
+            if level != "5":
                 continue
-            if "BONALDO LISTINO" in line.upper():
-                # brand footer line; the bare page number that follows it
-                # (possibly after blank lines) is THIS page's own footer,
-                # not a product page
-                i += 1
-                while i < len(lines) and not lines[i].strip():
-                    i += 1
-                if i < len(lines) and re.fullmatch(r"\d{1,4}", lines[i].strip()):
-                    i += 1
-                continue
-            if re.fullmatch(r"\d{1,4}", line):
-                if not first_name_seen:
-                    # a stray number before any real name (e.g. this
-                    # page's own header page-number) -- not a product
-                    i += 1
+            words.append((float(row[col["top"]]), float(row[col["left"]]), row[col["text"]]))
+        if not words or page_width is None:
+            continue
+
+        split_x = _bonaldo_index_split_x([w[1] for w in words], page_width)
+        for is_right in (False, True):
+            half_words = [w for w in words if (w[1] >= split_x) == is_right]
+            # group into rows: words sharing the same (rounded) top
+            rows_by_top: dict[int, list[tuple[float, str]]] = {}
+            for top, left, text in half_words:
+                rows_by_top.setdefault(round(top), []).append((left, text))
+            names: list[str] = []
+            numbers: list[int] = []
+            for top_key in sorted(rows_by_top):
+                row_words = [t for _, t in sorted(rows_by_top[top_key])]
+                row_text = " ".join(row_words)
+                if row_text.upper() in KNOWN_BONALDO_CATEGORIES or single_letter_re.match(row_text):
                     continue
-                numbers.append(int(line))
-                i += 1
-                continue
-            names.append(line)
-            first_name_seen = True
-            i += 1
-        # Safety net: an unprefixed trailing footer number (this page's
-        # own number, with no "BONALDO Listino" line ahead of it) that
-        # still slipped past the checks above.
-        if len(numbers) == len(names) + 1 and numbers[-1] == pg:
-            numbers.pop()
-        if len(names) != len(numbers):
-            print(f"      WARNING: page {pg} -- {len(names)} name(s) but "
-                  f"{len(numbers)} number(s) found; zipping to the shorter "
-                  f"length, verify this page by hand: {names[len(numbers):] if len(names) > len(numbers) else numbers[len(names):]}")
-        entries.extend(zip(names, numbers))
+                if "BONALDO" in row_text.upper() or "ESCLUSA" in row_text.upper():
+                    continue
+                # a row pairing a name with its own page number has the
+                # number as the LAST word (confirmed: name and number
+                # share one row; a name-only continuation row has no
+                # trailing digit-only word at all)
+                if row_words and re.fullmatch(r"\d{1,4}", row_words[-1]):
+                    name_part = " ".join(row_words[:-1]).strip()
+                    if name_part and name_part.upper() not in KNOWN_BONALDO_CATEGORIES:
+                        names.append(name_part)
+                        numbers.append(int(row_words[-1]))
+                # else: a category/letter-only row already skipped above,
+                # or this page's own footer/page-number row (no name
+                # part) -- neither is a product entry
+            if len(names) != len(numbers):
+                print(f"      WARNING: page {pg} -- {len(names)} name(s) but "
+                      f"{len(numbers)} number(s) found in one column; "
+                      f"verify this page by hand")
+            entries.extend(zip(names, numbers))
     seen = set()
     unique = []
     for name, pg in entries:
