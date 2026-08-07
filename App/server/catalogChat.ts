@@ -159,11 +159,16 @@ export function similarity(query: string, candidate: string): number {
   const q = normalize(query);
   const c = normalize(candidate);
   if (q === c) return 100;
-  // whole-word containment only -- a short candidate like "Mate" must not
-  // match just because it happens to be a substring of "materasso"
-  if (containsWholeWord(q, c) || containsWholeWord(c, q)) return 80;
   const qTokens = q.split(/\s+/).filter(Boolean);
   const cTokens = c.split(/\s+/).filter(Boolean);
+  // Token-SET containment (every token on one side appears on the other,
+  // any order) -- not a contiguous-phrase check. That distinction matters:
+  // "cuff pouf" isn't a substring of "Cuff bench and pouf" (words in
+  // between), so a phrase-only check let it fall to the diluted overlap
+  // score below while bare "Cuff" kept a flat win. Tying both at 80 instead
+  // hands resolution to the existing "maximal" tie-break in answer().
+  if (qTokens.length > 0 && qTokens.every(t => cTokens.includes(t))) return 80;
+  if (cTokens.length > 0 && cTokens.every(t => qTokens.includes(t))) return 80;
   const overlap = qTokens.filter(t => cTokens.includes(t)).length;
   if (overlap === 0) return 0;
   return (overlap / Math.max(qTokens.length, cTokens.length)) * 60;
