@@ -1199,6 +1199,16 @@ export class CatalogChat {
     const rawTierHits = realTierValues.filter(t => containsWholeWord(queryMinusProductName, normalize(t)));
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
 
+    // Tracks whether a specific fabric_tier/colore filter actually
+    // narrowed `rows` below -- needed so a "give me all/full ... <tier>"
+    // query (e.g. "give all nairobi olive green price") doesn't get
+    // mislabeled as the FULL price list further down just because it
+    // happens to contain "all"/"full" wording. Confirmed real: Nairobi
+    // has 3 colore options (Olive green/Acid green/Nut brown) x 3 sizes
+    // = 9 real rows, p.54, but a colore-filtered query like this one only
+    // ever returns the 3 rows for ONE color -- that's a legitimately
+    // narrowed result, not the product's actual full list.
+    let tierWasExplicitlyFiltered = false;
     if (tiersWithRawHits.length > 0) {
       const resolvedTiersAll = this.resolveTiersForProduct(productName, tiersWithRawHits);
       // Prefer the most specific match when multiple RESOLVED real tier
@@ -1219,6 +1229,7 @@ export class CatalogChat {
       );
       if (resolvedTiers.length > 0) {
         rows = rows.filter(r => resolvedTiers.includes(normalize(r.fabric_tier)));
+        tierWasExplicitlyFiltered = true;
       }
     }
 
@@ -1543,8 +1554,15 @@ export class CatalogChat {
     // If the user explicitly asked for the full/complete price list, return
     // everything with a distinct status so the UI renders a proper
     // pivoted grid (sizes x tiers, like the real PDF page) instead of a
-    // truncated one-line summary.
-    if (wantsFullList) {
+    // truncated one-line summary. NOT when a tier/colore filter above
+    // already narrowed `rows` below the product's real full set, though --
+    // "give all nairobi olive green price" contains "all" but `rows` is
+    // only 3 of Nairobi's real 9 rows at that point, so labeling it "the
+    // full price list" would be a real lie, not just an unhelpful one.
+    // Falls through to the ordinary narrowed-result summary below
+    // instead, same status ('multiple_options'/'ok') an equivalent query
+    // without "all" wording already gets.
+    if (wantsFullList && !tierWasExplicitlyFiltered) {
       return {
         status: 'full_price_grid',
         message: `Here's the full price list for "${displayName}":${ambiguousNote}${addonGridNote}`,

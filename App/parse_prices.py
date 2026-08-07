@@ -1379,14 +1379,19 @@ BONALDO_SOFA_HEADER_RE = re.compile(r'\bRIVESTIMENTO\b')
 # every tier-price row starts with exactly one of these labels, in this
 # order. NOT free-form finish names the way chair-shape's rows are.
 _BONALDO_SOFA_TIERS = (
-    # Both forms confirmed real: modular sofas print the bare "800 - COM"
+    # 3 forms confirmed real: modular sofas print the bare "800 - COM"
     # (Bonamour, Superhiro); the "MISURA RETE" bed-frame family (Cuff,
     # Holden, Basket p.503/43/489) prints the longer "800 - Ecopelle -
     # COM" instead -- found 2026-08-07 as the reason Cuff's own FIRST
     # tier row (its cheapest, most common one) was silently dropped
     # entirely: the fixed-string match required an exact "800 - COM"
-    # prefix, which this family's real text never contains.
-    '800 - Ecopelle - COM', '800 - COM', '900', 'Class', 'Must', 'Special',
+    # prefix, which this family's real text never contains. Owen ego
+    # (p.527, same MISURA RETE family) prints a bare "800" with NO
+    # suffix at all -- found the same day verifying the model-variant
+    # fix, same silent-drop failure mode (its cheapest tier missing,
+    # 16 rows instead of the real 20, no flag at all since the other 4
+    # tiers parsed fine and nothing LOOKED wrong).
+    '800 - Ecopelle - COM', '800 - COM', '800', '900', 'Class', 'Must', 'Special',
     'Capri', 'Procida', 'Panarea',
     # Both forms confirmed real: "Ponza Nabuk/Anilina" (Superhiro),
     # bare "Ponza Nabuk" with no suffix at all (Seki).
@@ -1724,6 +1729,52 @@ def _bonaldo_sofa_size_lookback(lines, i, seg_start, n_expected):
     return imperial_fallback
 
 
+def _bonaldo_sofa_model_variant_lookback(lines, i, seg_start, product_name):
+    """Scan upward from line i (a RIVESTIMENTO-with-inline-codes header),
+    same window as _bonaldo_sofa_size_lookback, for a "<product_name>[
+    suffix]  MISURA RETE" line and return the captured name+suffix text,
+    or None if not found.
+
+    Confirmed real (Basket p.489-490, Cuff p.502-507): this "MISURA RETE"
+    bed-frame family often has SEVERAL distinctly-priced sub-models
+    sharing one product page (Basket/Basket hi/Basket plus/Basket hi
+    plus/Basket open/Basket hi open/Basket hi plus open -- 7 real,
+    DIFFERENT prices for the same tier, confirmed via page image: Basket
+    800-Ecopelle-COM=3.070, Basket hi=3.395, Basket plus=3.125, Basket hi
+    plus=3.450). The distinguishing suffix ("hi"/"plus"/"open"/"alto"/
+    "ego"/etc.) is printed in MIXED case sharing a line with "MISURA
+    RETE" -- invisible to _bonaldo_heading_candidate (requires the first
+    WORD be uppercase; "Basket hi" starts lowercase after the first
+    word) and to _bonaldo_sofa_variant_context_lookback (requires an
+    EXACT chunks[0] == product_name match, which "Basket hi" as ONE
+    single-space-joined chunk never satisfies). Without this, every
+    sub-model's rows were silently merged under the bare product_name
+    with no distinguishing field at all -- confirmed a full-catalog scan
+    2026-08-07 found exactly 16 products in this "MISURA RETE" family
+    affected (out of 22 total that have a MISURA RETE section at all;
+    the other 6 are genuinely single-variant, correctly untouched)."""
+    k = i - 1
+    scanned = 0
+    # A leading nav-sidebar badge ("TAVOLI", same _BONALDO_NON_HEADING_WORDS
+    # set used elsewhere) can bleed onto the SAME line as the label,
+    # BEFORE the product name -- confirmed real: Basket plus's only
+    # occurrence is "TAVOLI            Basket plus ... MISURA RETE"
+    # (p.490); without tolerating this, that whole sub-model's rows fell
+    # back to model_variant=None, indistinguishable from Basket's own.
+    badge_prefix = r'(?:(?:' + '|'.join(re.escape(w) for w in _BONALDO_NON_HEADING_WORDS) + r')\s+)?'
+    pattern = re.compile(
+        r'^\s*' + badge_prefix + r'(' + re.escape(product_name) + r'[A-Za-zÀ-ÿ ]{0,25}?)\s{2,}MISURA RETE',
+        re.IGNORECASE
+    )
+    while k >= seg_start and scanned < 30:
+        scanned += 1
+        m = pattern.match(lines[k])
+        if m:
+            return m.group(1).strip()
+        k -= 1
+    return None
+
+
 def _bonaldo_sofa_has_nearby_codice_row(lines, i, seg_end):
     """True if a literal "CODICE" row appears within a few lines after
     line i. Used to reject a false-positive inline-codes read (see
@@ -1770,7 +1821,13 @@ def _parse_bonaldo_sofa_block(lines, i, seg_start, seg_end, page_of_line, produc
                            f"RIVESTIMENTO line but no matching size-label line found above "
                            f"-- skipped rather than guessed"))
             return [], i + 1
-        owners = [None] * len(sizes)  # no element-name dimension in this shape
+        # No element-name dimension in this shape -- but a distinctly-
+        # priced sub-model name (see _bonaldo_sofa_model_variant_lookback)
+        # takes its place when one is found, so e.g. "Basket hi"'s own
+        # rows are distinguishable from bare "Basket"'s instead of both
+        # silently sharing product_name with no way to tell them apart.
+        model_variant_label = _bonaldo_sofa_model_variant_lookback(lines, i, seg_start, product_name)
+        owners = [model_variant_label] * len(sizes)
         variant_context = _bonaldo_sofa_variant_context_lookback(lines, i, seg_start, product_name)
         k = i + 1
     else:
