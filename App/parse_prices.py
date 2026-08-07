@@ -604,7 +604,11 @@ BONALDO_TIER_ROW_NOCODE_RE = re.compile(
 #   - CASSETTO: added 2026-08-07, visually confirmed on Gauss p.189 (its
 #     own "▽ CASSETTO" sub-table -- "Nella stessa finitura della base",
 #     YØAZ, 292 -- separate from PIANO/RIPIANO on the same page).
-_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO')
+#   - TOP: added 2026-08-07, visually confirmed on Aureo p.566 (single
+#     material-column "▽ TOP" list, Ceramica opaca/finitura seta) and
+#     Partout p.570 (2-group "▽ TOP" -- NOCE/FRASSINO columns, same
+#     group-name mechanism already used by chair-shape's leg groups).
+_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO', 'TOP')
 # A NARROW, explicit, individually-confirmed set of OTHER real section
 # trigger words -- NOT parsed themselves (not whitelisted above), but
 # recognized as a block-boundary stop so a scan for a DIFFERENT

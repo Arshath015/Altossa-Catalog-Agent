@@ -402,10 +402,6 @@
       "status": "known_gap",
       "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
-    "Alicanto": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Alix": {
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
