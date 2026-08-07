@@ -110,7 +110,46 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # fabric-tier blocks) actually continues onto that page, before
     # BISHOP's heading starts partway down it.
     "RICHARD": (27, 28),
+    # Bonaldo (00_LISTINO-2026_ITALIA-italiano.pdf): "Roll walk-in closet"
+    # is the LAST entry in the alphabetical index (starts printed page
+    # 576) so it has no next-entry to bound it, and the auto-extension
+    # ("no next entry -> extend to end of document") swallowed 50 pages
+    # of completely unrelated back matter: page 579 is its own separate
+    # "ACCESSORI LETTO" mini-index (RETI/MATERASSI/GUANCIALI/BIANCHERIA/
+    # PIUMINI, pages 580-609ish -- not in the main alphabetical index at
+    # all), followed by a general "RIVESTIMENTO SUPPLEMENTARE" fabric-tier
+    # reference table (pages ~610-627) that applies broadly to DIVANI/
+    # LETTI, not specifically to Roll. Verified pages 576-578 are Roll's
+    # own real content (heading "ROLL walk-in closet" / "ROLL" on all 3),
+    # page 579 is unambiguously the ACCESSORI LETTO section divider.
+    "Roll walk-in closet": (576, 578),
 }
+
+# Bonaldo: products whose name appears in BOTH 00_LISTINO-2026 (main) and
+# BONALDO_INTEGRAZIONE (supplement) do NOT always mean the supplement is a
+# full replacement -- confirmed by hand-comparing all 6 name-overlaps
+# against real rendered pages (2026-08-07):
+#   - Arragan shelf / Arragan TV stand / Belloalto bed: byte-identical
+#     between the two documents -- doesn't matter which wins.
+#   - Nairobi / Belloalto: the integrazione version is a strict superset
+#     (Nairobi adds a "Nut brown" colorway; Belloalto matches element-for-
+#     element and additionally corrects 2 "Cuscini decorativi" column
+#     prices) -- safe to let it win, which --merge already does by default.
+#   - Flatiron table: the ONE real exception. The main catalog has SIX
+#     material-combination sub-tables (MONO MATERIAL-LEGNO in both
+#     rectangular 210/260/310 AND square 180/220, LEGNO-LACCATO,
+#     LEGNO-MARMO, VETRO-LEGNO, CERAMICA-LEGNO) across pages 113-115; the
+#     integrazione only reprints TWO of them (the square MONO MATERIAL --
+#     an exact duplicate, same codes/prices -- and VETRO-LEGNO, which adds
+#     one genuinely new row: "Cristallo: Glossy black", codes TC8M/TC8N/
+#     TC8P). Letting --merge's default "new run wins on name match" apply
+#     here would silently DELETE the 4 rectangular/marble/ceramic sub-
+#     tables that only exist in the main catalog. So: keep the main
+#     catalog's version (it's the more complete one), and separately note
+#     (see project memory) that the "Glossy black" row still needs adding
+#     by hand once the parser exists -- it's real, just not worth blocking
+#     the rest of the catalog extraction over one row.
+MERGE_KEEP_EXISTING = {"Flatiron table"}
 
 
 def slugify(name: str) -> str:
@@ -138,6 +177,142 @@ def pdftotext_page(pdf_path: str, page: int) -> str:
     # falls back to the system's default codepage (cp1252), which crashes
     # on accented Italian characters in the catalog text.
     return result.stdout.decode("utf-8", errors="replace")
+
+
+def pdftotext_page_raw(pdf_path: str, page: int) -> str:
+    """Same as pdftotext_page but WITHOUT -layout. Bonaldo's alphabetical
+    index is printed in a 2-column newspaper layout, and -layout actively
+    scrambles it (interleaves the two columns' names/numbers onto shared
+    visual lines with the wrong pairing) -- confirmed by direct A/B
+    comparison. The raw (stream-order) text instead comes out as a clean
+    "name, name, name... number, number, number..." run per index chunk,
+    which is what parse_index_bonaldo relies on."""
+    result = subprocess.run(
+        [PDFTOTEXT, "-enc", "UTF-8", "-f", str(page), "-l", str(page), pdf_path, "-"],
+        capture_output=True,
+    )
+    return result.stdout.decode("utf-8", errors="replace")
+
+
+# Bonaldo's index pages intersperse these section/navigation words (its
+# 7 main-catalog top-nav categories, plus the integrazione supplement's
+# own finer-grained ~13 categories) among the real product names -- both
+# sets unioned here since a name that isn't a real product in EITHER
+# document is safe to always skip.
+KNOWN_BONALDO_CATEGORIES = {
+    'ILLUMINAZIONE', 'COMPLEMENTI', 'TAVOLI', 'SEDIE', 'LETTI',
+    'POLTRONE & POUF', 'DIVANI', 'INDEX', 'INDICE ALFABETICO', 'A/Z',
+    'INDICE', 'INDICE GENERALE',
+    'SEDIE IMBOTTITE', 'TAVOLINI', 'SPECCHI', 'MENSOLE', 'PORTA TV',
+    'SCRITTOI', 'POLTRONE', 'CREDENZE', 'COMODINI', 'TAPPETI',
+    # The integrazione supplement's index opens with an "Informazioni
+    # generali" mini-TOC (Nuovi materiali/Piani in marmo/Portata massima
+    # -- reference/appendix pages, not real products). "Informazioni
+    # generali" itself has NO page number of its own (its 3 sub-items do),
+    # so leaving it in the name stream shifts every single name/number
+    # pairing after it by one position for the rest of the page -- caught
+    # by direct page-content verification, not by the name/number COUNT
+    # check (the counts came out equal by coincidence, masking the shift).
+    # The sub-items are skipped too since they're not real furniture
+    # products and would otherwise pollute catalog_index.json.
+    'INFORMAZIONI GENERALI', 'NUOVI MATERIALI', 'PIANI IN MARMO',
+    'PORTATA MASSIMA',
+}
+
+
+def parse_index_bonaldo(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
+    """Parse Bonaldo's alphabetical index: a flat A-Z list with NO dot
+    leaders and no "p." prefix -- just a name followed later by its own
+    bare page number, in the same relative order (confirmed via raw-text
+    inspection: a whole run of names is followed by a matching-length run
+    of their page numbers, batched anywhere from 1-at-a-time to ~40-at-a-
+    time depending on print-column layout, never out of order). Also
+    intersperses: single uppercase letters (alphabet-group markers, e.g.
+    "A", "B"), known category/nav words, and this page's own footer page
+    number (which must NOT be counted as a product's page number).
+    """
+    single_letter_re = re.compile(r"^[A-Z]$")
+    entries: list[tuple[str, int]] = []
+    for pg in index_pages:
+        text = pdftotext_page_raw(pdf_path, pg)
+        lines = [ln.strip() for ln in text.split("\n")]
+        names: list[str] = []
+        numbers: list[int] = []
+        first_name_seen = False
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if not line:
+                i += 1
+                continue
+            if line.upper() in KNOWN_BONALDO_CATEGORIES or single_letter_re.match(line):
+                i += 1
+                continue
+            if "BONALDO LISTINO" in line.upper():
+                # brand footer line; the bare page number that follows it
+                # (possibly after blank lines) is THIS page's own footer,
+                # not a product page
+                i += 1
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                if i < len(lines) and re.fullmatch(r"\d{1,4}", lines[i].strip()):
+                    i += 1
+                continue
+            if re.fullmatch(r"\d{1,4}", line):
+                if not first_name_seen:
+                    # a stray number before any real name (e.g. this
+                    # page's own header page-number) -- not a product
+                    i += 1
+                    continue
+                numbers.append(int(line))
+                i += 1
+                continue
+            names.append(line)
+            first_name_seen = True
+            i += 1
+        # Safety net: an unprefixed trailing footer number (this page's
+        # own number, with no "BONALDO Listino" line ahead of it) that
+        # still slipped past the checks above.
+        if len(numbers) == len(names) + 1 and numbers[-1] == pg:
+            numbers.pop()
+        if len(names) != len(numbers):
+            print(f"      WARNING: page {pg} -- {len(names)} name(s) but "
+                  f"{len(numbers)} number(s) found; zipping to the shorter "
+                  f"length, verify this page by hand: {names[len(numbers):] if len(names) > len(numbers) else numbers[len(names):]}")
+        entries.extend(zip(names, numbers))
+    seen = set()
+    unique = []
+    for name, pg in entries:
+        key = (name, pg)
+        if key not in seen:
+            seen.add(key)
+            unique.append((name, pg))
+    return unique  # NOT sorted by page -- this index is alphabetical, not page-ordered
+
+
+def build_bonaldo_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Bonaldo uses a single running page-number counter for the whole
+    document (confirmed: PDF page N carries printed page number N, sampled
+    every 50 pages end to end) -- but this still reads every page's real
+    footer rather than assuming identity, so any gap (an unnumbered
+    divider page, back matter) is caught instead of silently mismapping
+    everything after it. Footer is either a bare number or the full
+    "BONALDO Listino Prezzi Italia <edition> - EURO - IVA ESCLUSA  N" line.
+    """
+    page_map: dict[int, int] = {}
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        if not lines:
+            continue
+        last = lines[-1]
+        if re.fullmatch(r"\d{1,4}", last):
+            page_map[int(last)] = pg
+        elif "LISTINO" in last.upper() or "ESCLUSA" in last.upper():
+            m = re.search(r"(\d{1,4})\s*$", last)
+            if m:
+                page_map[int(m.group(1))] = pg
+    return page_map
 
 
 def parse_index(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
@@ -324,12 +499,16 @@ def main():
         help="PDF page range of the photographic index, e.g. 3-8",
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
-    ap.add_argument("--style", default="bolzan", choices=["bolzan", "cattelan"],
+    ap.add_argument("--style", default="bolzan", choices=["bolzan", "cattelan", "bonaldo"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
                           "'NAME .... N' index with un-indented category "
-                          "headers, single running-counter footer.")
+                          "headers, single running-counter footer. "
+                          "'bonaldo' = flat A-Z index (name-block then "
+                          "matching number-block, no dot leaders/prefix), "
+                          "single running-counter footer (verified 1:1 "
+                          "with PDF page index, not just assumed).")
     ap.add_argument("--merge", action="store_true",
                      help="Merge into an existing catalog_index.json instead "
                           "of overwriting it: entries from this run replace "
@@ -346,10 +525,16 @@ def main():
     index_pages = range(lo, hi + 1)
 
     print(f"[1/5] Parsing photographic index (PDF pages {lo}-{hi})...")
-    entries = (
-        parse_index_dot_leader(pdf_path, index_pages) if args.style == "cattelan"
-        else parse_index(pdf_path, index_pages)
-    )
+    if args.style == "cattelan":
+        entries = parse_index_dot_leader(pdf_path, index_pages)
+    elif args.style == "bonaldo":
+        entries = parse_index_bonaldo(pdf_path, index_pages)
+        # this index is alphabetical, NOT page-ordered -- compute_ranges
+        # below assumes sorted-by-page input like the other two styles'
+        # parsers already return, so sort explicitly here.
+        entries.sort(key=lambda x: x[1])
+    else:
+        entries = parse_index(pdf_path, index_pages)
     print(f"      -> found {len(entries)} products")
     if not entries:
         print("ERROR: no products found. Check --index-pages points at the "
@@ -361,6 +546,12 @@ def main():
     if args.style == "cattelan":
         page_map = build_offset_page_map(pdf_path, total_pages)
         page_fallback = build_offset_fallback(page_map)
+    elif args.style == "bonaldo":
+        page_map = build_bonaldo_page_map(pdf_path, total_pages)
+        # verified 1:1 identity mapping catalog-wide (see build_bonaldo_page_map's
+        # own docstring) -- any page missing from the read-footers pass falls
+        # back to identity rather than a formula.
+        page_fallback = lambda p: p
     else:
         page_map = build_printed_to_pdf_page_map(pdf_path, total_pages)
         page_fallback = printed_to_pdf_fallback
@@ -485,6 +676,17 @@ def main():
         existing = json.loads(catalog_path.read_text(encoding="utf-8"))
         new_names = {c["product_name"] for c in catalog}
         kept = [c for c in existing if c["product_name"] not in new_names]
+        # A hand-verified exception list (see MERGE_KEEP_EXISTING's own
+        # comment): for these specific product names, the EXISTING entry
+        # is more complete than this run's -- keep it and drop this run's
+        # duplicate instead of the normal "new run wins" behavior.
+        held_back = [c for c in existing if c["product_name"] in MERGE_KEEP_EXISTING]
+        if held_back:
+            print(f"\n[merge] Keeping the EXISTING entry (not this run's) for "
+                  f"{[c['product_name'] for c in held_back]} -- verified more "
+                  f"complete, see MERGE_KEEP_EXISTING's comment.")
+            kept += held_back
+            catalog = [c for c in catalog if c["product_name"] not in MERGE_KEEP_EXISTING]
         print(f"\n[merge] Existing catalog_index.json had {len(existing)} entries. "
               f"{len(existing) - len(kept)} superseded by this run's {len(catalog)} "
               f"entries (same product_name); {len(kept)} untouched entries kept.")
