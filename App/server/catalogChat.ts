@@ -1383,14 +1383,24 @@ export class CatalogChat {
       let tiedFamily: string[] = [];
       if (!matched) {
         let bestCountAtBest = 0;
+        // Every variant whose compact (whitespace/punctuation-stripped)
+        // suffix appears in the compact query -- collected rather than
+        // taking the first hit, since stripping whitespace erases real
+        // word boundaries: "Cuff hi" and "Cuff plus" both compact-match
+        // "cuff hi plus" (their suffixes "hi" and "plus" both appear in
+        // "...cuffhiplus"), same as the fuller "Cuff hi plus" itself
+        // (suffix "hi plus" -> "hiplus"). Confirmed real and not narrow to
+        // Cuff: the same word-subset shape recurs across many Bonaldo
+        // sofa-family products (Basket's "hi"/"plus"/"open" 3-way nesting,
+        // Aliante/Liam/Superhiro's "Terminale dx/sx" vs "Terminale
+        // angolare dx/sx", etc.).
+        const compactMatches: string[] = [];
         for (const v of distinctVariants) {
           const suffix = normalize(v).split(normalize(productName)).join('').trim();
           if (!suffix) continue;
           if (qStripped.includes(strip(suffix))) {
-            matchingVariant = v;
-            matched = true;
-            bestCountAtBest = 1;
-            break;
+            compactMatches.push(v);
+            continue;
           }
           const suffixWords = suffix.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
           const shared = suffixWords.filter(w => qWords.has(w)).length;
@@ -1404,7 +1414,21 @@ export class CatalogChat {
             tiedFamily = [v];
           }
         }
-        matched = bestCountAtBest === 1 && !!matchingVariant;
+        if (compactMatches.length > 0) {
+          // Prefer the LONGEST compact match -- it's the most complete
+          // one, accounting for the most of the query. A shorter sibling
+          // that also compact-matches is, by construction, a strict
+          // fragment of the longer one's own suffix.
+          compactMatches.sort((a, b) => {
+            const sa = strip(normalize(a).split(normalize(productName)).join('').trim());
+            const sb = strip(normalize(b).split(normalize(productName)).join('').trim());
+            return sb.length - sa.length;
+          });
+          matchingVariant = compactMatches[0];
+          matched = true;
+        } else {
+          matched = bestCountAtBest === 1 && !!matchingVariant;
+        }
       }
 
       // A tie (e.g. "struttura" alone matches all of Face's several
