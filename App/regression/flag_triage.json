@@ -478,10 +478,6 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Avant-Garde chair": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Bahia": {
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
@@ -907,10 +903,6 @@
       "note": "Product's printed page heading doesn't literally match the name in catalog_index.json. Root-caused individually (2026-08-07 cleanup pass, see bonaldo_index_and_structure memory) -- 21 of the original 26 are now fixed: general digit/mixed-case/'&'-character heading-detection bugs, 3 punctuation/font-quirk index_heading overrides (Innesti table/coffee table, Planet Big Planet, Salomé), and 3 confirmed duplicate-variant catalog_index entries removed entirely (Dune TV stand light/Olos mirror light/Salomé light -- their price data already lived fully inside their base sibling's own rows via model_variant/size; see DUPLICATE_VARIANT_ENTRIES in extract_catalog.py). Remaining 5, each needing individual page-image verification not yet done: Frinfri Wood/Nubo boiserie/Paddle TV stand light are suspected the SAME duplicate-variant pattern, blocked on confirming it (their base sibling's own price table is an unimplemented 4th 'PIANO/BASE material combination' shape, so the base product doesn't parse yet either to check against); Arragan night collection's printed heading is a completely different name (\"ARRAGAN BEDSIDE TABLE AND DRAWER CHEST\"); Peanut B.X. shares its first page with sibling \"Peanut B.\" across an 18-page span, uninvestigated."
     },
     "Olos": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Olos Office": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },

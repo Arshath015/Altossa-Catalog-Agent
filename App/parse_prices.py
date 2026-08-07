@@ -584,6 +584,23 @@ BONALDO_TIER_ROW_NOCODE_RE = re.compile(
 # NOT confirmed to follow this same simple grammar -- Roll's MONTANTE in
 # particular looks like a genuinely different multi-named-column shape).
 _BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE')
+# The classic 2-axis header's trailing word was hardcoded to "GAMBE" alone,
+# but that's just the most common of several real words the catalog uses
+# for this same 2nd-axis-of-materials grammar (RIVESTIMENTO tier rows x a
+# 2nd material axis, each its own CODICE+price, printed as a literal
+# "RIVESTIMENTO ... CODICE ... <WORD> ... CODICE ... <WORD>" header line).
+# Found 2026-08-07 by scanning every product's own heading-scoped text
+# (not a naive whole-file grep, which double-counts words bleeding in from
+# a NEIGHBORING product sharing the same physical page) for this exact
+# repeated-word shape. Each word individually verified against a real
+# rendered page image before being added here, same bar as
+# _BONALDO_SIMPLE_HEADER_WORDS above:
+#   - GAMBE: the original baseline (AGEA/ALLEY/ARTIKA/MASK/MIDA etc.)
+#   - ASTA: Avant-Garde chair p.44 -- same grammar, "leg" is a rod/pole
+#     ("asta") rather than a "gamba" for this product's design.
+#   - SCHIENALE: Olos Office p.64 -- same grammar, 2nd axis is backrest
+#     material (Frassino/Noce) rather than leg material.
+_BONALDO_CLASSIC_2AXIS_WORDS = ('GAMBE', 'ASTA', 'SCHIENALE')
 # Anchored to the WHOLE line (name-like text, 2+ spaces, trigger word, end
 # of line) -- NOT just "trigger word present anywhere" -- because several
 # of these words (esp. STRUTTURA/BASE) also appear constantly as numbered
@@ -601,8 +618,11 @@ _BONALDO_SIMPLE_HEADER_RE_TEXT = (
     r'^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 \'"-]*\s{2,}(?:'
     + '|'.join(_BONALDO_SIMPLE_HEADER_WORDS) + r')\s*$'
 )
+_BONALDO_CLASSIC_2AXIS_RE_TEXT = (
+    r'RIVESTIMENTO.*CODICE.*(?:' + '|'.join(_BONALDO_CLASSIC_2AXIS_WORDS) + r')'
+)
 BONALDO_CHAIR_HEADER_RE = re.compile(
-    r'RIVESTIMENTO.*CODICE.*GAMBE|' + _BONALDO_SIMPLE_HEADER_RE_TEXT, re.IGNORECASE
+    _BONALDO_CLASSIC_2AXIS_RE_TEXT + '|' + _BONALDO_SIMPLE_HEADER_RE_TEXT, re.IGNORECASE
 )
 
 
@@ -611,7 +631,7 @@ def _bonaldo_header_trigger_word(line):
     (used as the dynamic tier_label instead of hardcoding "Rivestimento" --
     the classic chair shape and the simple single-list shape use different
     real source-PDF words, e.g. Dune's is "Ante" not "Rivestimento")."""
-    if re.search(r'RIVESTIMENTO.*CODICE.*GAMBE', line, re.IGNORECASE):
+    if re.search(_BONALDO_CLASSIC_2AXIS_RE_TEXT, line, re.IGNORECASE):
         return 'Rivestimento'
     m = re.match(_BONALDO_SIMPLE_HEADER_RE_TEXT, line, re.IGNORECASE)
     if m:
