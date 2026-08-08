@@ -528,11 +528,39 @@ export class CatalogChat {
    * and the matching lamp") -- confirmed intentional, not an oversight:
    * making that clause-detection any smarter would mean fuzzy-matching
    * it against the whole catalog, exactly the false-positive risk
-   * (GLOBE/glove, PRIVE/price) already rejected above. */
+   * (GLOBE/glove, PRIVE/price) already rejected above.
+   *
+   * A clause also "belongs" to the product if its words are a subset of
+   * one of THIS product's own real fabric_tier values -- e.g. "aspen
+   * glossy grey and brown" splits into ["aspen glossy grey", "brown"];
+   * "brown" doesn't contain "aspen", but IS itself part of a real tier
+   * value ("Glossy brown") this specific product actually has. Without
+   * this, "brown" was wrongly treated as a reference to some OTHER,
+   * unresolved product and silently dropped -- doubly wrong, since it's
+   * not a product name at all, and it's a real, valid finish. This stays
+   * on the safe side of the GLOBE/glove risk above: checking against a
+   * small, exact, per-product value list (typically 5-15 real values,
+   * pulled straight from this.prices), never guessing a product name
+   * from ordinary vocabulary. Token-SET containment (not a contiguous-
+   * phrase check) for the same reason as every other containment check
+   * in this file -- "brown" is one word, "Glossy brown" is two. */
   private excludeUnrelatedAndClause(rawQuery: string, productName: string): { scopedQuery: string; excludedClause: string | null } {
     const segments = rawQuery.split(/\band\b/gi).map(s => s.trim()).filter(Boolean);
     if (segments.length <= 1) return { scopedQuery: rawQuery, excludedClause: null };
-    const own = segments.filter(seg => containsWholeWord(normalize(seg), normalize(productName)));
+    const realTierValues = [...new Set(
+      this.prices.filter(r => r.product_name === productName).map(r => r.fabric_tier).filter((t): t is string => !!t)
+    )];
+    const segTokens = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
+    const belongsToProduct = (seg: string) => {
+      if (containsWholeWord(normalize(seg), normalize(productName))) return true;
+      const tokens = segTokens(seg);
+      if (tokens.length === 0) return false;
+      return realTierValues.some(t => {
+        const tierTokens = segTokens(t);
+        return tokens.every(tok => tierTokens.includes(tok));
+      });
+    };
+    const own = segments.filter(belongsToProduct);
     if (own.length > 0 && own.length < segments.length) {
       const excluded = segments.filter(seg => !own.includes(seg));
       return { scopedQuery: own.join(' '), excludedClause: excluded.join(' and ') };
@@ -1349,7 +1377,20 @@ export class CatalogChat {
       const nv = normalize(v);
       if (nv) queryMinusProductName = queryMinusProductName.replace(new RegExp(escapeRegex(nv), 'gi'), ' ');
     }
-    const rawTierHits = realTierValues.filter(t => containsWholeWord(queryMinusProductName, normalize(t)));
+    // Token-SET containment (every word of the tier value appears
+    // somewhere in the query, any order) rather than a contiguous-phrase
+    // check -- same root cause and same fix shape as every other
+    // containment check in this file. Confirmed real: "aspen glossy grey
+    // and brown" (after excludeUnrelatedAndClause now correctly keeps
+    // "brown" in scope) still doesn't contain "glossy brown" as a
+    // contiguous phrase -- "grey and" sits in between -- so a real,
+    // valid, explicitly-requested tier was silently dropped even once
+    // the clause-exclusion half of this bug was fixed.
+    const queryTokens = new Set(queryMinusProductName.split(/[^a-z0-9]+/).filter(Boolean));
+    const rawTierHits = realTierValues.filter(t => {
+      const tierTokens = normalize(t).split(/\s+/).filter(Boolean);
+      return tierTokens.length > 0 && tierTokens.every(tok => queryTokens.has(tok));
+    });
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
 
     // Tracks whether a specific fabric_tier/colore filter actually
