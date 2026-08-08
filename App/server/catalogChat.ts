@@ -271,6 +271,13 @@ const RISKY_SIZE_CODE_WORDS = new Set([
   'long', 'than', 'more', 'much', 'like', 'just', 'also', 'this', 'that',
   'with', 'from', 'have', 'will', 'been', 'were', 'then', 'when', 'all',
   'for', 'give', 'price', 'prices',
+  // Confirmation/politeness words -- added for the "give all"/"yes, give
+  // all" follow-up fallback in answer() below, which reuses this same
+  // list to detect a content-free continuation message. Checked against
+  // every real size value in all 3 brands first -- no collisions found,
+  // unlike the words above this comment (which were each added because a
+  // real collision was found).
+  'yes', 'yeah', 'yep', 'ok', 'okay', 'sure', 'please',
 ]);
 
 /** Pull the meaningful non-numeric "code"/"qualifier" words out of a real
@@ -819,7 +826,7 @@ export class CatalogChat {
    * exactly how to present it, including whether to show a screenshot and
    * whether to flag ambiguity.
    */
-  answer(query: string, brand: string, lastModelVariant: string | null = null): ChatResult {
+  answer(query: string, brand: string, lastModelVariant: string | null = null, lastProduct: string | null = null): ChatResult {
     // Deterministic multi-product backstop: run BEFORE the single-product
     // matcher below, so a message literally naming 2+ real products (e.g.
     // "italia pelle and italia couture pelle") is combined into one
@@ -837,6 +844,23 @@ export class CatalogChat {
     const matches = this.matchProducts(query);
 
     if (matches.length === 0) {
+      // Content-free follow-up fallback (e.g. "give all", "yes, give
+      // all") -- the LLM path already handles this via its lastProduct
+      // anchor, but that anchor is never threaded into this deterministic
+      // fallback at all, so a Groq outage turned every such follow-up
+      // into a flat "couldn't find a product" (confirmed live, reproduced
+      // deterministically, identical across all 3 brands -- not narrow to
+      // Bonaldo). Only fires when the query has NOTHING left after
+      // stripping ordinary filler/confirmation words (RISKY_SIZE_CODE_WORDS)
+      // -- a query naming something real-but-unmatched (e.g. "the Vexalon
+      // armchair") still has real content words left over and correctly
+      // falls through to the plain no-match message below, same as today.
+      const queryWords = normalize(query).split(/[^a-z0-9]+/).filter(Boolean);
+      const isContentFree = queryWords.length > 0 && queryWords.every(w => RISKY_SIZE_CODE_WORDS.has(w));
+      if (isContentFree && lastProduct && this.productNames.includes(lastProduct)) {
+        const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+        return this.lookupForProduct(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
+      }
       return {
         status: 'no_product_match',
         message: "I couldn't find a product matching that in the catalog. Could you check the spelling or try the product's full name?",

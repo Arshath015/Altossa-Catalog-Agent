@@ -136,7 +136,7 @@ router.post('/chat', async (req: Request, res: Response) => {
 
   const result: ChatResult = intent
     ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list)
-    : catalogChat.answer(message, brand, lastModelVariant || null);
+    : catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct);
 
   // Full raw request/response capture for every MULTI-PRODUCT resolution
   // specifically -- this is the exact class of call where cross-product
