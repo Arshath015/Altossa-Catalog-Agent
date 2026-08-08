@@ -705,6 +705,14 @@ _BONALDO_SIMPLE_HEADER_RE_TEXT = (
     # ("118''") in size labels -- the plain ASCII \' alone wasn't enough.
     r'^\s*(?!\d+\.)[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 \'"’-]*\s{2,}('
     + '|'.join(_BONALDO_SIMPLE_HEADER_WORDS) + r')'
+    # Optional single-spaced Italian "E <word>" continuation ("and X") as
+    # PART OF the same heading phrase -- confirmed real, found 2026-08-07:
+    # Spy's real header is "TOP E FIANCHI" ("TOP AND SIDES", p.21), single
+    # spaces throughout, not the 2+-space-separated nav-badge shape below.
+    # Deliberately narrow: exactly ONE word after "E", not a whole phrase,
+    # so this doesn't swallow an unrelated longer descriptive line that
+    # happens to contain "E" as a standalone word further along.
+    r'(?:\s+E\s+[A-Za-zÀ-ÿ]+)?'
     r'(?:\s{2,}(?:' + '|'.join(re.escape(w) for w in _BONALDO_NON_HEADING_WORDS) + r'))?\s*$'
 )
 _BONALDO_CLASSIC_2AXIS_RE_TEXT = (
