@@ -278,6 +278,13 @@ const RISKY_SIZE_CODE_WORDS = new Set([
   // unlike the words above this comment (which were each added because a
   // real collision was found).
   'yes', 'yeah', 'yep', 'ok', 'okay', 'sure', 'please',
+  // Found via the Gap 5 fuzzy-shortlist scope scan: "full" (distance 1
+  // from real product "Bull") and "list" (distance 1 from "Lift" inside
+  // "AVIATOR Keramik Lift") were the only 2 remaining trigger words after
+  // the scaled-distance fix, out of 14 realistic follow-up phrasings
+  // tested across all 3 brands. Also checked for real size-value
+  // collisions first -- none found.
+  'full', 'list',
 ]);
 
 /** Pull the meaningful non-numeric "code"/"qualifier" words out of a real
@@ -728,30 +735,53 @@ export class CatalogChat {
     return dp[a.length][b.length];
   }
 
-  /** Finds real product names with a word closely matching (edit distance
-   * <= maxDistance) a word in the query -- catches typos the exact/
-   * whole-word matchers in `matchProducts`/`detectNamedProductsInText`
+  /** Finds real product names with a word closely matching (scaled edit
+   * distance -- see below) a word in the query -- catches typos the
+   * exact/whole-word matchers in `matchProducts`/`detectNamedProductsInText`
    * miss entirely (transposed letters, a doubled or dropped letter).
    * Confirmed sufficient for every typo pattern seen this session:
    * "wlima"->"wilma" (distance 2, a transposition), "kaay"->"kay"
    * (distance 1, doubled letter), "bishp"->"bishop" and "hystrx"->
    * "hystrix" and "agata"->"agatha" (distance 1, a dropped letter each).
-   * Sorted closest-first. */
-  private fuzzyMatchProducts(query: string, maxDistance = 2): string[] {
-    const qWords = normalize(query).split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+   * Sorted closest-first.
+   *
+   * Two safeguards, both added after a confirmed real bug (found live-
+   * testing a "give all" follow-up after a Bonaldo product was already
+   * resolved): a flat distance-2 threshold is far too loose for SHORT
+   * words -- "all" is distance 2 from "and" (2 of 3 letters differ,
+   * barely a "typo"), and "and" is literally part of "Cuff bench and
+   * pouf"'s own name, so an ordinary conversational word like "all" was
+   * spuriously matching catalog-wide product-name fragments and
+   * poisoning the LLM's shortlist with candidates that had nothing to do
+   * with the actual query. Fixed with:
+   * (a) excluding RISKY_SIZE_CODE_WORDS from the query-word pool
+   *     entirely -- same pattern as the existing tier-phrase stripping
+   *     just below (stripKnownTierPhrases), just for common English
+   *     words instead of real tier values;
+   * (b) scaling the allowed distance DOWN for short words (<=4 letters
+   *     get distance<=1, only 5+ letter words get distance<=2) --
+   *     verified this doesn't regress any of the 5 confirmed typo
+   *     fixtures above: "wlima" (5) dist 2, "kaay" (4) dist 1, "bishp"
+   *     (5) dist 1, "hystrx" (6) dist 1, "agata" (5) dist 1 -- all
+   *     within their own scaled threshold. */
+  private fuzzyMatchProducts(query: string): string[] {
+    const qWords = normalize(query)
+      .split(/[^a-z0-9]+/)
+      .filter(w => w.length >= 3 && !RISKY_SIZE_CODE_WORDS.has(w));
     if (qWords.length === 0) return [];
     const results: { name: string; dist: number }[] = [];
     for (const name of this.productNames) {
       const nameWords = normalize(name).split(/[^a-z0-9]+/).filter(Boolean);
       let best = Infinity;
       for (const qw of qWords) {
+        const qMaxDistance = qw.length <= 4 ? 1 : 2;
         for (const nw of nameWords) {
-          if (Math.abs(qw.length - nw.length) > maxDistance) continue;
+          if (Math.abs(qw.length - nw.length) > qMaxDistance) continue;
           const d = this.levenshtein(qw, nw);
-          if (d < best) best = d;
+          if (d <= qMaxDistance && d < best) best = d;
         }
       }
-      if (best <= maxDistance) results.push({ name, dist: best });
+      if (best !== Infinity) results.push({ name, dist: best });
     }
     return results.sort((a, b) => a.dist - b.dist).map(r => r.name);
   }
