@@ -406,13 +406,9 @@
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
-    "Alpilles": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Amour": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Anemone": {
       "status": "known_gap",
@@ -468,7 +464,7 @@
     },
     "Belt & Cross": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Bernois": {
       "status": "known_gap",
@@ -504,7 +500,7 @@
     },
     "Boolean armchair": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 4 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Brik": {
       "status": "known_gap",
@@ -512,11 +508,11 @@
     },
     "Bruno": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 6 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Bull": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Canova": {
       "status": "known_gap",
@@ -526,21 +522,13 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Clessidra": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Colibrì": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Colibrì soft": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Cross lounge chair": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Cuff": {
       "status": "known_gap",
@@ -548,7 +536,7 @@
     },
     "Cuff bench and pouf": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Dakar": {
       "status": "known_gap",
@@ -560,7 +548,7 @@
     },
     "Doge": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 3 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Dogma": {
       "status": "known_gap",
@@ -588,7 +576,7 @@
     },
     "Ellison": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Ever More": {
       "status": "known_gap",
@@ -632,7 +620,7 @@
     },
     "Globalove": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Gocce": {
       "status": "known_gap",
@@ -682,17 +670,13 @@
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
-    "Kitai": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Kriss": {
       "status": "known_gap",
       "note": "No CODICE row found in the sofa-shape block before the next header. Most instances of this flag match the documented 'numbered cushion/pillow configuration' sub-block pattern (columns labeled 1-6, e.g. codes like 'BONAMOUR•1', no CODICE row label at all) -- a genuinely different structural variant, correctly flagged rather than force-fit. Not individually re-verified per product. Zero rows returned, not silently wrong. See bonaldo_index_and_structure memory."
     },
     "Kriss bench": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Kumo": {
       "status": "known_gap",
@@ -724,7 +708,7 @@
     },
     "Lovy armchair": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 4 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Luigio": {
       "status": "known_gap",
@@ -770,21 +754,17 @@
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
-    "Neuilly lounge": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
     "Neuilly too": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
     "Nikos": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Noor lounge": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Nubo": {
       "status": "known_gap",
@@ -796,7 +776,7 @@
     },
     "Olos": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Olos bed": {
       "status": "known_gap",
@@ -808,7 +788,7 @@
     },
     "Olos bergère": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Olos mirror": {
       "status": "known_gap",
@@ -816,7 +796,7 @@
     },
     "Olos pouf": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 3 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "One Console": {
       "status": "known_gap",
@@ -896,7 +876,7 @@
     },
     "Roger": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Roll walk-in closet": {
       "status": "known_gap",
@@ -908,17 +888,13 @@
     },
     "Saddle armchair": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Salomé": {
       "status": "known_gap",
       "note": "Chair-shape row's leg-material group could not be confidently matched (declared group count vs. code/price pairs found don't line up) -- skipped rather than guessing which group a price belongs to. Zero rows returned for the ambiguous row only (other rows for this product may still be parsed correctly), not silently wrong. (Also hit: linewrap_price_dropped.)"
     },
     "Sasso": {
-      "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
-    },
-    "Sleek": {
       "status": "known_gap",
       "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
     },
@@ -948,7 +924,7 @@
     },
     "Tirella": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 3 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Tiziano": {
       "status": "known_gap",
@@ -964,7 +940,7 @@
     },
     "Youpi lounge": {
       "status": "known_gap",
-      "note": "Price table on this product's page doesn't match any of the 3 known Bonaldo shapes (chair/table/sofa) -- parser correctly declines to guess and returns zero rows. Not yet individually root-caused; needs a dedicated parser path or manual transcription. See bonaldo_index_and_structure memory."
+      "note": "Fixed 2026-08-08 (RIVESTIMENTO named-column shape -- Amour/Ellison/Bull/Colibri soft/Nikos family, see bonaldo_index_and_structure memory): the price table now parses correctly, but 2 row-level flag(s) remain from a separate, narrower, already-documented issue -- a tier's price gets pushed onto its own physical line during -layout text reconstruction, separated from its label (same class as Mistral's pre-existing Bronzo-row gap). Parser correctly skips these rather than guessing; not the original \"unhandled shape\" gap."
     },
     "Bodo": {
       "status": "known_gap",

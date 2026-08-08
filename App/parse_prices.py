@@ -618,7 +618,16 @@ BONALDO_TIER_ROW_NOCODE_RE = re.compile(
 #     allowing a leading DIGIT (distinguished from a numbered-callout
 #     false positive by checking for an immediately-following period) and
 #     the U+2019 curly-apostrophe inch mark these labels use.
-_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO', 'TOP', 'COLORE')
+#   - RIVESTIMENTO: added 2026-08-08, visually confirmed on Roger p.262
+#     ("Roger  RIVESTIMENTO", nothing else on the line -- a bare-header,
+#     0-column variant of this same grammar: subheader "Roger" repeats
+#     the product name, then a normal coded row follows directly, same
+#     as Dune/Obel's 0-group case). Deliberately narrow: RIVESTIMENTO
+#     headers that DO have trailing named columns (Amour/Ellison/Bull --
+#     see _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE below) don't match this
+#     end-anchored pattern at all (too much trailing text), so there's no
+#     overlap between the two mechanisms.
+_BONALDO_SIMPLE_HEADER_WORDS = ('ANTE', 'STRUTTURA', 'PARALUME', 'BASE', 'CORNICE', 'PIANO', 'RIPIANO', 'CASSETTO', 'TOP', 'COLORE', 'RIVESTIMENTO')
 # A NARROW, explicit, individually-confirmed set of OTHER real section
 # trigger words -- NOT parsed themselves (not whitelisted above), but
 # recognized as a block-boundary stop so a scan for a DIFFERENT
@@ -718,9 +727,79 @@ _BONALDO_SIMPLE_HEADER_RE_TEXT = (
 _BONALDO_CLASSIC_2AXIS_RE_TEXT = (
     r'RIVESTIMENTO.*CODICE.*(?:' + '|'.join(_BONALDO_CLASSIC_2AXIS_WORDS) + r')'
 )
-BONALDO_CHAIR_HEADER_RE = re.compile(
-    _BONALDO_CLASSIC_2AXIS_RE_TEXT + '|' + _BONALDO_SIMPLE_HEADER_RE_TEXT, re.IGNORECASE
+# A 3rd RIVESTIMENTO variant, structurally different from both above:
+# "<name>  RIVESTIMENTO  <COLUMN1>  [<COLUMN2>]" -- 1-3 EXPLICIT named
+# columns (no GAMBE/ASTA/SCHIENALE 2nd axis at all), each with its own
+# CODE declared ONCE on a dedicated "CODICE ..." line right after the
+# header (never repeated per tier row -- every row below is price-only).
+# Confirmed via 6 individually-verified real products (2026-08-08),
+# surveyed before writing any code: Amour p.44/Ellison p.45 -- ONE
+# implicit column named after the product itself; Bull p.451 -- 2
+# EXPLICIT material-choice columns (NOCE/ROVERE); Colibrì soft p.453/
+# Nikos p.464 -- 2 explicit variant/accessory columns (COLIBRÌ/FOOTREST,
+# NIKOS/CUSCINO). Deliberately capped at 3 columns (none of the 6
+# verified products needs more) rather than open-ended, to keep this from
+# accidentally swallowing an unrelated longer line.
+#
+# Each column NAME UNIT may itself be 1-2 words separated by a SINGLE
+# space (not the 2+ spaces that separate DIFFERENT columns) -- confirmed
+# needed by Nikos's own 2nd page (p.465, same catalog_index entry as
+# p.464): its header is "RIVESTIMENTO  NIKOS HI  FOOTREST", a genuinely
+# different "Nikos Hi" high-back model_variant, not a repeat of p.464's
+# plain "NIKOS"/"CUSCINO" columns. Without this, "NIKOS HI" (1 space)
+# wasn't recognized as a column name at all, so this 2nd header wasn't
+# seen as a new block boundary -- its data rows were silently absorbed
+# into the FIRST block under the WRONG "NIKOS"/"CUSCINO" labels instead
+# of their own (found via the real page image, not assumed).
+_BONALDO_RIVESTIMENTO_NAME_UNIT = r'[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\'’]*(?:\s[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\'’]*)?'
+# Excludes CODICE/GAMBE/ASTA/SCHIENALE from ever being read as a column
+# name -- confirmed real regression, found by diffing the full-catalog
+# parse before trusting this change: several classic 2-axis products'
+# OWN header lines happen to have simple single-word group names (e.g.
+# "...RIVESTIMENTO  CODICE  GAMBE"), which otherwise looked exactly like
+# 2 valid "column name" units to this pattern too, hijacking them away
+# from the classic parsing path entirely (Agea/Artika/Itala/Mask/Mida/
+# Joy/Ketch/By/Pil/Noor/Venere/Youpi and their "too"/office siblings all
+# dropped to 0 or partial rows before this exclusion was added). A
+# genuine named-column header (Amour/Ellison/Bull/Colibrì soft/Nikos)
+# never has CODICE on the SAME line as the header -- it's always on its
+# own dedicated line below -- so this exclusion costs nothing real.
+_BONALDO_RIVESTIMENTO_NOT_CLASSIC_LOOKAHEAD = r'(?!.*\b(?:CODICE|GAMBE|ASTA|SCHIENALE)\b)'
+_BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE_TEXT = (
+    r'^\s*(?!\d+\.)[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 \'"’-]*\s{2,}RIVESTIMENTO\s{2,}'
+    + _BONALDO_RIVESTIMENTO_NOT_CLASSIC_LOOKAHEAD
+    + _BONALDO_RIVESTIMENTO_NAME_UNIT + r'(?:\s{2,}' + _BONALDO_RIVESTIMENTO_NAME_UNIT + r'){0,2}\s*$'
 )
+_BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE = re.compile(
+    r'^\s*(?!\d+\.)[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 \'"’-]*\s{2,}RIVESTIMENTO\s{2,}'
+    + _BONALDO_RIVESTIMENTO_NOT_CLASSIC_LOOKAHEAD
+    + r'(' + _BONALDO_RIVESTIMENTO_NAME_UNIT + r'(?:\s{2,}' + _BONALDO_RIVESTIMENTO_NAME_UNIT + r'){0,2})\s*$',
+    re.IGNORECASE
+)
+# The dedicated code-declaration line for the shape above -- e.g.
+# "CODICE   P34Ø" (1 column) or "CODICE   F524   F525" (2 columns).
+# Reuses _BONALDO_CODE (the same per-cell code pattern already proven for
+# every other Bonaldo shape) rather than inventing a new one.
+_BONALDO_CODICE_LINE_RE = re.compile(
+    rf'^\s*CODICE\s{{2,}}({_BONALDO_CODE})(?:\s{{2,}}({_BONALDO_CODE}))?(?:\s{{2,}}({_BONALDO_CODE}))?\s*$',
+    re.IGNORECASE
+)
+BONALDO_CHAIR_HEADER_RE = re.compile(
+    _BONALDO_CLASSIC_2AXIS_RE_TEXT + '|' + _BONALDO_SIMPLE_HEADER_RE_TEXT
+    + '|' + _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE_TEXT,
+    re.IGNORECASE
+)
+
+
+def _bonaldo_named_columns(line):
+    """Returns the list of named RIVESTIMENTO columns from a header line
+    like 'Bull  RIVESTIMENTO  NOCE  ROVERE' (see
+    _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE_TEXT above), or None if the
+    line doesn't match this shape."""
+    m = _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE.match(line)
+    if not m:
+        return None
+    return re.split(r'\s{2,}', m.group(1).strip())
 
 
 def _bonaldo_header_trigger_word(line):
@@ -729,6 +808,8 @@ def _bonaldo_header_trigger_word(line):
     the classic chair shape and the simple single-list shape use different
     real source-PDF words, e.g. Dune's is "Ante" not "Rivestimento")."""
     if re.search(_BONALDO_CLASSIC_2AXIS_RE_TEXT, line, re.IGNORECASE):
+        return 'Rivestimento'
+    if _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE.match(line):
         return 'Rivestimento'
     m = re.match(_BONALDO_SIMPLE_HEADER_RE_TEXT, line, re.IGNORECASE)
     if m:
@@ -897,59 +978,94 @@ def _parse_bonaldo_chair_block(lines, i, seg_end, page_of_line, product_name, br
     -- that's what distinguishes "another sub-variant of this table" from
     unrelated following content) and, if so, keeps going.
     """
-    j = i + 1
-    while j < seg_end and (not lines[j].strip() or _bonaldo_is_badge_line(lines[j])):
-        j += 1
-    if j >= seg_end:
-        flags.append((page_of_line[i], product_name,
-                       f"chair-shape header near line {i} has no sub-header line "
-                       f"(size/leg-group names) before end of block -- skipped"))
-        return [], j
+    named_columns = _bonaldo_named_columns(lines[i])
+    if named_columns is not None:
+        # RIVESTIMENTO header with 1-3 EXPLICIT named columns and no
+        # GAMBE/ASTA/SCHIENALE 2nd axis at all -- see
+        # _BONALDO_RIVESTIMENTO_NAMED_COLUMNS_RE_TEXT's own doc comment
+        # for the 5 real products this was verified against. Unlike the
+        # classic shape, each column's CODE is declared ONCE on its own
+        # dedicated "CODICE ..." line right after the header (never
+        # repeated per tier row) -- every row below is price-only, so
+        # last_codes is seeded from that line up front instead of from a
+        # first coded row.
+        j = i + 1
+        while j < seg_end and (not lines[j].strip() or _bonaldo_is_badge_line(lines[j])):
+            j += 1
+        codice_match = _BONALDO_CODICE_LINE_RE.match(lines[j]) if j < seg_end else None
+        if not codice_match:
+            flags.append((page_of_line[i], product_name,
+                           f"RIVESTIMENTO named-column header near line {i} has no CODICE line "
+                           f"declaring a code for each column -- skipped rather than guessed"))
+            return [], j
+        codes = [c for c in codice_match.groups() if c is not None]
+        if len(codes) != len(named_columns):
+            flags.append((page_of_line[i], product_name,
+                           f"RIVESTIMENTO named-column header near line {i} declares "
+                           f"{len(named_columns)} column(s) but its CODICE line near line {j} has "
+                           f"{len(codes)} code(s) -- skipped rather than guessing which code "
+                           f"belongs to which column"))
+            return [], j + 1
+        current_size = product_name
+        group_names = named_columns
+        effective_groups = named_columns
+        trigger_word = 'Rivestimento'
+        last_codes = codes
+        k = j + 1
+    else:
+        j = i + 1
+        while j < seg_end and (not lines[j].strip() or _bonaldo_is_badge_line(lines[j])):
+            j += 1
+        if j >= seg_end:
+            flags.append((page_of_line[i], product_name,
+                           f"chair-shape header near line {i} has no sub-header line "
+                           f"(size/leg-group names) before end of block -- skipped"))
+            return [], j
 
-    current_size, group_names = _bonaldo_subheader_group_names(lines[j])
-    if current_size is None:
-        flags.append((page_of_line[i], product_name,
-                       f"chair-shape sub-header near line {j} ('{lines[j].strip()}') has no "
-                       f"size/model name -- skipped rather than guessed"))
-        return [], j + 1
-    # The REPEAT-detection path below (_bonaldo_match_subheader) already
-    # guards against a material-category line ("Legno impiallacciato",
-    # "Cuoio") being wrongly treated as a fresh sub-variant name, by
-    # requiring it to start with product_name -- but this INITIAL search
-    # had no equivalent guard, so a block whose first real content line
-    # (after the header) is a material category instead of a genuine
-    # repeat-name line got that category's own name as current_size.
-    # Confirmed real: Scriba's RIPIANO block (p.191) goes straight from
-    # its header line to a bare "Cuoio" category line with no intervening
-    # "Scriba"/"Scriba ripiano" repeat line at all, so every row's `size`
-    # came out "Cuoio" instead of the real product name -- values (code/
-    # price) were still correct, only this display label was wrong. Falls
-    # back to the header line's OWN leading name text (guaranteed
-    # product-related, since it's part of what matched this header in the
-    # first place) whenever the lookahead candidate doesn't start with
-    # product_name. Found 2026-08-07 while individually verifying RIPIANO.
-    if not current_size.upper().startswith(product_name.strip().upper()):
-        header_name = re.split(r'\s{2,}', lines[i].strip())[0].strip()
-        if header_name.upper().startswith(product_name.strip().upper()):
-            current_size = header_name
-    # Zero groups is a real, verified shape (Dune/Obel/Mistral/Camillo-style
-    # "simple list" products -- a single finish list with no leg/material
-    # dimension at all, unlike chairs' RIVESTIMENTO x GAMBE combinations).
-    # Substitute one implicit unnamed group so the row-count comparisons
-    # and zip() below work the same way for 0 and 1+ declared groups,
-    # without a separate code path -- model_variant just comes out None.
-    effective_groups = group_names if group_names else [None]
-    trigger_word = _bonaldo_header_trigger_word(lines[i]) or 'Rivestimento'
+        current_size, group_names = _bonaldo_subheader_group_names(lines[j])
+        if current_size is None:
+            flags.append((page_of_line[i], product_name,
+                           f"chair-shape sub-header near line {j} ('{lines[j].strip()}') has no "
+                           f"size/model name -- skipped rather than guessed"))
+            return [], j + 1
+        # The REPEAT-detection path below (_bonaldo_match_subheader) already
+        # guards against a material-category line ("Legno impiallacciato",
+        # "Cuoio") being wrongly treated as a fresh sub-variant name, by
+        # requiring it to start with product_name -- but this INITIAL search
+        # had no equivalent guard, so a block whose first real content line
+        # (after the header) is a material category instead of a genuine
+        # repeat-name line got that category's own name as current_size.
+        # Confirmed real: Scriba's RIPIANO block (p.191) goes straight from
+        # its header line to a bare "Cuoio" category line with no intervening
+        # "Scriba"/"Scriba ripiano" repeat line at all, so every row's `size`
+        # came out "Cuoio" instead of the real product name -- values (code/
+        # price) were still correct, only this display label was wrong. Falls
+        # back to the header line's OWN leading name text (guaranteed
+        # product-related, since it's part of what matched this header in the
+        # first place) whenever the lookahead candidate doesn't start with
+        # product_name. Found 2026-08-07 while individually verifying RIPIANO.
+        if not current_size.upper().startswith(product_name.strip().upper()):
+            header_name = re.split(r'\s{2,}', lines[i].strip())[0].strip()
+            if header_name.upper().startswith(product_name.strip().upper()):
+                current_size = header_name
+        # Zero groups is a real, verified shape (Dune/Obel/Mistral/Camillo-style
+        # "simple list" products -- a single finish list with no leg/material
+        # dimension at all, unlike chairs' RIVESTIMENTO x GAMBE combinations).
+        # Substitute one implicit unnamed group so the row-count comparisons
+        # and zip() below work the same way for 0 and 1+ declared groups,
+        # without a separate code path -- model_variant just comes out None.
+        effective_groups = group_names if group_names else [None]
+        trigger_word = _bonaldo_header_trigger_word(lines[i]) or 'Rivestimento'
+        # Tracks the most recently seen CODICE per group/column position, for
+        # rows that omit a repeated code (see BONALDO_TIER_ROW_NOCODE_RE) --
+        # reset whenever a fresh sub-variant starts, since codes are specific
+        # to that sub-variant's own sequence (e.g. Mask's DU92/DU96 vs Miss
+        # Mask's DU94/DU98 are unrelated).
+        last_codes = [None] * len(effective_groups)
+        k = j
 
     rows = []
     unrecognized = 0
-    # Tracks the most recently seen CODICE per group/column position, for
-    # rows that omit a repeated code (see BONALDO_TIER_ROW_NOCODE_RE) --
-    # reset whenever a fresh sub-variant starts, since codes are specific
-    # to that sub-variant's own sequence (e.g. Mask's DU92/DU96 vs Miss
-    # Mask's DU94/DU98 are unrelated).
-    last_codes = [None] * len(effective_groups)
-    k = j
     while k < seg_end:
         line = lines[k]
         repeat_size = _bonaldo_match_subheader(line, group_names, product_name)
@@ -1014,6 +1130,21 @@ def _parse_bonaldo_chair_block(lines, i, seg_end, page_of_line, product_name, br
             label_blob, price1, price2 = m2.groups()
             tier_name = _bonaldo_tier_name(label_blob)
             prices = [price1] + ([price2] if price2 else [])
+            # A trailing bare marker digit -- confirmed real: Amour/Ellison's
+            # single-column RIVESTIMENTO rows print a trailing "1" after
+            # the real price (likely a footnote/count reference, not a
+            # second price), which this regex's own 2nd-price group
+            # otherwise swallows whenever there's only supposed to be ONE
+            # real price on the row. Trim a trailing implausible (<100)
+            # value whenever there are more captured prices than this
+            # row's real column count -- never fires for a genuine 2-column
+            # row (Bull/Colibrì soft/Nikos), where both captured values
+            # are real prices and len(prices) already equals
+            # len(effective_groups).
+            while len(prices) > len(effective_groups) and prices and not (
+                re.fullmatch(r'[\d.]+', prices[-1]) and int(prices[-1].replace('.', '')) >= 100
+            ):
+                prices.pop()
             # Plausibility guard: without a CODE token to anchor on (the
             # coded-row path's strongest signal), this regex can also
             # match stray page-number/nav-label lines that happen to have
