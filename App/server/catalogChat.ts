@@ -1502,6 +1502,44 @@ export class CatalogChat {
       // filtering and too short to appear as part of the "whole phrase"
       // compact match on its own).
       const qHeight = extractShortCode(qNorm);
+      // Computes the "extra distinguishing" part of a variant name, on
+      // top of the product's own name -- e.g. variant "Metallo Special"
+      // on product "Avant-Garde chair" has nothing in common with the
+      // product name at all, so the suffix is the whole thing; variant
+      // "Cuff hi plus" on product "Cuff" strips the shared "Cuff" prefix
+      // down to "hi plus".
+      //
+      // Bidirectional on purpose -- confirmed real, found live-testing
+      // Pattern B's new RIVESTIMENTO named-column products: a variant can
+      // ALSO be a strict PREFIX of the product's own name (shorter than
+      // it), not just equal to or longer than it, e.g. product "Colibrì
+      // soft" with variant "COLIBRÌ". The original one-directional
+      // `variant.split(productName)` only handles the equal-or-longer
+      // case correctly (splitting "nikos".split("nikos") on itself
+      // correctly empties out) -- for the shorter-variant case,
+      // "colibrì".split("colibrì soft") never finds a match at all
+      // (the split pattern is LONGER than the string being split), so it
+      // silently left the suffix as the full unmodified variant text,
+      // which then spuriously "matched" any query naming the product by
+      // its full name (since "colibrì soft" trivially contains "colibrì"
+      // as a substring) -- wrongly narrowing "give me all prices for
+      // Colibrì soft" down to just the COLIBRÌ column, silently dropping
+      // FOOTREST. Confirmed general via a full-catalog scan, not narrow
+      // to Colibrì soft: also affects Dune TV stand, Paddle TV stand,
+      // Planet Big Planet, Cross lounge chair, Olos bergère, Belt &
+      // Cross, Cuff bench and pouf -- 6 of those 8 pre-date this
+      // session's own work entirely. When the variant is a strict prefix
+      // of the product name, it carries no distinguishing information
+      // beyond what the product name already says, so it's treated the
+      // same as the equal case -- an empty suffix, correctly falling
+      // through to "let every variant show" rather than a spurious match.
+      const variantSuffix = (v: string): string => {
+        const nv = normalize(v);
+        const npn = normalize(productName);
+        if (nv.includes(npn)) return nv.split(npn).join('').trim();
+        if (npn.includes(nv)) return '';
+        return nv;
+      };
 
       let matchingVariant: string | undefined;
       let matched = false;
@@ -1523,7 +1561,7 @@ export class CatalogChat {
           // uniquely picks out one of them (e.g. "struttura"), use that to
           // narrow within the height-matched set instead of guessing.
           const narrowed = heightHits.filter(v => {
-            const suffix = normalize(v).split(normalize(productName)).join('').trim();
+            const suffix = variantSuffix(v);
             const suffixWords = suffix.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
             return suffixWords.some(w => qWords.has(w));
           });
@@ -1557,7 +1595,7 @@ export class CatalogChat {
         // angolare dx/sx", etc.).
         const compactMatches: string[] = [];
         for (const v of distinctVariants) {
-          const suffix = normalize(v).split(normalize(productName)).join('').trim();
+          const suffix = variantSuffix(v);
           if (!suffix) continue;
           if (qStripped.includes(strip(suffix))) {
             compactMatches.push(v);
