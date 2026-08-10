@@ -29,3 +29,7 @@ App/regression/check_multi_product_isolation-run.json
 .claude/
 **/__pycache__/
 *.pyc
+venv/
+.DS_Store
+.ipynb_checkpoints/
+build/
