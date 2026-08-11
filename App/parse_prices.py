@@ -2462,6 +2462,110 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
     return rows, flags
 
 
+def _varaschini_find_flat_code_blocks(lines):
+    """Shape D block detection: unlike Shape A, there is no 'art.' label at
+    all per item -- just one shared 'ART./CODE' column header per page/
+    table, then each SKU is a bare code as the first token of its own line
+    (confirmed on Carpet Design p554: '2560', '2560R', '2563'... with no
+    'art.' anywhere nearby). A code's block runs from its own trigger line
+    to the next bare-code trigger line, or EOF."""
+    triggers = []
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        first_tok = line.split()[0] if line.split() else ""
+        if VARASCHINI_CODE_TOKEN.match(first_tok):
+            triggers.append((i, first_tok.upper()))
+    triggers.sort(key=lambda t: t[0])
+
+    blocks = {}
+    for idx, (i, code) in enumerate(triggers):
+        end = triggers[idx + 1][0] if idx + 1 < len(triggers) else len(lines)
+        if code not in blocks:
+            blocks[code] = (i, end)
+    return blocks
+
+
+def parse_file_varaschini_shape_d(path, page_num, entries_for_page, brand="Varaschini"):
+    """Shape D: dense flat SKU list, one flat price per code, no options
+    table (Marketing Communication, Outdoor Cooking, Trama, Carpet Design,
+    Outdoor Lighting, Strumenti Commerciali, Teli di Copertura, Prodotti
+    per la Pulizia, Cuscini e Tessuti, Basi Tavolini).
+
+    One confirmed edge case: Carpet Design's '256M'/'256MR' rug items are
+    priced PER SQUARE METER ('€/mq') rather than a flat total -- the price
+    NUMBER sits on a different line than the '€/mq' label, sometimes with
+    no '€' glyph adjacent to the number at all. Verified this is genuinely
+    narrow (exactly these 2 of 194 Shape D entries) by grepping every
+    Shape D page range for 'mq'/'sqm'/'square meter' before trusting a
+    fallback for it -- the only other "mq" hits catalog-wide are unrelated
+    (a cover's fabric weight "205 gr./mq." and a lamp's "coverage 10 sqm"
+    remote-control range, neither a price). The per-sqm nature is recorded
+    in fabric_tier ("al mq") since there's no dedicated unit field in this
+    schema, mirroring how Cattelan reuses tier_label for material
+    categories that aren't really "fabric tiers" either.
+    """
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    blocks = _varaschini_find_flat_code_blocks(lines)
+    rows = []
+    flags = []
+
+    for entry in entries_for_page:
+        code = entry["art_code"]
+        product_name = entry["product_name"]
+        if code not in blocks:
+            flags.append((page_num, product_name, f"art_code {code} not found via bare-code block detection on its recorded page"))
+            continue
+        start, end = blocks[code]
+        block_lines = lines[start:end]
+
+        candidates = []
+        for bl in block_lines:
+            low = bl.lower()
+            for m in VARASCHINI_PRICE_RE.finditer(bl):
+                if "cover" in low[:m.start()]:
+                    continue
+                candidates.append(m.group(1))
+
+        price_unit = None
+        if not candidates:
+            has_mq_marker = any("mq" in bl.lower() for bl in block_lines)
+            if has_mq_marker:
+                for bl in block_lines:
+                    s = bl.strip()
+                    if not s or "mq" in s.lower():
+                        continue
+                    if re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{3})*", s):
+                        candidates.append(s)
+                        price_unit = "al mq"
+                        break
+
+        if len(candidates) == 1:
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": product_name,
+                "variant_context": None,
+                "size": None,
+                "fabric_tier": price_unit,
+                "tier_label": None,
+                "code": code,
+                "price_eur": candidates[0],
+                "source_pdf_page": page_num,
+            })
+        elif len(candidates) == 0:
+            flags.append((page_num, product_name, f"no price found in block for art_code {code}"))
+        else:
+            flags.append((page_num, product_name,
+                           f"{len(candidates)} candidate prices found for art_code {code}, "
+                           f"ambiguous which is real -- skipped rather than guessing"))
+
+    return rows, flags
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -2830,47 +2934,91 @@ def main():
         # looping per-entry and redundantly re-parsing the same shared page
         # once per product on it.
         #
-        # SCOPE: only shape == "A" entries with a single-page span
-        # (printed_page_start == printed_page_end) are attempted. Two
-        # things are deliberately excluded, not silently included:
-        #   1) Non-"A" shapes (B/C/D/E) -- structurally different tables,
-        #      out of scope until Shape A itself is regression-verified.
-        #   2) Shape "A" entries whose recorded page range spans MULTIPLE
-        #      pages (127 of 727, confirmed via spot-checks): some are a
-        #      genuine embedded Shape-C-style modular sub-pattern inside
-        #      Emma/Emma Cross (diagram page far from its price page, e.g.
-        #      art_code "236M01" recorded as spanning printed pages
-        #      258->262) misclassified as plain Shape A during the
-        #      structural walk; others are cross-references to an
-        #      accessory code that already has its own correct entry
-        #      elsewhere (e.g. Babylon mentions cushion codes 2708/2716,
-        #      which are really "Cuscini e Tessuti" Shape D entries at
-        #      page 571). Neither case is safe to force through this
-        #      parser -- both need their own reclassification pass, not a
+        # SCOPE: only shapes with an implemented parser (currently "A" and
+        # "D") are attempted, and only entries with a single-page span
+        # (printed_page_start == printed_page_end). Two things are
+        # deliberately excluded, not silently included:
+        #   1) Shapes with no parser yet (B/C/E) -- each is a genuinely
+        #      different table format, added incrementally, one at a time,
+        #      same discipline as Shape A/D.
+        #   2) Entries whose recorded page range spans MULTIPLE pages (127
+        #      of 727 Shape A entries, 10 of 194 Shape D entries, confirmed
+        #      via direct counts, not assumed): some are a genuine embedded
+        #      Shape-C-style modular sub-pattern inside Emma/Emma Cross
+        #      (diagram page far from its price page, e.g. art_code
+        #      "236M01" recorded as spanning printed pages 258->262)
+        #      misclassified as plain Shape A during the structural walk;
+        #      others are cross-references to an accessory code that
+        #      already has its own correct entry elsewhere (e.g. Babylon
+        #      mentions cushion codes 2708/2716, which are really "Cuscini
+        #      e Tessuti" Shape D entries at page 571; Outdoor Cooking/Teli
+        #      di Copertura have their own smaller instances of the same
+        #      pattern). Neither case is safe to force through these
+        #      parsers -- both need their own reclassification pass, not a
         #      guess here.
+        SHAPE_PARSERS = {
+            "A": parse_file_varaschini_shape_a,
+            "D": parse_file_varaschini_shape_d,
+        }
+        # Collections excluded from Shape D even though still labeled "D"
+        # (their price tables genuinely are flat SKU lists -- unlike
+        # Cuscini e Tessuti/Teli di Copertura, which were relabeled away
+        # from "D" entirely because their PRICE TABLE format doesn't match
+        # it at all). Confirmed via direct per-collection results, not
+        # assumed:
+        #   Outdoor Cooking: 42% parse rate -- internally mixed, some items
+        #     have same-block addon prices (lighting-kit surcharge, a
+        #     cross-referenced "+ backpanel" variant) the parser correctly
+        #     flags rather than guesses between. Needs its own small
+        #     addon-price sub-rule, or stays a permanent flagged known_gap
+        #     -- undecided, so excluded rather than left at a misleading
+        #     42%.
+        #   Basi Tavolini: 27% parse rate -- genuinely flat-price (not a
+        #     mislabeling), but as densely packed as Composizione Tavoli's
+        #     matrix pages, so line-based code-block-boundary detection
+        #     bleeds adjacent codes' prices into each other. Needs the same
+        #     pdftotext -tsv coordinate-based technique as Shape E, to be
+        #     done together with that work.
+        #   Carpet Design: 0% parse rate (found while fixing the unrelated
+        #     "506" phantom-code bug, not one of the originally-known 4) --
+        #     same root cause as Basi Tavolini, its 4 real codes (after
+        #     removing the phantom) sit on an equally dense page and hit
+        #     the same block-boundary bleed. Grouped with Basi Tavolini for
+        #     the same TSV-based fix rather than left unexplained.
+        SHAPE_D_EXCLUDED_COLLECTIONS = {"Outdoor Cooking", "Basi Tavolini", "Carpet Design"}
         skipped_wrong_shape = 0
         skipped_multi_page = 0
-        pages_to_entries = {}
+        skipped_excluded_collection = 0
+        # group by (page, shape) so mixed-shape pages still get each
+        # shape's entries routed to the right parser
+        pages_to_entries: dict[tuple[int, str], list] = {}
         for p in products:
-            if p.get("shape") != "A":
+            shape = p.get("shape")
+            if shape not in SHAPE_PARSERS:
                 skipped_wrong_shape += 1
+                continue
+            if shape == "D" and p["collection"] in SHAPE_D_EXCLUDED_COLLECTIONS:
+                skipped_excluded_collection += 1
                 continue
             if p["printed_page_start"] != p["printed_page_end"]:
                 skipped_multi_page += 1
                 continue
-            pages_to_entries.setdefault(p["printed_page_start"], []).append(p)
+            pages_to_entries.setdefault((p["printed_page_start"], shape), []).append(p)
 
-        print(f"varaschini format: {len(pages_to_entries)} unique pages covering "
-              f"{sum(len(v) for v in pages_to_entries.values())} Shape A entries "
-              f"({skipped_wrong_shape} non-A-shape entries and {skipped_multi_page} "
-              f"multi-page-span Shape A entries excluded from this pass).")
+        print(f"varaschini format: {len(pages_to_entries)} (page, shape) groups covering "
+              f"{sum(len(v) for v in pages_to_entries.values())} entries across shapes "
+              f"{sorted(SHAPE_PARSERS)} ({skipped_wrong_shape} entries in shapes with no "
+              f"parser yet, {skipped_excluded_collection} entries in excluded known-gap "
+              f"collections, and {skipped_multi_page} multi-page-span entries excluded from "
+              f"this pass).")
 
-        for page_num, entries in pages_to_entries.items():
+        for (page_num, shape), entries in pages_to_entries.items():
             text_path = base_dir / entries[0]["text_file"]
             if not text_path.exists():
                 print(f"  WARNING: text file missing for page {page_num} ({text_path})")
                 continue
-            rows, flags = parse_file_varaschini_shape_a(str(text_path), page_num, entries, entries[0]["brand"])
+            parser_fn = SHAPE_PARSERS[shape]
+            rows, flags = parser_fn(str(text_path), page_num, entries, entries[0]["brand"])
             review_flags.extend((page, name, reason, entries[0]["brand"]) for page, name, reason in flags)
             found_names = {r["product_name"] for r in rows}
             for e in entries:

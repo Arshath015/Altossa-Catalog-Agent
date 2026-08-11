@@ -657,7 +657,7 @@ VARASCHINI_SECTIONS: list[tuple] = [
     ("Link", 361, 375, "A", "collection", None),
     ("Maat", 376, 377, "A", "collection", None),
     ("Noss", 378, 387, "A", "collection", "incl Noss Low"),
-    ("Outdoor Cooking", 388, 396, "D", "collection", "kitchen modules/appliances, flat SKU pricing"),
+    ("Outdoor Cooking", 388, 396, "D", "collection", "kitchen modules/appliances, flat SKU pricing. NOTE (2026-08-11): internally mixed -- some items are plain bare-code flat-price, others use an 'art.'-prefixed block with extra same-block addon prices (lighting-kit surcharge, a cross-referenced '+ backpanel' variant at a different price) the flat-price parser correctly flags rather than guesses between (42% parse rate). Still labeled 'D' since most of it fits; excluded from the current Shape D parser pass pending a decision on a small addon-price sub-rule vs. staying a permanent flagged known_gap."),
     ("Plinto", 397, 422, "A", "collection", "incl Plinto Low"),
     ("Reuse", 423, 428, "A", "collection", None),
     ("Smart", 429, 435, "A", "collection", "incl Smart Low"),
@@ -676,11 +676,11 @@ VARASCHINI_SECTIONS: list[tuple] = [
 
     ("Outdoor Lighting", 555, 555, "D", "reference", "flat SKU list"),
     ("Strumenti Commerciali", 556, 556, "D", "reference", "sales tools, flat SKU list"),
-    ("Teli di Copertura", 557, 569, "D", "reference", "furniture covers, flat SKU list"),
+    ("Teli di Copertura", 557, 569, "REFERENCE_MATRIX", "reference", "NOT a product list -- a compatibility matrix: generic cover codes (e.g. 9400M, priced PER LINEAR METER '/ML', not a flat total) cross-referenced against which OTHER collections' furniture codes each cover fits (bahia/barcode/belt/emma/etc., each at its own size). Reclassified out of 'D' 2026-08-11 after its parser pass came back 0/98 -- structurally unlike anything built so far, needs its own scoping discussion before any parser design (same discipline as Shape E originally)."),
     ("Prodotti per la Pulizia", 570, 570, "D", "reference", "cleaning products, flat SKU list"),
-    ("Cuscini e Tessuti", 571, 573, "D", "reference", "decorative cushions, flat SKU list w/ fabric column"),
+    ("Cuscini e Tessuti", 571, 573, "A", "reference", "reclassified out of 'D' 2026-08-11: NOT a flat SKU list -- confirmed on p571 (art 2713/2709/2708/2701) it's Shape A's exact cat. B-COM/C/D/E/Luxury 5-tier structure, just with bare codes instead of an 'art.' prefix. Needs Shape A's tier-pairing logic combined with Shape D's bare-code block detection, not Shape D's flat-price assumption."),
     ("Composizione Tavoli", 574, 585, "E", "reference", "base x top-size x top-finish price MATRIX -- handled by a dedicated pdftotext -tsv pass, see _varaschini_composizione_tavoli_codes"),
-    ("Basi Tavolini", 586, 587, "D", "reference", "table bases alone, flat SKU list (same codes as rows in Composizione Tavoli matrix)"),
+    ("Basi Tavolini", 586, 587, "D", "reference", "table bases alone, flat SKU list (same codes as rows in Composizione Tavoli matrix). NOTE (2026-08-11): still genuinely flat-price (not a mislabeling like Teli di Copertura/Cuscini e Tessuti), but its parser pass came back only 27% correct -- the page is as densely packed as Composizione Tavoli's matrix pages, and line-based code-block-boundary detection bleeds adjacent codes' prices into each other. Still labeled 'D' (that's the real shape); excluded from the current Shape D parser pass, to be revisited using the same pdftotext -tsv coordinate-based technique as Shape E rather than line-based detection."),
     ("Info Tecniche + Specifiche Tecniche Tessuti", 588, 625, "NONPRICED", "reference", "fabric category legend (defines cat. B/C/D/E/Luxury!), material specs, care/maintenance, montage -- all non-priced, 6 languages"),
     ("Imballi (Packaging)", 626, 697, "NONPRICED", "reference", "per-collection box dimensions/weights, non-priced"),
     ("Brand story / Mission & Vision", 698, 704, "NONPRICED", "reference", "not in TOC's 16-item list; marketing content"),
@@ -825,6 +825,30 @@ def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, s
     return records
 
 
+# Verified false positives from the bare-code detector below: NOT real
+# product codes, just a price NUMBER that happened to land as the first
+# token of its own physical line due to -layout linearization, satisfying
+# the same digit-shape regex as a genuine code. Each entry here was
+# confirmed against the real page image before being excluded, same
+# category/precedent as Bonaldo's DUPLICATE_VARIANT_ENTRIES.
+#   "506" (Carpet Design p554): the per-square-meter price for item "256M"
+#   ("€/mq" label on one line, its number "506" landing alone on the NEXT
+#   line, ahead of the real next code "256MR" later on that same line) --
+#   confirmed by direct inspection of the raw extracted text, not guessed.
+#   Format: (page_num, code) -- scoped to the specific page it was found
+#   on, not a blanket exclusion of the number everywhere.
+VARASCHINI_FALSE_POSITIVE_CODES: set[tuple[int, str]] = {
+    (554, "506"),
+}
+
+# Collections whose codes are bare (no "art." prefix) even though their
+# shape label doesn't imply that on its own -- see the discovery-loop
+# comment in run_varaschini() for why this must be decoupled from "shape".
+VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS: set[str] = {
+    "Cuscini e Tessuti",
+}
+
+
 def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
     """Shape D/E fallback: a bare line whose first token is a code AND a
     '€' appears within the next 2 lines. Needed because dense flat-list
@@ -838,6 +862,8 @@ def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, i
             continue
         first_tok = line.split()[0] if line.split() else ""
         if not _VARASCHINI_CODE_TOKEN.match(first_tok):
+            continue
+        if (page_num, first_tok.upper()) in VARASCHINI_FALSE_POSITIVE_CODES:
             continue
         window = " ".join(lines[i:i + 3])
         if "€" in window:
@@ -931,11 +957,23 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         if name == "Composizione Tavoli":
             continue  # handled separately below (TSV-based, not per-line)
 
+        # Code DISCOVERY method is about the observed page layout (does a
+        # code have an "art." label, or is it bare?) -- it must NOT be
+        # coupled to the "shape" field, which is about the PRICE TABLE
+        # format and can legitimately differ from the layout. Confirmed by
+        # a real regression: relabeling Cuscini e Tessuti from "D" to "A"
+        # (its price table matches Shape A's tier structure) silently
+        # dropped all 18 of its entries, because its codes are bare (no
+        # "art." prefix) and the flat-code fallback below was gated on
+        # shape in ("D", "E") -- losing "D" lost the only detection method
+        # that could ever find them, even though nothing about their LAYOUT
+        # changed. VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS keeps the
+        # layout-driven decision independent of the shape label.
         section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
         for p in range(start, end + 1):
             text = page_text.get(p, "")
             recs = _varaschini_find_records(p, text)
-            if shape in ("D", "E"):
+            if shape in ("D", "E") or name in VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS:
                 recs += _varaschini_find_records_flat(p, text)
             for code, page, nm in recs:
                 if code not in section_records:
