@@ -2239,6 +2239,229 @@ def parse_file_bonaldo(path, product_name, brand, all_headings=None, heading_tex
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Varaschini -- Shape A (single-item, fabric-category-tier pricing: cat. B -
+# COM / C / D / E / Luxury, confirmed via real page images on Allegra/Bahia/
+# Bali during the structural walk). ONLY Shape A is handled here -- Shapes
+# B/C/D/E are each structurally different (finish-combo flat pricing,
+# modular diagram+price-page split, dense flat SKU lists, and a
+# combinatorial base x top price matrix respectively) and are intentionally
+# out of scope until Shape A is fully live and regression-verified.
+#
+# ARCHITECTURAL DIFFERENCE from the other 3 brands' parsers: those are
+# called once per catalog_index.json ENTRY, each reading its own dedicated
+# text file. Varaschini's assets are deliberately deduped BY PAGE (517
+# unique page files shared across 1,302 catalog entries, ~2.5 entries/page
+# on average) -- so calling this once per entry would re-parse the same
+# shared page file redundantly AND risk mislabeling a sibling product's
+# rows under the wrong product_name if not scoped correctly. Instead this
+# is called once per unique page, given the list of catalog entries that
+# page actually contains, and returns rows already correctly attributed to
+# each entry's own product_name via its art_code.
+# ---------------------------------------------------------------------------
+
+VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
+VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
+VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b", re.IGNORECASE)
+# Strip stray control bytes (e.g. '\x08') this PDF's font occasionally
+# emits right after the € glyph (confirmed on Dolmen p210, Bali p16)
+# before hunting for a price digit run.
+VARASCHINI_PRICE_RE = re.compile(r"€[\s\x00-\x1f]*([\d][\d.,]*)")
+VARASCHINI_DIMENSION_RE = re.compile(r"W\s*[\d /]+[\"”]\s*-\s*H\s*[\d /]+[\"”]\s*-\s*D\s*[\d /]+[\"”]")
+
+
+def _varaschini_find_art_blocks(lines):
+    """Locate every 'art.' + code occurrence and the line-range block that
+    belongs to it (from its own trigger line to the next one, or EOF).
+
+    Confirmed via real text across Allegra/Bahia/Bali that a code can
+    appear in three different physical arrangements relative to its "art."
+    label, all caused by -layout linearizing side-by-side PDF columns:
+      1) same line: "art. 2214" (Belt/Belt Air diagram-grid style)
+      2) "art." alone, code some lines BELOW (Allegra/Bahia/System style,
+         with an intervening STRUTTURA/TOP column header line in between)
+      3) "art." alone, code some lines ABOVE (confirmed on Dolmen p210:
+         "1820L" prints one line before its own bare "art." label)
+    All three are tried; forward lookahead is preferred, backward lookback
+    is the fallback only when forward finds nothing.
+    """
+    triggers = []
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        for m in VARASCHINI_ART_PREFIX.finditer(line):
+            prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
+            if "cover" in prefix_ctx:
+                continue
+            triggers.append((i, m.group(1).upper()))
+        if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
+            found = False
+            for j in range(i + 1, min(i + 6, len(lines))):
+                cand = lines[j].strip()
+                if not cand:
+                    continue
+                first_tok = cand.split()[0] if cand.split() else ""
+                if VARASCHINI_CODE_TOKEN.match(first_tok):
+                    triggers.append((i, first_tok.upper()))
+                    found = True
+                    break
+                if len(cand) > 3 and cand[0].islower():
+                    break
+            if not found:
+                for j in range(i - 1, max(i - 3, -1), -1):
+                    cand = lines[j].strip()
+                    if not cand:
+                        continue
+                    first_tok = cand.split()[0] if cand.split() else ""
+                    if VARASCHINI_CODE_TOKEN.match(first_tok):
+                        triggers.append((i, first_tok.upper()))
+                    break
+
+    seen = set()
+    uniq = []
+    for i, code in triggers:
+        key = (i, code)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append((i, code))
+    uniq.sort(key=lambda t: t[0])
+
+    blocks = {}  # code -> (start, end) of FIRST occurrence
+    for idx, (i, code) in enumerate(uniq):
+        end = uniq[idx + 1][0] if idx + 1 < len(uniq) else len(lines)
+        if code not in blocks:
+            blocks[code] = (i, end)
+    return blocks
+
+
+def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini"):
+    """entries_for_page: catalog_index.json dicts (must include 'art_code'
+    and 'product_name') that this ONE shared page contains. Returns
+    (rows, flags) -- flags is a list of (page, product_name, reason).
+    """
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    blocks = _varaschini_find_art_blocks(lines)
+    rows = []
+    flags = []
+
+    for entry in entries_for_page:
+        code = entry["art_code"]
+        product_name = entry["product_name"]
+        if code not in blocks:
+            flags.append((page_num, product_name, f"art_code {code} not found via 'art.' block detection on its recorded page"))
+            continue
+        start, end = blocks[code]
+        block_lines = lines[start:end]
+        block_text = "\n".join(block_lines)
+
+        dim_m = VARASCHINI_DIMENSION_RE.search(block_text)
+        size = dim_m.group(0).strip() if dim_m else None
+
+        # Tier label and its price are USUALLY on the same physical line,
+        # but not always -- confirmed on Bali p16's "2384": "cat. B - COM"
+        # sits on one line (interrupted by a "Teak" structure-color name
+        # and a dimension line squeezed in after it) while its price only
+        # appears two lines further down. Since the 5 tiers always appear
+        # in fixed order (B-COM, C, D, E, Luxury) and their prices are
+        # always listed in that same increasing-price order, pair them by
+        # ORDER OF APPEARANCE across the whole block instead of requiring
+        # same-line adjacency.
+        labels_found = []
+        prices_found = []
+        for li, bl in enumerate(block_lines):
+            has_label_this_line = False
+            for m in VARASCHINI_TIER_LABEL_RE.finditer(bl):
+                labels_found.append((li, m.start(), re.sub(r"\s+", " ", m.group(1).strip())))
+                has_label_this_line = True
+            low = bl.lower()
+            line_had_euro_price = False
+            for m in VARASCHINI_PRICE_RE.finditer(bl):
+                # whole-line-prefix check, not a short lookback window --
+                # "cover - art. 9451C               €      226" routinely
+                # has 20-30+ padding characters between "cover" and its
+                # price, wider than a naive fixed window (confirmed bug:
+                # this exact gap let 6 "cover" prices get miscounted as a
+                # real 6th tier before being caught here).
+                if "cover" in low[:m.start()]:
+                    continue
+                prices_found.append((li, m.start(), m.group(1)))
+                line_had_euro_price = True
+            # Fallback: a page with a "COLLEZIONI ABBINABILI / MATCHABLE
+            # COLLECTIONS" cross-reference side-box (confirmed on Babylon
+            # p162) can displace the '€' glyph off one tier row's price
+            # entirely, leaving a bare trailing number with no € at all
+            # ("cat. C ... 2.195") while every other tier row on the same
+            # block keeps its €. Only trusted on a line that ALREADY has a
+            # recognized tier label AND no €-price of its own, to avoid
+            # treating arbitrary numbers elsewhere as fake prices.
+            if has_label_this_line and not line_had_euro_price:
+                m = re.search(r"(\d{1,3}(?:\.\d{3})*)\s*$", bl.rstrip())
+                if m:
+                    prices_found.append((li, m.start(), m.group(1)))
+        labels_found.sort(key=lambda t: (t[0], t[1]))
+        prices_found.sort(key=lambda t: (t[0], t[1]))
+
+        tier_rows = []
+        if labels_found:
+            if len(labels_found) == len(prices_found):
+                tier_rows = [(lab, pr) for (_, _, lab), (_, _, pr) in zip(labels_found, prices_found)]
+            else:
+                flags.append((page_num, product_name,
+                               f"tier label/price count mismatch for art_code {code}: "
+                               f"{len(labels_found)} labels vs {len(prices_found)} prices -- skipped rather than guessing a pairing"))
+                continue
+
+        if tier_rows:
+            for tier_label, price in tier_rows:
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": product_name,
+                    "variant_context": None,
+                    "size": size,
+                    "fabric_tier": f"cat. {tier_label}",
+                    "tier_label": "Imbottitura/Rivestimento",
+                    "code": code,
+                    "price_eur": price,
+                    "source_pdf_page": page_num,
+                })
+        else:
+            # No "cat." tier labels at all -- either a flat single-price
+            # item (accessory, table base, coffee table) or a materials
+            # grid (e.g. Allegra's 2587 Tavolino: HPL vs Ceramica TOP
+            # options, no fabric tiers at all since it has no upholstery).
+            # Only trust EXACTLY ONE unclaimed, non-cover price as the flat
+            # price -- more than one with no tier labels to disambiguate
+            # them is the materials-grid case, which this does not yet
+            # parse (flagged instead of guessed).
+            candidates = [pr for _, _, pr in prices_found]
+            if len(candidates) == 1:
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": product_name,
+                    "variant_context": None,
+                    "size": size,
+                    "fabric_tier": None,
+                    "tier_label": None,
+                    "code": code,
+                    "price_eur": candidates[0],
+                    "source_pdf_page": page_num,
+                })
+            elif len(candidates) == 0:
+                flags.append((page_num, product_name, f"no price found in block for art_code {code}"))
+            else:
+                flags.append((page_num, product_name,
+                               f"{len(candidates)} unlabeled prices found for art_code {code} with no fabric tiers -- "
+                               f"likely a materials-grid item (e.g. HPL/Ceramica TOP options), not yet parsed, skipped rather than guessed"))
+
+    return rows, flags
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -2570,14 +2793,18 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
                           "concept at all. 'bonaldo' = 'RIVESTIMENTO'/"
                           "'CODICE'/'GAMBE' tables, every price has its own "
                           "code (chair shape only so far -- table and "
-                          "modular-sofa shapes are flagged, not parsed).")
+                          "modular-sofa shapes are flagged, not parsed). "
+                          "'varaschini' = Shape A only ('cat. B - COM/C/D/E/"
+                          "Luxury' fabric-tier tables); Shapes B/C/D/E are "
+                          "not yet handled and every entry tagged with a "
+                          "shape other than 'A' is flagged, not parsed.")
     args = ap.parse_args()
 
     index_path = Path(args.catalog_index)
@@ -2594,24 +2821,81 @@ def main():
     all_rows = []
     empty_products = []
     review_flags = []  # (page, product_name, reason) -- format='cattelan' only
-    for p in products:
-        text_path = base_dir / p["text_file"]
-        if not text_path.exists():
-            print(f"  WARNING: text file missing for {p['product_name']} ({text_path})")
-            continue
-        if args.format == "cattelan":
-            heading_text = p.get("index_heading", p["product_name"])
-            rows, flags = parse_file_cattelan(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
-            review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
-        elif args.format == "bonaldo":
-            heading_text = p.get("index_heading", p["product_name"])
-            rows, flags = parse_file_bonaldo(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
-            review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
-        else:
-            rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)
-        if not rows:
-            empty_products.append(p["product_name"])
-        all_rows.extend(rows)
+
+    if args.format == "varaschini":
+        # Different iteration shape than the other 3 formats: Varaschini's
+        # assets are deliberately deduped BY PAGE (517 unique page files
+        # shared across 1,302 catalog entries), so this groups entries by
+        # their shared text_file and parses each page ONCE, rather than
+        # looping per-entry and redundantly re-parsing the same shared page
+        # once per product on it.
+        #
+        # SCOPE: only shape == "A" entries with a single-page span
+        # (printed_page_start == printed_page_end) are attempted. Two
+        # things are deliberately excluded, not silently included:
+        #   1) Non-"A" shapes (B/C/D/E) -- structurally different tables,
+        #      out of scope until Shape A itself is regression-verified.
+        #   2) Shape "A" entries whose recorded page range spans MULTIPLE
+        #      pages (127 of 727, confirmed via spot-checks): some are a
+        #      genuine embedded Shape-C-style modular sub-pattern inside
+        #      Emma/Emma Cross (diagram page far from its price page, e.g.
+        #      art_code "236M01" recorded as spanning printed pages
+        #      258->262) misclassified as plain Shape A during the
+        #      structural walk; others are cross-references to an
+        #      accessory code that already has its own correct entry
+        #      elsewhere (e.g. Babylon mentions cushion codes 2708/2716,
+        #      which are really "Cuscini e Tessuti" Shape D entries at
+        #      page 571). Neither case is safe to force through this
+        #      parser -- both need their own reclassification pass, not a
+        #      guess here.
+        skipped_wrong_shape = 0
+        skipped_multi_page = 0
+        pages_to_entries = {}
+        for p in products:
+            if p.get("shape") != "A":
+                skipped_wrong_shape += 1
+                continue
+            if p["printed_page_start"] != p["printed_page_end"]:
+                skipped_multi_page += 1
+                continue
+            pages_to_entries.setdefault(p["printed_page_start"], []).append(p)
+
+        print(f"varaschini format: {len(pages_to_entries)} unique pages covering "
+              f"{sum(len(v) for v in pages_to_entries.values())} Shape A entries "
+              f"({skipped_wrong_shape} non-A-shape entries and {skipped_multi_page} "
+              f"multi-page-span Shape A entries excluded from this pass).")
+
+        for page_num, entries in pages_to_entries.items():
+            text_path = base_dir / entries[0]["text_file"]
+            if not text_path.exists():
+                print(f"  WARNING: text file missing for page {page_num} ({text_path})")
+                continue
+            rows, flags = parse_file_varaschini_shape_a(str(text_path), page_num, entries, entries[0]["brand"])
+            review_flags.extend((page, name, reason, entries[0]["brand"]) for page, name, reason in flags)
+            found_names = {r["product_name"] for r in rows}
+            for e in entries:
+                if e["product_name"] not in found_names:
+                    empty_products.append(e["product_name"])
+            all_rows.extend(rows)
+    else:
+        for p in products:
+            text_path = base_dir / p["text_file"]
+            if not text_path.exists():
+                print(f"  WARNING: text file missing for {p['product_name']} ({text_path})")
+                continue
+            if args.format == "cattelan":
+                heading_text = p.get("index_heading", p["product_name"])
+                rows, flags = parse_file_cattelan(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "bonaldo":
+                heading_text = p.get("index_heading", p["product_name"])
+                rows, flags = parse_file_bonaldo(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            else:
+                rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)
+            if not rows:
+                empty_products.append(p["product_name"])
+            all_rows.extend(rows)
 
     out_path = Path(args.out) if args.out else index_path.parent / "prices.json"
 
