@@ -590,17 +590,492 @@ def compute_ranges(entries: list[tuple[str, int]], last_printed_page_guess: int)
     return ranges
 
 
+# ---------------------------------------------------------------------------
+# Varaschini (listino_2026_export.pdf) -- structurally unlike the other 3
+# brands: there is no per-PRODUCT photographic index at all. Instead there's
+# a per-COLLECTION table of contents (39 named collections + 16 back-matter
+# reference sections, verified page-by-page against real rendered images and
+# text, not trusted from the TOC's own printed numbers alone -- Barcode and
+# Belt/Belt Air both proved the TOC number was NOT the true end page), and
+# within each collection's page range, individual products ("art. NNNN")
+# have to be discovered by scanning the actual page text, not read off an
+# index. Five distinct price-table shapes were found (A: fabric-tier B-COM/
+# C/D/E/Luxury; B: finish-combo flat price; C: modular diagram+decoupled
+# price page, incl. Belt/Belt Air's "SOLUZIONI DI ARREDO" bundle-kit
+# sub-pattern; D: dense flat SKU lists; E: Composizione Tavoli's
+# combinatorial base x top price matrix -- not in the original A/B/C/D
+# hypothesis, only found by testing against real pages).
+#
+# Because of this, Varaschini gets its own dedicated pipeline
+# (run_varaschini) rather than being forced through parse_index/
+# compute_ranges/the generic per-product main() loop the other 3 styles
+# share -- those all assume exactly one catalog_index entry per index
+# item, which doesn't hold here (a single collection page routinely holds
+# 2-10+ distinct articles). This mirrors how parse_index_bonaldo/
+# parse_index_dot_leader are already brand-specific, just diverging further
+# because the SOURCE DATA genuinely has no flat per-product index to parse.
+# ---------------------------------------------------------------------------
+
+# Master section table: (name, printed_start, printed_end, shape, category,
+# note). Verified empirically against page-banner text using a broadened
+# header-matching pass (requiring "DESIGN" or "PROFONDIT" on the same line
+# as the collection name to reject cross-reference/matchable-collections
+# noise), then spot-checked against real rendered page images for every
+# shape and every ambiguous boundary. Confirmed fully contiguous 1-708, no
+# gaps or overlaps (checked programmatically, not just by eye).
+#
+# Shapes: A=fabric-tier single item, B=finish-combo flat price,
+#   C=modular diagram+decoupled price page (Belt/Belt Air also contains a
+#   "SOLUZIONI DI ARREDO" bundle-kit sub-pattern, not separately modeled
+#   here), D=dense flat SKU list, E=combinatorial base x top price matrix,
+#   NONPRICED=no price data, must be skipped entirely.
+VARASCHINI_SECTIONS: list[tuple] = [
+    ("TOC", 1, 5, "NONPRICED", "front", "table of contents"),
+    ("Wellness Therapy (teaser)", 6, 7, "NONPRICED", "front", "2-page teaser, full catalogue insert is separate at 524-550"),
+    ("Marketing Communication", 8, 9, "D", "reference", "priced display/logo panels"),
+
+    ("Allegra", 10, 11, "A", "collection", None),
+    ("Bahia", 12, 15, "A", "collection", None),
+    ("Bali", 16, 20, "A", "collection", "includes 'lapis' sub-line by different designer on p16"),
+    ("Barcode", 21, 54, "C", "collection", "modular; TOC said '21' only, true end 54 (verified via PROF./PROF. MIX continuation banners)"),
+    ("Belt / Belt Air", 55, 131, "C+BUNDLE", "collection", "TOC said '55-100', true end 131 (belt air alone is 100-131); contains SOLUZIONI DI ARREDO bundle-kit pages (composite shape label preserved for exact reproducibility -- parse_prices.py's Shape A filter only checks == 'A', so this doesn't change parser scope either way)"),
+    ("Bento", 132, 140, "A", "collection", None),
+    ("Big / Big Light", 141, 159, "B", "collection", "table-base finish grid, incl. Big Low/Big Light sub-variants"),
+    ("Big In&Out", 160, 161, "A", "collection", None),
+    ("Babylon", 162, 167, "A", "collection", None),
+    ("Cricket", 168, 176, "A", "collection", None),
+    ("Clever", 177, 186, "A", "collection", None),
+    ("Customade", 187, 208, "A", "collection", None),
+    ("Dolmen", 209, 213, "A", "collection", None),
+    ("Ellisse", 214, 220, "A", "collection", None),
+    ("Emma", 221, 286, "A", "collection", "large collection, incl Emma Low/Emma Sunscreen sub-variants"),
+    ("Emma Cross", 287, 329, "A", "collection", None),
+    ("Flexion", 330, 337, "A", "collection", None),
+    ("Gianna", 338, 355, "A", "collection", None),
+    ("In&Out", 356, 356, "A", "collection", "only 1 page"),
+    ("Kolonaki", 357, 360, "A", "collection", None),
+    ("Link", 361, 375, "A", "collection", None),
+    ("Maat", 376, 377, "A", "collection", None),
+    ("Noss", 378, 387, "A", "collection", "incl Noss Low"),
+    ("Outdoor Cooking", 388, 396, "D", "collection", "kitchen modules/appliances, flat SKU pricing"),
+    ("Plinto", 397, 422, "A", "collection", "incl Plinto Low"),
+    ("Reuse", 423, 428, "A", "collection", None),
+    ("Smart", 429, 435, "A", "collection", "incl Smart Low"),
+    ("Summer Set", 436, 454, "A", "collection", "incl Summer Set Low"),
+    ("Sunmoon", 455, 462, "A", "collection", None),
+    ("System", 463, 477, "B", "collection", "table-base finish grid, incl System Low"),
+    ("System Star", 478, 484, "B", "collection", None),
+    ("Tibidabo", 485, 501, "A", "collection", "incl 'Loop' table-base variant p501"),
+    ("Tight", 502, 502, "A", "collection", "only 1 page"),
+    ("Victor", 503, 523, "A", "collection", None),
+    ("Wellness Therapy (catalogue)", 524, 550, "A+B+NONPRICED", "collection", "composite: config/design-rules pages (524-530ish) are non-priced sub-pages within this range; component pages use flat-price and fabric-tier shapes (label preserved for exact reproducibility, see Belt/Belt Air note above)"),
+    ("Amalfi", 551, 551, "B", "collection", "umbrellas, BASE x TELAIO x COPERTURA fixed combo"),
+    ("Copacabana", 552, 552, "B", "collection", "umbrellas"),
+    ("Trama", 553, 553, "D", "collection", "blankets, flat SKU list"),
+    ("Carpet Design", 554, 554, "D", "collection", "rugs, dense flat SKU grid"),
+
+    ("Outdoor Lighting", 555, 555, "D", "reference", "flat SKU list"),
+    ("Strumenti Commerciali", 556, 556, "D", "reference", "sales tools, flat SKU list"),
+    ("Teli di Copertura", 557, 569, "D", "reference", "furniture covers, flat SKU list"),
+    ("Prodotti per la Pulizia", 570, 570, "D", "reference", "cleaning products, flat SKU list"),
+    ("Cuscini e Tessuti", 571, 573, "D", "reference", "decorative cushions, flat SKU list w/ fabric column"),
+    ("Composizione Tavoli", 574, 585, "E", "reference", "base x top-size x top-finish price MATRIX -- handled by a dedicated pdftotext -tsv pass, see _varaschini_composizione_tavoli_codes"),
+    ("Basi Tavolini", 586, 587, "D", "reference", "table bases alone, flat SKU list (same codes as rows in Composizione Tavoli matrix)"),
+    ("Info Tecniche + Specifiche Tecniche Tessuti", 588, 625, "NONPRICED", "reference", "fabric category legend (defines cat. B/C/D/E/Luxury!), material specs, care/maintenance, montage -- all non-priced, 6 languages"),
+    ("Imballi (Packaging)", 626, 697, "NONPRICED", "reference", "per-collection box dimensions/weights, non-priced"),
+    ("Brand story / Mission & Vision", 698, 704, "NONPRICED", "reference", "not in TOC's 16-item list; marketing content"),
+    ("Condizioni Generali di Vendita", 705, 707, "NONPRICED", "reference", "legal sales/warranty terms, 6 languages"),
+    ("Contact page", 708, 708, "NONPRICED", "reference", None),
+]
+
+
+def _varaschini_full_text_by_page(pdf_path: str, total_pages: int) -> dict[int, str]:
+    """Extract every page's text in ONE batched pdftotext call (not one
+    subprocess per page -- confirmed ~5-10x faster: 708 pages in ~1 minute
+    batched vs. an estimated 10+ minutes at ~1 call/page) and split it back
+    into per-page text using the printed footer ("N - VARASCHIN EXPORT
+    2026").
+
+    Two footer quirks, both confirmed against real extracted text, are
+    handled here:
+      1) Even-numbered pages in the 146-158 range print the footer WITHOUT
+         its page number at all (just a bare "VARASCHIN EXPORT 2026" line)
+         while their odd-numbered neighbors have the number merged onto a
+         content line instead of its own line. Numberless footers are
+         inferred by interpolating between the nearest numbered footers
+         before and after them, only when that gap is exactly 2 (i.e. the
+         missing page is unambiguously "between" two known ones).
+      2) Pages 146, 154, 470, and 565 have NO footer trace at all (fully
+         bled content, confirmed by direct inspection) -- these 4 specific
+         pages are re-extracted individually via pdftotext_page() as a
+         fallback patch.
+    """
+    result = subprocess.run(
+        [PDFTOTEXT, "-layout", "-enc", "UTF-8", pdf_path, "-"],
+        capture_output=True,
+    )
+    # Normalize ALL line-ending variants to bare "\n" before splitting.
+    # poppler's stdout on Windows mixes "\r\n" and lone "\r" (confirmed by
+    # direct byte inspection: 79 CRLF + 80 bare-CR-with-no-following-LF in
+    # a single page's output) -- a naive .split("\n") leaves a stray
+    # trailing "\r" on roughly half the lines, which broke downstream
+    # regex $ -anchoring in parse_prices.py's tier-row matching (814 rows
+    # extracted instead of the verified-correct 886 before this was found).
+    text = result.stdout.decode("utf-8", errors="replace")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+
+    footer_re = re.compile(r"(\d{1,3})\s*-\s*VARASCHIN EXPORT 2026\s*$")
+    bare_footer_re = re.compile(r"^\s*VARASCHIN EXPORT 2026\s*$")
+
+    footers: list[tuple[int, int]] = []
+    bare_footer_lines: list[int] = []
+    for i, ln in enumerate(lines):
+        m = footer_re.search(ln)
+        if m:
+            footers.append((i, int(m.group(1))))
+        elif bare_footer_re.match(ln):
+            bare_footer_lines.append(i)
+
+    for bidx in bare_footer_lines:
+        before = [(idx, num) for idx, num in footers if idx < bidx]
+        after = [(idx, num) for idx, num in footers if idx > bidx]
+        if before and after:
+            prev_idx, prev_num = max(before, key=lambda x: x[0])
+            next_idx, next_num = min(after, key=lambda x: x[0])
+            if next_num - prev_num == 2 and next_idx > bidx > prev_idx:
+                footers.append((bidx, prev_num + 1))
+    footers.sort(key=lambda x: x[0])
+
+    page_text: dict[int, str] = {}
+    prev_idx = 0
+    for idx, num in footers:
+        page_text[num] = "\n".join(lines[prev_idx:idx + 1])
+        prev_idx = idx + 1
+
+    for missing_page in (146, 154, 470, 565):
+        if missing_page not in page_text:
+            page_text[missing_page] = pdftotext_page(pdf_path, missing_page)
+
+    return page_text
+
+
+_VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
+_VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
+
+
+def _varaschini_clean_name(s: str) -> str:
+    """Collapse internal whitespace runs and reject junk captured instead of
+    a real description -- confirmed on Marketing Communication p8, where a
+    bare price fragment ("€\\x08 55") got grabbed because the real Italian
+    name sits on a line ABOVE the code on Shape D rows, not after it."""
+    s = re.sub(r"\s{2,}", " ", s).strip(" -")
+    s = s.lstrip("\x08﻿").strip()
+    if not s or s.startswith("€") or re.match(r"^[\d.,€\s]+$", s):
+        return ""
+    return s[:60]
+
+
+def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, str]]:
+    """Find every (code, page, name_guess) triple on one page via 'art.'
+    detection. Three physical arrangements of a code relative to its 'art.'
+    label are all handled, confirmed against real text across Allegra/
+    Bahia/Bali/Dolmen:
+      1) same line: "art. 2214" (Belt/Belt Air diagram-grid style)
+      2) "art." alone, code some lines BELOW (Allegra/Bahia/System style)
+      3) "art." alone, code some lines ABOVE (Dolmen p210: "1820L" prints
+         one line before its own bare "art." label)
+    """
+    records = []
+    lines = text.splitlines()
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        for m in _VARASCHINI_ART_PREFIX.finditer(line):
+            prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
+            if "cover" in prefix_ctx:
+                continue
+            name_part = line[m.end():].strip()
+            records.append((m.group(1).upper(), page_num, _varaschini_clean_name(name_part)))
+        if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
+            found = False
+            for j in range(i + 1, min(i + 6, len(lines))):
+                cand_line = lines[j].strip()
+                if not cand_line:
+                    continue
+                first_tok = cand_line.split()[0] if cand_line.split() else ""
+                if _VARASCHINI_CODE_TOKEN.match(first_tok):
+                    rest = cand_line[len(first_tok):].strip()
+                    records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
+                    found = True
+                    break
+                if len(cand_line) > 3 and cand_line[0].islower():
+                    break
+            if not found:
+                for j in range(i - 1, max(i - 3, -1), -1):
+                    cand_line = lines[j].strip()
+                    if not cand_line:
+                        continue
+                    first_tok = cand_line.split()[0] if cand_line.split() else ""
+                    if _VARASCHINI_CODE_TOKEN.match(first_tok):
+                        rest = cand_line[len(first_tok):].strip()
+                        records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
+                    break
+    return records
+
+
+def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
+    """Shape D/E fallback: a bare line whose first token is a code AND a
+    '€' appears within the next 2 lines. Needed because dense flat-list
+    shapes print one 'ART./CODE' column header ONCE per page, not a
+    per-item 'art.' label -- confirmed on Carpet Design p554."""
+    records = []
+    lines = text.splitlines()
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        first_tok = line.split()[0] if line.split() else ""
+        if not _VARASCHINI_CODE_TOKEN.match(first_tok):
+            continue
+        window = " ".join(lines[i:i + 3])
+        if "€" in window:
+            rest = line[len(first_tok):].strip()
+            records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
+    return records
+
+
+def _varaschini_composizione_tavoli_codes(pdf_path: str) -> dict[str, int]:
+    """Composizione Tavoli (pages 574-585) is a combinatorial base x top
+    price MATRIX, not a per-item list -- per-line 'art.' detection badly
+    undercounted it (found 3 real codes instead of the true 119) because
+    poppler's -layout text order breaks down for this specific table: a
+    row's base code and its price cells can end up many lines apart in the
+    linearized text stream. Word-level (x, y) coordinates via
+    `pdftotext -tsv` don't have that problem -- every code-shaped token is
+    found regardless of its position in the (broken) reading-order text.
+
+    Verified two ways before trusting this: (1) cross-checked the raw code
+    list against a direct visual read of page 574's rendered image (matched
+    exactly, modulo one false positive), (2) confirmed page 575 is a
+    continuation spread (more top-size columns for the SAME base rows, no
+    repeated codes) so no double-counting risk between "same-family" pages.
+
+    Returns {code: first_page_seen}. The literal "2026" (the catalog's
+    print year, bleeding in from the "N - VARASCHIN EXPORT 2026" footer,
+    which happens to match the code-shape regex) is the one confirmed false
+    positive and is excluded explicitly, not filtered by regex tightening
+    (tightening the regex further risks losing real codes instead).
+    """
+    result = subprocess.run(
+        [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", "574", "-l", "585", pdf_path, "-"],
+        capture_output=True,
+    )
+    tsv_text = result.stdout.decode("utf-8", errors="replace")
+
+    code_re = re.compile(r"^[0-9]{4,6}[A-Z]{0,2}[0-9]{0,1}[A-Z]{0,1}$")
+    code_first_page: dict[str, int] = {}
+    lines = tsv_text.splitlines()
+    if not lines:
+        return code_first_page
+    for line in lines[1:]:  # skip TSV header row
+        parts = line.split("\t")
+        if len(parts) < 12 or parts[0] != "5":  # level 5 = word-level token
+            continue
+        page = int(parts[1])
+        text = parts[11]
+        if text == "2026":
+            continue
+        if code_re.match(text) and text not in code_first_page:
+            code_first_page[text] = page
+    return code_first_page
+
+
+# PDF column-table headers that occasionally bleed into a captured
+# product_name -- confirmed on flat-price accessory/table items, where the
+# price-table header line sits close enough to the product name line for
+# the name-capture heuristic above to grab it. Stripped as a trailing run
+# once it starts, never mid-string, so a legitimately name-containing word
+# is never touched.
+_VARASCHINI_NAME_JUNK_RE = re.compile(
+    r"\s+(?:STRUCTURE|STRUTTURA|IMBOTTITURA|RIVESTIMENTO|UPHOLSTERY|"
+    r"COVERING|INTRECCIO|WEAVING|TOP|OUTDOOR|PREZZO|PRICE|/)+\s*$",
+    re.IGNORECASE,
+)
+
+
+def _varaschini_strip_name_junk(name: str) -> str:
+    prev = None
+    s = name
+    while prev != s:
+        prev = s
+        s = _VARASCHINI_NAME_JUNK_RE.sub("", s)
+    return s.strip()
+
+
+def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
+    reader = PdfReader(pdf_path)
+    total_pages = len(reader.pages)
+
+    print(f"[1/6] Extracting text for all {total_pages} pages (batched)...")
+    page_text = _varaschini_full_text_by_page(pdf_path, total_pages)
+    print(f"      -> {len(page_text)} pages of text (expect {total_pages - 1}, "
+          f"page 1 is the footerless TOC cover)")
+
+    print(f"[2/6] Walking {len(VARASCHINI_SECTIONS)} sections, discovering articles...")
+    catalog: list[dict] = []
+    for name, start, end, shape, category, _note in VARASCHINI_SECTIONS:
+        if shape == "NONPRICED":
+            continue
+        if name == "Composizione Tavoli":
+            continue  # handled separately below (TSV-based, not per-line)
+
+        section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
+        for p in range(start, end + 1):
+            text = page_text.get(p, "")
+            recs = _varaschini_find_records(p, text)
+            if shape in ("D", "E"):
+                recs += _varaschini_find_records_flat(p, text)
+            for code, page, nm in recs:
+                if code not in section_records:
+                    section_records[code] = [page, page, nm]
+                else:
+                    section_records[code][1] = max(section_records[code][1], page)
+                    if not section_records[code][2] and nm:
+                        section_records[code][2] = nm
+
+        for code, (p_start, p_end, nm) in sorted(section_records.items()):
+            product_name = f"{name} {nm}".strip() if nm else f"{name} {code}"
+            catalog.append({
+                "brand": brand,
+                "collection": name,
+                "product_name": product_name,
+                "art_code": code,
+                "printed_page_start": p_start,
+                "printed_page_end": p_end,
+                "pdf_page_start": p_start,
+                "pdf_page_end": p_end,
+                "shape": shape,
+                "section_category": category,
+            })
+
+    print("[3/6] Composizione Tavoli (Shape E): dedicated pdftotext -tsv pass...")
+    ct_codes = _varaschini_composizione_tavoli_codes(pdf_path)
+    for code, page in sorted(ct_codes.items()):
+        catalog.append({
+            "brand": brand,
+            "collection": "Composizione Tavoli",
+            "product_name": f"Composizione Tavoli {code}",
+            "art_code": code,
+            "printed_page_start": page,
+            "printed_page_end": page,
+            "pdf_page_start": page,
+            "pdf_page_end": page,
+            "shape": "E",
+            "section_category": "reference",
+        })
+    print(f"      -> {len(ct_codes)} verified codes")
+
+    print("[4/6] Cleaning + disambiguating product names...")
+    for e in catalog:
+        e["product_name"] = _varaschini_strip_name_junk(e["product_name"])
+    name_counts: dict[str, int] = {}
+    for e in catalog:
+        name_counts[e["product_name"]] = name_counts.get(e["product_name"], 0) + 1
+    dupe_names = {n for n, c in name_counts.items() if c > 1}
+    disambiguated = 0
+    for e in catalog:
+        if e["product_name"] in dupe_names:
+            e["index_heading"] = e["product_name"]
+            e["product_name"] = f"{e['product_name']} ({e['art_code']})"
+            disambiguated += 1
+    print(f"      -> {disambiguated} entries disambiguated across {len(dupe_names)} colliding names")
+
+    print("[5/6] Assigning page-keyed shared asset paths...")
+    # Assets are deduped BY PAGE (not duplicated per product like the other
+    # 3 brands): Varaschini averages ~2.5 catalog entries per page, so
+    # per-entry duplication would multiply the real 517-page asset count
+    # into 1,300+ redundant copies of the same content. Reviewed against
+    # the actual image-lookup code before adopting this (catalogChat.ts's
+    # getImageUrls() and stress_v2.ts's expected-image computation both
+    # already resolve images via page_images[pageNum], not by entry
+    # identity, so multiple entries sharing one filename is natively
+    # supported, not a special case). NOTE: printed_page_start/end still
+    # reflect the real first/last page a code was found on (can differ --
+    # e.g. an accessory code mentioned as a cross-reference on an earlier
+    # page before its own price table) -- only the ASSET FILENAME uses
+    # printed_page_start, matching the page whose content the parser
+    # should actually look at.
+    for e in catalog:
+        p = e["printed_page_start"]
+        fname = f"p{p:03d}"
+        e["mini_pdf"] = f"{brand}\\pages\\{fname}.pdf"
+        e["images"] = [f"{fname}.jpg"]
+        e["page_images"] = {str(p): f"{fname}.jpg"}
+        e["text_file"] = f"{brand}\\text\\{fname}.txt"
+
+    pages_needed = sorted({e["printed_page_start"] for e in catalog})
+    print(f"      -> {len(pages_needed)} distinct pages referenced")
+
+    print(f"[6/6] Generating {len(pages_needed)} mini-PDFs, images, and text files...")
+    (out_root / "pages").mkdir(parents=True, exist_ok=True)
+    (out_root / "images").mkdir(parents=True, exist_ok=True)
+    (out_root / "text").mkdir(parents=True, exist_ok=True)
+
+    for p in pages_needed:
+        writer = PdfWriter()
+        writer.add_page(reader.pages[p - 1])
+        with open(out_root / "pages" / f"p{p:03d}.pdf", "wb") as f:
+            writer.write(f)
+        (out_root / "text" / f"p{p:03d}.txt").write_text(page_text.get(p, ""), encoding="utf-8")
+
+    # Images: batched pdftoppm calls over contiguous page runs (not one
+    # subprocess per page) for the same efficiency reason as step 1 --
+    # confirmed ~10x faster in practice (11 pages in ~2s batched vs. an
+    # estimated ~1s/page one-call-per-page).
+    runs = []
+    if pages_needed:
+        run_start = prev = pages_needed[0]
+        for p in pages_needed[1:]:
+            if p == prev + 1:
+                prev = p
+                continue
+            runs.append((run_start, prev))
+            run_start = prev = p
+        runs.append((run_start, prev))
+    for a, b in runs:
+        subprocess.run(
+            [PDFTOPPM, "-jpeg", "-r", "150", "-f", str(a), "-l", str(b),
+             pdf_path, str(out_root / "images" / "_tmp")],
+            capture_output=True,
+        )
+    for f in (out_root / "images").glob("_tmp-*.jpg"):
+        page_num = int(f.stem.split("-")[-1])
+        f.rename(out_root / "images" / f"p{page_num:03d}.jpg")
+
+    catalog_path = out_root / "catalog_index.json"
+    catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nDone. Wrote {len(catalog)} entries to {catalog_path}")
+    print("Spot-check a few entries and open a couple of the generated files")
+    print("before treating this as ready for parser work.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf", help="Path to the brand price-list PDF")
     ap.add_argument("--brand", required=True, help="Brand name, e.g. Bolzan")
     ap.add_argument(
         "--index-pages",
-        required=True,
-        help="PDF page range of the photographic index, e.g. 3-8",
+        required=False,
+        default=None,
+        help="PDF page range of the photographic index, e.g. 3-8. Not "
+             "applicable (and not required) for --style varaschini, which "
+             "has no per-product index to point at.",
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
-    ap.add_argument("--style", default="bolzan", choices=["bolzan", "cattelan", "bonaldo"],
+    ap.add_argument("--style", default="bolzan",
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -609,7 +1084,13 @@ def main():
                           "'bonaldo' = flat A-Z index (name-block then "
                           "matching number-block, no dot leaders/prefix), "
                           "single running-counter footer (verified 1:1 "
-                          "with PDF page index, not just assumed).")
+                          "with PDF page index, not just assumed). "
+                          "'varaschini' = no per-product index at all -- "
+                          "a hardcoded, verified per-collection section "
+                          "table (VARASCHINI_SECTIONS) plus per-page "
+                          "article discovery instead. Runs its own "
+                          "self-contained pipeline (run_varaschini),"
+                          " ignores --index-pages and --merge.")
     ap.add_argument("--merge", action="store_true",
                      help="Merge into an existing catalog_index.json instead "
                           "of overwriting it: entries from this run replace "
@@ -619,6 +1100,17 @@ def main():
     args = ap.parse_args()
 
     pdf_path = args.pdf
+
+    if args.style == "varaschini":
+        out_root = Path(args.out) / args.brand
+        run_varaschini(pdf_path, args.brand, out_root)
+        return
+
+    if not args.index_pages:
+        print("ERROR: --index-pages is required for --style "
+              f"{args.style!r} (only 'varaschini' can omit it).")
+        sys.exit(1)
+
     reader = PdfReader(pdf_path)
     total_pages = len(reader.pages)
 
