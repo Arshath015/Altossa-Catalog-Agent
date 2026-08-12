@@ -172,6 +172,39 @@ const GENERIC_CATEGORY_WORDS = new Set([
   'stand', 'mirror', 'lounge', 'coffee', 'wood', 'tv',
 ]);
 
+// Ordinary conversational request/question words -- stripped before
+// checkFamilyAmbiguity's containment check so a natural-language phrasing
+// ("what are the prices for X") is scored the same as a terse one ("X
+// price"). Deliberately small and generic (not brand-specific vocabulary),
+// same precedent as GENERIC_CATEGORY_WORDS/RISKY_SIZE_CODE_WORDS above.
+const CONVERSATIONAL_FILLER_WORDS = new Set([
+  'what', 'whats', 'are', 'is', 'the', 'a', 'an', 'for', 'of', 'me', 'give',
+  'show', 'tell', 'please', 'how', 'much', 'do', 'you', 'have', 'can', 'i',
+  'get', 'price', 'prices', 'pricing', 'cost', 'costs', 'all', 'full',
+  'complete', 'every', 'list', 'in',
+]);
+
+/** Splits into tokens on any non-alphanumeric character (not just
+ * whitespace) -- unlike a plain `.split(/\s+/)`, this treats "Big/Big"
+ * (typed with no space) and "Big / Big" (a catalog name, spaced) as the
+ * SAME two tokens. Needed by checkFamilyAmbiguity below; same root-cause
+ * fix shape as the tier-filter punctuation-tokenization bug fixed
+ * elsewhere in this file (a whitespace-only split lets stray punctuation
+ * silently break an otherwise-correct token comparison). */
+function tokenizeLoose(s: string): string[] {
+  return normalize(s).split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/** Length of the longest common leading-token sequence between two
+ * already-tokenized names (order matters, unlike the token-SET
+ * containment used elsewhere in this file -- see checkFamilyAmbiguity for
+ * why an ordered prefix match is the right relation for THIS check). */
+function commonPrefixLen(a: string[], b: string[]): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
 /** Simple token-overlap similarity score between a query and a candidate name. Higher = better match. */
 export function similarity(query: string, candidate: string): number {
   const q = normalize(query);
@@ -1007,6 +1040,105 @@ export class CatalogChat {
    * IDENTICAL to the deterministic path either way -- the LLM only ever
    * influences which row gets looked up, never what the price is.
    */
+  /**
+   * Ambiguity backstop for the LLM path, specifically for the shape found
+   * live with Varaschini's Big/Big Light: many real products (32 SKUs)
+   * share a genuinely specific multi-word name prefix ("Big / Big Light"),
+   * differing only by a trailing code/descriptor -- and a query naming
+   * only the shared family, with nothing distinguishing any one member,
+   * always got silently resolved to the SAME arbitrary SKU regardless of
+   * what was actually asked (confirmed live: same wrong SKU for "Ceramica
+   * finish" and for the bare collection name). The deterministic answer()
+   * path already has an analogous guard (the `maximal` token-SET
+   * containment tie-break above), but answerFromIntent trusts ANY single
+   * valid LLM guess outright with no equivalent check.
+   *
+   * This is NOT a reuse of that existing check -- reusing it directly was
+   * tried and rejected (see commit history/session notes): it produced 22
+   * false positives across the real regression fixtures (typo cases like
+   * "agata flex pelle" scoring a low, coincidental, UNORDERED tie against
+   * unrelated products) and, worse, never caught Big/Big Light at all
+   * (its own score band -- diluted overlap from unstripped conversational
+   * filler words like "what are the prices for" -- sits well below the
+   * exact/containment tier a naive reuse would need to gate on).
+   *
+   * Instead this uses an ORDERED TOKEN-PREFIX relation (not the unordered
+   * token-SET containment used everywhere else in this file): two product
+   * names are "family" siblings only if they share a genuinely specific
+   * (>=2 token) common LEADING sequence, using whichever grouping is
+   * TIGHTEST for the chosen product (the max observed common-prefix
+   * length across the whole catalog) -- this is what correctly excludes
+   * a coincidental single-generic-word overlap (Varaschini's "Big In&Out"
+   * only shares the 1 word "big" with "Big / Big Light", scores far below
+   * the max-3 grouping its real SKU siblings share; Bonaldo's "Innesti
+   * table"/"Innesti coffee table" only share 1 word too -- correctly left
+   * alone for the EXISTING SET-containment maximal check to auto-resolve,
+   * since ordered-prefix and unordered-SET containment are deliberately
+   * different relations for different shapes of ambiguity).
+   *
+   * Once a real family is found, a member is "satisfied" by the query if
+   * every one of its OWN tokens beyond the shared prefix appears in the
+   * (filler-stripped) query text -- vacuously true for a family's "base"
+   * member whose full name IS the shared prefix (e.g. bare "MAGDA" needs
+   * nothing extra, so "magda price" -- filler-stripped to just "magda" --
+   * uniquely satisfies it and no sibling). Zero satisfied members (like
+   * "Ceramica finish", a real attribute that lives only in price-row
+   * data, never in any product's own NAME) or 2+ still-tied-after-maximal
+   * satisfied members both count as genuinely ambiguous.
+   *
+   * Verified against all 132 real regression fixtures (queries.json +
+   * stress_v2_queries.json) before landing: 0 false positives, correctly
+   * leaves MAGDA/MAGDA ML/PLANER/Innesti alone, correctly flags both
+   * reported Big/Big Light phrasings, correctly leaves a specific SKU or
+   * descriptive-suffix query (e.g. "Big / Big Light A B White") alone.
+   */
+  private checkFamilyAmbiguity(rawQuery: string, chosenName: string): string[] | null {
+    const chosenTokens = tokenizeLoose(chosenName);
+
+    let maxLen = 0;
+    const prefixLens = new Map<string, number>();
+    for (const n of this.productNames) {
+      if (n === chosenName) continue;
+      const len = commonPrefixLen(chosenTokens, tokenizeLoose(n));
+      if (len === 0) continue;
+      prefixLens.set(n, len);
+      if (len > maxLen) maxLen = len;
+    }
+    // A shared prefix of just 1 token is too weak a signal to treat as a
+    // real SKU-suffix family -- see the coincidental-single-word cases
+    // (Big In&Out / Innesti) discussed above.
+    if (maxLen < 2) return null;
+
+    const family = [chosenName, ...this.productNames.filter(n => prefixLens.get(n) === maxLen)];
+    if (family.length <= 1) return null;
+
+    const qTokens = new Set(
+      tokenizeLoose(rawQuery).filter(t => !CONVERSATIONAL_FILLER_WORDS.has(t))
+    );
+    const distinguishingOf = (n: string) => tokenizeLoose(n).slice(maxLen);
+    const satisfied = family.filter(n => distinguishingOf(n).every(t => qTokens.has(t)));
+
+    if (satisfied.length === 0) return family;
+    if (satisfied.length === 1) return null;
+
+    // 2+ satisfied: keep only the MAXIMAL ones (whose confirmed
+    // distinguishing set isn't a strict subset of another satisfied
+    // member's) -- e.g. "magda ml price" satisfies both bare MAGDA
+    // (vacuously, empty distinguishing set) and MAGDA ML ("ml" present);
+    // MAGDA ML's confirmed set strictly contains MAGDA's, so only MAGDA
+    // ML is maximal and this correctly resolves directly, not ambiguous.
+    const maximal = satisfied.filter(n => {
+      const nSet = new Set(distinguishingOf(n));
+      return !satisfied.some(other => {
+        if (other === n) return false;
+        const otherSet = new Set(distinguishingOf(other));
+        return otherSet.size > nSet.size && [...nSet].every(t => otherSet.has(t));
+      });
+    });
+    if (maximal.length === 1) return null;
+    return maximal;
+  }
+
   answerFromIntent(
     productNameGuess: string | null,
     size: string | null,
@@ -1024,6 +1156,21 @@ export class CatalogChat {
       // LLM guess missing or not a real product -- fall back to the
       // tested deterministic matcher on the raw text instead of guessing.
       return this.answer(rawQuery, brand, lastModelVariant);
+    }
+
+    // Ambiguity backstop: even though the LLM confidently returned ONE
+    // valid product name, check whether it actually belongs to an
+    // unresolved SKU family the raw query gives no way to narrow (see
+    // checkFamilyAmbiguity's own doc comment for the full reasoning and
+    // verification). Only fires for a genuine family + zero/multiple
+    // satisfied members -- never touches the ordinary single-product case.
+    const familyCandidates = this.checkFamilyAmbiguity(rawQuery, validProductName);
+    if (familyCandidates) {
+      return {
+        status: 'clarify_product',
+        message: `I found a few products that could match: ${familyCandidates.join(', ')}. Which one did you mean?`,
+        candidates: familyCandidates,
+      };
     }
 
     // Tier(s) from the LLM might not exactly match our normalized whitelist
