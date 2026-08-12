@@ -2328,6 +2328,19 @@ def _varaschini_find_art_blocks(lines):
             prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
             if "cover" in prefix_ctx:
                 continue
+            # "- art. XXXX" (a dash immediately before "art.", only
+            # whitespace between) is this catalog's general cross-reference
+            # convention, not just for "cover" -- confirmed widespread (328
+            # hits outside "cover" alone) for bundle-quantity call-outs
+            # ("2 pz - art. 2728"), handling-kit and base-cover accessory
+            # lines ("Kit movimentazione tavolo - art. 3899K1"). Excluding
+            # only "cover" left every OTHER dash-prefixed cross-reference
+            # free to be mistaken for a new product's own trigger, silently
+            # truncating whatever block it landed inside (confirmed on
+            # System p478/p146). A genuine product's own "art. CODE" trigger
+            # is never dash-prefixed in this catalog.
+            if prefix_ctx.rstrip().endswith("-"):
+                continue
             triggers.append((i, m.group(1).upper()))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
             found = False
@@ -2457,7 +2470,17 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # price, wider than a naive fixed window (confirmed bug:
                 # this exact gap let 6 "cover" prices get miscounted as a
                 # real 6th tier before being caught here).
-                if "cover" in low[:m.start()]:
+                # Also exclude any OTHER dash-prefixed "- art. XXXX"
+                # accessory cross-reference on the same line (e.g. "Lampada
+                # Outdoor Lighting - art. 8001 € 384"), not just "cover" --
+                # confirmed on Tibidabo p497's "14250" (Pouf): extending
+                # this block's boundary to stop the SAME dash-prefixed
+                # pattern from being mistaken for a new trigger (see
+                # _varaschini_find_art_blocks) also pulled 2 accessory
+                # prices into this block's scan range, turning a clean
+                # 5-labels/5-prices match into a 5-vs-7 mismatch that
+                # silently dropped all 5 real rows.
+                if "cover" in low[:m.start()] or re.search(r"-\s*art\.?\s", low[:m.start()]):
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
