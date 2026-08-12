@@ -3433,6 +3433,17 @@ def main():
             "B": parse_file_varaschini_shape_a,
             "C": parse_file_varaschini_shape_a,
             "D": parse_file_varaschini_shape_d,
+            # Teli di Copertura's "9XXXC"-style cover codes (confirmed
+            # p558: "art. 9442C" + single flat price, plus a compatibility
+            # list of unrelated OTHER collections' furniture codes) use
+            # the same "art." + single-unclaimed-price convention as Shape
+            # A -- no new parser needed for this part. Its OTHER page type
+            # (p567+: a base x cover-size GRID using entirely different
+            # "9C5XXX" codes) is a distinct, deeper problem -- those codes
+            # aren't in catalog_index at all yet, a discovery gap not a
+            # parsing one, left for a dedicated follow-up (same class of
+            # issue as Belt/Belt Air's missing composition codes).
+            "REFERENCE_MATRIX": parse_file_varaschini_shape_a,
         }
         # Per-COLLECTION overrides of the generic per-shape parser, needed
         # when a collection shares Shape A's price-table format but not
