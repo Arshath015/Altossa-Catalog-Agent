@@ -406,6 +406,23 @@ export class CatalogChat {
    * part of a real tier phrase (e.g. "glove" in "Pelle Glove") never gets
    * evaluated as a standalone typo candidate against the whole catalog. */
   private realTierPhrases: string[];
+  /** Every distinct real product CODE (price-row `code`, e.g. "13611X",
+   * "P275", "RFL") mapped to the product name(s) that use it -- 2+ when a
+   * code is genuinely shared across different products. Built from BOTH
+   * `this.prices`' own `code` field (works across every brand that has
+   * one -- Bolzan/Bonaldo/Varaschini, not Cattelan, which has no Codice
+   * concept at all) AND catalog_index's own `art_code` field (Varaschini
+   * only, but critically covers products with NO price row at all -- a
+   * product the price parser never successfully extracted, like an
+   * unpriced "materials-grid" item, would otherwise be entirely invisible
+   * to code lookup even though its code is real and its catalog_index
+   * entry exists). Built once here rather than scanning on every query.
+   * See findProductsByCode below for why this exists at all: no other
+   * matching path in this file ever consulted a raw product CODE, only
+   * product NAMES -- a query naming just a code (no product name text at
+   * all) had no way to resolve, even when that code unambiguously
+   * identifies one real product. */
+  private codeToProductNames: Map<string, string[]>;
 
   /** @param dataDir folder containing catalog_index.json and prices.json for one brand */
   constructor(private dataDir: string) {
@@ -414,6 +431,70 @@ export class CatalogChat {
     this.productNames = [...new Set(this.catalogIndex.map(p => p.product_name))];
     this.realTierPhrases = [...new Set(this.prices.map(r => r.fabric_tier).filter((t): t is string => !!t))]
       .sort((a, b) => normalize(b).length - normalize(a).length);
+    this.codeToProductNames = new Map();
+    const addCode = (rawCode: string | undefined, productName: string) => {
+      if (!rawCode) return;
+      const key = normalize(rawCode);
+      if (!key) return;
+      const names = this.codeToProductNames.get(key) ?? [];
+      if (!names.includes(productName)) names.push(productName);
+      this.codeToProductNames.set(key, names);
+    };
+    for (const r of this.prices) addCode(r.code, r.product_name);
+    for (const e of this.catalogIndex) addCode(e.art_code, e.product_name);
+  }
+
+  /** Scans the query for any WHOLE token that exactly matches a real
+   * product code, returning the distinct product name(s) that code
+   * belongs to -- empty if no token in the query is a real code at all.
+   * Uses the punctuation-stripping tokenizer (not a plain word-boundary
+   * regex) for the same reason the tier-filter and family-ambiguity fixes
+   * needed it: a code glued to adjacent punctuation in the query text
+   * must still match.
+   *
+   * When a code is shared by 2+ different products -- confirmed real and
+   * common, not a rare edge case: 98 art_codes are reused across
+   * DIFFERENT Varaschini collections alone, e.g. "13610" is both
+   * "Composizione Tavoli 13610" (a real, priced, unrelated product) AND
+   * "Big / Big Light A B White" (the actual product meant by "Big Big
+   * Light 13610 price" -- unpriced, so invisible to a price-row-only code
+   * index, which is why catalog_index's art_code is merged in above too)
+   * -- prefer whichever candidate's own name shares the MOST tokens with
+   * the rest of the query (excluding the code token itself and ordinary
+   * filler), same "a more specific signal wins" principle used everywhere
+   * else in this file. Only returns multiple names when the collision is
+   * genuinely unresolvable from context (no distinguishing tokens present,
+   * or a real tie) -- never silently picks an arbitrary winner.
+   *
+   * Deliberately does NOT try to guess whether a NON-matching token
+   * "looks like" a code (e.g. flagging it as a probably-nonexistent code)
+   * -- that's a judgment call on far shakier ground than "this exact
+   * string is a real code we have data for," and is being tracked as its
+   * own separate, not-yet-decided question (checkFamilyAmbiguity's
+   * satisfied.length===0 branch), not folded in here. */
+  findProductsByCode(query: string): string[] {
+    const tokens = tokenizeLoose(query);
+    const codeTokensUsed = new Set<string>();
+    const found = new Set<string>();
+    for (const token of tokens) {
+      const names = this.codeToProductNames.get(token);
+      if (names) { names.forEach(n => found.add(n)); codeTokensUsed.add(token); }
+    }
+    if (found.size <= 1) return [...found];
+
+    const contextTokens = new Set(
+      tokens.filter(t => !codeTokensUsed.has(t) && !CONVERSATIONAL_FILLER_WORDS.has(t))
+    );
+    if (contextTokens.size === 0) return [...found];
+
+    const scored = [...found].map(name => {
+      const nameTokens = new Set(tokenizeLoose(name));
+      const overlap = [...contextTokens].filter(t => nameTokens.has(t)).length;
+      return { name, overlap };
+    });
+    const maxOverlap = Math.max(...scored.map(s => s.overlap));
+    if (maxOverlap === 0) return [...found];
+    return scored.filter(s => s.overlap === maxOverlap).map(s => s.name);
   }
 
   /** Removes any recognized real tier phrase (longest-match-first, whole
@@ -873,6 +954,11 @@ export class CatalogChat {
     const add = (name: string) => {
       if (!seen.has(name)) { seen.add(name); ranked.push(name); }
     };
+    // Highest priority: an exact real product CODE mentioned in the query
+    // (see findProductsByCode) is a far more precise signal than any name
+    // match below, so the LLM sees it first regardless of how the rest of
+    // the query happens to fuzzy-score against other candidates.
+    this.findProductsByCode(query).forEach(add);
     this.detectNamedProductsInText(query).forEach(add);
     this.matchProducts(query).forEach(m => add(m.name));
     // Strip known real tier phrases before fuzzy-matching specifically --
@@ -930,6 +1016,42 @@ export class CatalogChat {
       const tiers = extractTiers(query, namedProducts);
       const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
       return this.buildMultiProductResult(namedProducts, [], size, tiers, query, brand, wantsFullList);
+    }
+
+    // Raw product-CODE match, checked before the fuzzy/family name-matching
+    // below -- a code is a far more precise signal than any name-based
+    // score, and (unlike a product name) is never itself embedded in every
+    // family member's own display name, so the ordinary name-matching path
+    // below has no way to use it at all. Confirmed live: "Big Big Light
+    // 13610 price" -- 13610 is a real code (Big / Big Light A B White),
+    // but that product's own NAME doesn't contain "13610" anywhere, so it
+    // was invisible to name matching and the query fell through to a
+    // 32-candidate family-ambiguity dump that didn't even include the
+    // product actually being asked for. Only fires when exactly one
+    // product uses this code -- if a code is genuinely shared (confirmed
+    // real: 27-52 such collisions per brand), surface just those specific
+    // colliding candidates, a far more precise clarify_product than the
+    // generic family dump this used to fall through to.
+    if (namedProducts.length === 0) {
+      const codeMatches = this.findProductsByCode(query);
+      if (codeMatches.length === 1) {
+        const productName = codeMatches[0];
+        const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(query, productName);
+        const size = extractSize(scopedQuery);
+        const tiers = extractTiers(scopedQuery, [productName]);
+        const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+        return this.withUnresolvedClauseNote(
+          this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+          excludedClause
+        );
+      }
+      if (codeMatches.length > 1) {
+        return {
+          status: 'clarify_product',
+          message: `I found a few products that could match: ${codeMatches.join(', ')}. Which one did you mean?`,
+          candidates: codeMatches,
+        };
+      }
     }
 
     const matches = this.matchProducts(query);
@@ -1115,8 +1237,18 @@ export class CatalogChat {
     const qTokens = new Set(
       tokenizeLoose(rawQuery).filter(t => !CONVERSATIONAL_FILLER_WORDS.has(t))
     );
+    // A family member's OWN product CODE mentioned in the query also
+    // counts as satisfying it, same as its name-distinguishing tokens --
+    // needed because a member's code frequently ISN'T part of its own
+    // display name at all (confirmed real: 6/32 Big/Big Light entries,
+    // including the exact one this backstop needs to get right). Restricted
+    // to this family's own members, not every code-matched product
+    // catalog-wide (findProductsByCode itself can return a match outside
+    // this family if the query happens to mention an unrelated product's
+    // code too -- irrelevant here).
+    const codeMatchedInFamily = new Set(this.findProductsByCode(rawQuery).filter(n => family.includes(n)));
     const distinguishingOf = (n: string) => tokenizeLoose(n).slice(maxLen);
-    const satisfied = family.filter(n => distinguishingOf(n).every(t => qTokens.has(t)));
+    const satisfied = family.filter(n => codeMatchedInFamily.has(n) || distinguishingOf(n).every(t => qTokens.has(t)));
 
     if (satisfied.length === 0) return family;
     if (satisfied.length === 1) return null;
@@ -1158,13 +1290,26 @@ export class CatalogChat {
       return this.answer(rawQuery, brand, lastModelVariant);
     }
 
+    // A real product CODE mentioned in the query is a more authoritative
+    // signal than whatever name the LLM guessed -- prefer it outright.
+    // Necessary even with buildLlmShortlist now surfacing the code-matched
+    // candidate too: nothing forces the LLM to actually PICK it over
+    // another name from the rest of its shortlist, so this override
+    // doesn't depend on the LLM choosing correctly at all. See
+    // findProductsByCode's own doc comment; ignored when the code is
+    // genuinely shared across 2+ products (a real, if rare, collision --
+    // deferring to whatever the LLM/checkFamilyAmbiguity below resolve to
+    // rather than guessing which of the colliding products was meant).
+    const codeMatches = this.findProductsByCode(rawQuery);
+    const effectiveProductName = codeMatches.length === 1 ? codeMatches[0] : validProductName;
+
     // Ambiguity backstop: even though the LLM confidently returned ONE
     // valid product name, check whether it actually belongs to an
     // unresolved SKU family the raw query gives no way to narrow (see
     // checkFamilyAmbiguity's own doc comment for the full reasoning and
     // verification). Only fires for a genuine family + zero/multiple
     // satisfied members -- never touches the ordinary single-product case.
-    const familyCandidates = this.checkFamilyAmbiguity(rawQuery, validProductName);
+    const familyCandidates = this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
     if (familyCandidates) {
       return {
         status: 'clarify_product',
@@ -1186,7 +1331,7 @@ export class CatalogChat {
     // wlima pelle glove" still returned GRETA Wood's tier as "Pelle
     // Glove" (WILMA's) even with a live, successful LLM call, because the
     // LLM's own product_names guess also only surfaced GRETA Wood here.
-    const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(rawQuery, validProductName);
+    const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(rawQuery, effectiveProductName);
     // A THIRD gap in the same bug family, found after the multi-product
     // combiner's shared-tier-array fix (buildMultiProductResult): this
     // exact function is ALSO called directly whenever answerFromIntentMulti
@@ -1235,7 +1380,7 @@ export class CatalogChat {
     // already passes an individually-scoped clause with no "and" left in
     // it, so excludedClause is always null in that context.
     return this.withUnresolvedClauseNote(
-      this.lookupForProduct(validProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+      this.lookupForProduct(effectiveProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList),
       excludedClause
     );
   }
