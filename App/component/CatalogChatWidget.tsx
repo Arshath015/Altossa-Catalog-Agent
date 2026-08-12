@@ -121,8 +121,22 @@ export default function CatalogChatWidget({
         }),
       });
       const result: ChatResult = await res.json();
+      // Every status that DOES represent a definitively identified product
+      // (or joined multi-product set) sets product_name -- clarify_product
+      // and no_product_match never do. Without this else branch, an
+      // ambiguous/unresolved turn left the PREVIOUS turn's anchor
+      // untouched, so a stale product from several turns back could
+      // silently survive any number of ambiguous exchanges and get reused
+      // by a later content-free follow-up ("yes, give all") that has
+      // nothing to do with it -- confirmed live: "price of Bahia 2260M"
+      // (resolves) -> two separate ambiguous Big/Big Light turns (neither
+      // sets product_name) -> "yes, give all" still silently returned
+      // Bahia 2260M's price grid. Mirrors the existing lastModelVariantRef
+      // else-clears-to-null branch just below, which never had this bug.
       if (result.product_name) {
         lastProductRef.current = result.product_name;
+      } else {
+        lastProductRef.current = null;
       }
       const variantsInResult = [...new Set((result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
       if (variantsInResult.length === 1) {
