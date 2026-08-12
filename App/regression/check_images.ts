@@ -37,17 +37,37 @@ import path from 'path';
 import crypto from 'crypto';
 
 const ROOT = path.join(__dirname, '..', '..');
-const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini'];
 
 interface CatalogEntry {
   product_name: string;
   index_heading?: string;
+  art_code?: string;
   images: string[];
   text_file: string;
 }
 
 function realHeading(entry: CatalogEntry): string {
   return entry.index_heading || entry.product_name;
+}
+
+// Varaschini's dense multi-SKU-per-page collections print one shared
+// image/heading for many products at once with no PER-SKU printed
+// heading -- so the reciprocal literal-heading check below can never
+// hold for them even on a genuinely legitimate shared page. Every
+// Varaschini entry does carry its own art_code, though, and that code IS
+// confirmed (throughout this brand's whole parsing build) to reliably
+// appear in the shared page's own text -- so whenever the OTHER entry
+// being checked against has an art_code, checking for its CODE instead
+// of its heading is the correct legitimacy signal for this shape. Falls
+// back to the existing heading check whenever that entry has no
+// art_code, so Bolzan/Cattelan/Bonaldo (no art_code field at all) are
+// completely unaffected.
+function isLegitimatePair(pText: string, otherEntry: CatalogEntry): boolean {
+  if (otherEntry.art_code) {
+    return pText.includes(otherEntry.art_code.toUpperCase());
+  }
+  return pText.includes(realHeading(otherEntry).toUpperCase());
 }
 
 function checkBrand(brand: string): { suspicious: number; legitimate: number } {
@@ -107,7 +127,7 @@ function checkBrand(brand: string): { suspicious: number; legitimate: number } {
       for (const other of products) {
         if (other === p) continue;
         const otherEntry = idx.find(e => e.product_name === other)!;
-        if (!pText.includes(realHeading(otherEntry).toUpperCase())) isLegit = false;
+        if (!isLegitimatePair(pText, otherEntry)) isLegit = false;
       }
     }
 
