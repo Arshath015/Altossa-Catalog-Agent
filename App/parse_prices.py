@@ -3500,6 +3500,46 @@ def main():
         #   Basi Tavolini/Carpet Design are fixed via
         #   COLLECTION_PARSER_OVERRIDES above instead of excluded.)
         SHAPE_D_EXCLUDED_COLLECTIONS = set()
+        # Multi-page-recorded entries individually verified (direct page-text
+        # read, one at a time) to have their COMPLETE, clean price table
+        # entirely on their recorded FIRST page -- the later pages in the
+        # span hold only description/diagram/compatibility content the price
+        # table itself doesn't need. Confirmed for all of these: Outdoor
+        # Cooking's kitchen units + their inline "cover - art. XXXX €YYY"
+        # accessories (p389/390, spans recorded as 389-391/390-391 -- the
+        # "+391" page is a shared cellar/waste-holder accessory page that
+        # only MENTIONS these art_codes in a compatibility row, confirmed
+        # NOT their own trigger), and Victor's cushion/headrest/wheel-set
+        # sub-items (p506/507/511, spans recorded as 506-509/506-512/511-513
+        # for the same reason -- later pages are OTHER Victor products'
+        # own price tables that happen to share the multi-page recording).
+        #
+        # This is deliberately a narrow, individually-verified ALLOWLIST,
+        # not a blanket "always try page 1 of a multi-page span" relaxation
+        # -- that would risk silently mis-parsing genuinely multi-page cases
+        # the same broader audit ruled out for this exact reason:
+        #   - Big/Big Light's own multi-page entries land in the already-
+        #     documented p147-157 diagram-cluttered cluster where even
+        #     single-page block-boundary detection is known to break down
+        #     (see the Shape B comment above) -- attempting page 1 there
+        #     risks a corrupted/partial block, not a clean read.
+        #   - Emma/Emma Cross's ~88 multi-page entries are a genuine
+        #     diagram-page-far-from-price-page case (confirmed art_code
+        #     "236M01" spanning printed pages 258->262).
+        #   - Plinto's "(pag. 412)"-style entries: the art_code appearing on
+        #     the recorded first page is only a CROSS-REFERENCE mention
+        #     inside a DIFFERENT product's own accessory line (e.g.
+        #     "cuscino schienale - art. 24610H (pag. 412)"), not this
+        #     product's own "art." trigger -- its real price table is on
+        #     page 412, not the recorded start page. Outdoor Cooking's own
+        #     "25220" (Madia) turned out to be this exact same pattern
+        #     (p391 only lists it in a compatibility row) and was excluded
+        #     from this allowlist for that reason, not included.
+        # Extend this set only after the same direct per-entry verification.
+        MULTI_PAGE_SINGLE_PAGE_SAFE = {
+            "25201", "25202", "25203", "25204", "9456C", "9457C",  # Outdoor Cooking
+            "218P", "2822C", "2822CT", "2822R", "2823C", "2823CT", "285P", "285P2",  # Victor
+        }
         skipped_wrong_shape = 0
         skipped_multi_page = 0
         skipped_excluded_collection = 0
@@ -3521,7 +3561,7 @@ def main():
             if shape == "D" and collection in SHAPE_D_EXCLUDED_COLLECTIONS:
                 skipped_excluded_collection += 1
                 continue
-            if p["printed_page_start"] != p["printed_page_end"]:
+            if p["printed_page_start"] != p["printed_page_end"] and p.get("art_code") not in MULTI_PAGE_SINGLE_PAGE_SAFE:
                 skipped_multi_page += 1
                 continue
             dispatch_key = collection if collection in COLLECTION_PARSER_OVERRIDES else shape

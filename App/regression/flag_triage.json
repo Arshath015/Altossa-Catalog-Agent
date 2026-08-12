@@ -948,6 +948,14 @@
     }
   },
   "Varaschini": {
+    "Outdoor Cooking 9456C": {
+      "status": "known_gap",
+      "note": "Individually verified (not batch): its own catalog_index entry (page 389-390) was previously excluded entirely by the multi-page-span filter; un-excluded 2026-08-12 after confirming its full base price table sits on page 389 (that fix landed 6 other Outdoor Cooking/Victor products). This specific code only ever appears as a dash-prefixed accessory cross-reference inline in ANOTHER product's own price block (\"cover - art. 9456C  € 330\", inside Cucina con Barbecue da 75's block) -- never as its own standalone \"art.\" trigger anywhere on its recorded page. Same phantom-catalog-entry pattern as the Bento entries above. Zero rows returned, not silently wrong -- the €330 accessory price is real and already captured, just not as this code's own separate row."
+    },
+    "Outdoor Cooking 9457C": {
+      "status": "known_gap",
+      "note": "Individually verified (not batch): same fix and same pattern as Outdoor Cooking 9456C directly above -- only appears as a dash-prefixed accessory cross-reference (\"cover - art. 9457C  € 308\", inside Cucina con Lavello's block), never its own standalone trigger. Zero rows returned, not silently wrong."
+    },
     "Bento art. 2392 art. 2394": {
       "status": "known_gap",
       "note": "Code found in its expected block but no price detected nearby -- the majority are confirmed phantom catalog_index entries (a dash-prefixed accessory cross-reference like \"- art. XXXX\", or an explanatory-prose mention, independently indexed as if it were its own product -- the same pattern fixed for Shape A/D this session on Tibidabo/Outdoor Cooking/Teli di Copertura). Zero rows returned, not silently wrong."
