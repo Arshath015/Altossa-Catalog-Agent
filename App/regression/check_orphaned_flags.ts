@@ -37,12 +37,13 @@ const ROOT = path.join(__dirname, '..', '..');
 const LEDGER_PATH = path.join(__dirname, 'flag_triage.json');
 
 // Brands whose catalog is parsed with a --format that produces review_flags
-// (currently: cattelan, bonaldo). Add a brand here the day it starts using
-// one of these formats so its flags are tracked from day one -- also add a
-// matching entry (even if just `{}`) to flag_triage.json.
+// (currently: cattelan, bonaldo, varaschini). Add a brand here the day it
+// starts using one of these formats so its flags are tracked from day one
+// -- also add a matching entry (even if just `{}`) to flag_triage.json.
 const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Cattelan Italia': 'cattelan',
   'Bonaldo': 'bonaldo',
+  'Varaschini': 'varaschini',
 };
 
 interface Flag {
