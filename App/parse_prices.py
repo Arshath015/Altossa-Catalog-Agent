@@ -1,5 +1,8 @@
-import re, json, argparse, sys
+import re, json, argparse, sys, subprocess
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from extract_catalog import PDFTOTEXT  # noqa: E402 -- reuse the same PATH-shadowing-safe poppler resolution
 
 # Some catalogs' product names include characters (À, Ø...) outside
 # Windows' default console codepage (cp1252) -- without this, a plain
@@ -2884,6 +2887,157 @@ def parse_file_varaschini_shape_d(path, page_num, entries_for_page, brand="Varas
     return rows, flags
 
 
+VARASCHINI_TSV_PRICE_DIGIT_RE = re.compile(r"^[\d][\d.,]*$")
+
+
+def _varaschini_tsv_tokens(pdf_path):
+    """Word-level (left, top, text) tokens for a single-page PDF via
+    `pdftotext -tsv`. Unlike `-layout` text, coordinates don't depend on
+    poppler's (sometimes-wrong) reading-order reconstruction -- needed for
+    Composizione Tavoli's combinatorial base x top price MATRIX, where
+    -layout's linearized text scatters a row's own code and price many
+    lines apart (see _varaschini_composizione_tavoli_codes in
+    extract_catalog.py, which already uses this same technique for CODE
+    discovery; this is the PRICE-side counterpart)."""
+    result = subprocess.run([PDFTOTEXT, "-tsv", "-enc", "UTF-8", pdf_path, "-"], capture_output=True)
+    tsv_text = result.stdout.decode("utf-8", errors="replace")
+    tokens = []
+    for line in tsv_text.splitlines()[1:]:  # skip TSV header row
+        parts = line.split("\t")
+        if len(parts) < 12 or parts[0] != "5":  # level 5 = word-level token
+            continue
+        try:
+            left, top = float(parts[6]), float(parts[7])
+        except ValueError:
+            continue
+        tokens.append((left, top, parts[11]))
+    return tokens
+
+
+def parse_file_varaschini_composizione_tavoli(pdf_path, page_num, entries_for_page, brand="Varaschini"):
+    """Composizione Tavoli: a combinatorial BASE x TOP price matrix, not a
+    per-item list (confirmed on p574's image: table-base codes down the
+    left as ROWS, HPL top codes across the top as COLUMNS, matrix cells
+    price a base+top COMBINATION). Only each code's OWN standalone price
+    is extracted here (a base's own "Prezzo" column right next to it, or a
+    top's own "Prezzo" row right below its header) -- the combined matrix
+    cell prices are a fundamentally different thing (a price for a PAIR of
+    codes, not one code) that this schema (one row = one code) has no way
+    to represent, so they're intentionally left unparsed rather than
+    guessed at or forced into the wrong shape.
+
+    Column/row positions are derived from the token coordinates
+    THEMSELVES on each page (not hardcoded pixel values), since column
+    widths are confirmed to vary page to page (e.g. Cuscini e Tessuti's
+    2-column boundary was 93 vs 102 on different pages -- same lesson
+    applies here): the header row is whichever set of codes share a
+    top coordinate AND there's more than one of them (multiple top codes
+    in a horizontal line); a lone code elsewhere on its own row is a base
+    code, and its own price is the LEFTMOST price token to the right of
+    it on that row (the base's own price column always sits between the
+    code and the first matrix cell).
+    """
+    tokens = _varaschini_tsv_tokens(pdf_path)
+    target_codes = {e["art_code"] for e in entries_for_page}
+
+    # "€" tokens routinely carry a stray trailing control byte this PDF's
+    # font emits right after the glyph (confirmed elsewhere in this file,
+    # e.g. VARASCHINI_PRICE_RE -- same root cause here: "€\x08"), and a
+    # per-square-meter price prints as a single "€/mq" token (confirmed
+    # Carpet Design p554's "256M"/"256MR") rather than a bare "€". Both
+    # are still real price markers, just wider than a literal "€" match.
+    euro_tokens = [(l, t, "al mq" if "/mq" in txt else None)
+                   for l, t, txt in tokens if txt.startswith("€")]
+    digit_tokens = [(l, t, txt) for l, t, txt in tokens
+                     if txt != "2026" and VARASCHINI_TSV_PRICE_DIGIT_RE.match(txt)]
+    # Pair each "€" with the nearest digit run to its right on the same
+    # row -- this codebase's TSV price format always splits them into
+    # separate word tokens (confirmed on p574's dump). Vertical offset
+    # between "€" and its digit run varies by page (0.4 units on
+    # Composizione Tavoli's p574, 6+ units on Basi Tavolini's p586) --
+    # kept well under a row's own height (~14 units) to avoid pairing
+    # across rows. Horizontal gap also varies (an "€/mq" token is wider
+    # than a bare "€", pushing its digit further right, confirmed p554).
+    prices = []  # (left, top, price_str, unit) -- top is the DIGIT's own
+    # top, not the €'s -- confirmed the € glyph's vertical metric drifts
+    # further from a row's text baseline than the digit run does (Carpet
+    # Design p554's "2562": code top 384.32, digit top 394.48 (gap 10.16,
+    # fine) vs the € symbol's own top 397.44 (gap 13.12, wrongly exceeds
+    # tolerance) -- using the digit's top keeps row-matching consistent.
+    for el, et, unit in euro_tokens:
+        best = None
+        for dl, dt, dtxt in digit_tokens:
+            if abs(dt - et) <= 8 and 0 <= (dl - el) <= 45:
+                if best is None or dl < best[0]:
+                    best = (dl, dt, dtxt)
+        if best:
+            dl, dt, dtxt = best
+            prices.append((el, dt, dtxt, unit))
+
+    code_tokens = [(l, t, txt) for l, t, txt in tokens
+                    if txt != "2026" and VARASCHINI_CODE_TOKEN.match(txt) and txt in target_codes]
+
+    # Header row = the top coordinate (rounded, small tolerance) shared by
+    # the MOST code tokens -- a page with no top-code header at all (pure
+    # continuation of base rows) safely finds no such cluster.
+    from collections import defaultdict
+    by_top_rounded = defaultdict(list)
+    for l, t, txt in code_tokens:
+        by_top_rounded[round(t)].append((l, t, txt))
+    header_top = max(by_top_rounded, key=lambda k: len(by_top_rounded[k])) if by_top_rounded else None
+    header_codes = set()
+    if header_top is not None and len(by_top_rounded[header_top]) > 1:
+        header_codes = {txt for _, _, txt in by_top_rounded[header_top]}
+
+    rows = []
+    flags = []
+    found_codes = set()
+
+    for l, t, txt in code_tokens:
+        if txt in found_codes:
+            continue
+        if txt in header_codes:
+            # Top code: its own price is in the "Prezzo" row below the
+            # header, horizontally closest to this code's own column.
+            candidates = [(l2, t2, pr, unit) for l2, t2, pr, unit in prices if t2 > t and t2 - t < 30]
+            if not candidates:
+                continue
+            l2, t2, pr, unit = min(candidates, key=lambda c: abs(c[0] - l))
+            if abs(l2 - l) > 20:
+                continue
+        else:
+            # Base code: its own price is the LEFTMOST price to the right
+            # of it on the same physical row.
+            candidates = [(l2, t2, pr, unit) for l2, t2, pr, unit in prices if abs(t2 - t) <= 11 and l2 > l]
+            if not candidates:
+                continue
+            l2, t2, pr, unit = min(candidates, key=lambda c: c[0])
+
+        found_codes.add(txt)
+        entry = next((e for e in entries_for_page if e["art_code"] == txt), None)
+        product_name = entry["product_name"] if entry else f"Composizione Tavoli {txt}"
+        rows.append({
+            "brand": brand,
+            "product_name": product_name,
+            "model_variant": product_name,
+            "variant_context": None,
+            "size": None,
+            "fabric_tier": unit,
+            "tier_label": None,
+            "code": txt,
+            "price_eur": pr,
+            "source_pdf_page": page_num,
+        })
+
+    for entry in entries_for_page:
+        code = entry["art_code"]
+        if code not in found_codes:
+            flags.append((page_num, entry["product_name"],
+                           f"art_code {code} not found or no own-price located via TSV coordinate pass on this page"))
+
+    return rows, flags
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -3296,6 +3450,23 @@ def main():
                 path, page_num, entries, brand,
                 block_finder=_varaschini_find_flat_code_blocks,
                 tier_label_re=VARASCHINI_TIER_LABEL_RE_BARE),
+            # Composizione Tavoli needs the per-PAGE PDF (for pdftotext
+            # -tsv coordinates), not the .txt file every other parser here
+            # takes -- "path" (the .txt path) is ignored in favor of this
+            # entry's own "mini_pdf" field.
+            "Composizione Tavoli": lambda path, page_num, entries, brand: parse_file_varaschini_composizione_tavoli(
+                str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
+            # Basi Tavolini (flat SKU list) and Carpet Design (flat prices
+            # + one per-square-meter item) both sit on pages too densely
+            # packed for line-based block detection (adjacent codes' prices
+            # bled together) -- the SAME TSV coordinate technique fixes
+            # both, even though neither is an actual base x top MATRIX like
+            # Composizione Tavoli itself. Verified 15/15 and 4/4 against
+            # their page images (p586, p554).
+            "Basi Tavolini": lambda path, page_num, entries, brand: parse_file_varaschini_composizione_tavoli(
+                str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
+            "Carpet Design": lambda path, page_num, entries, brand: parse_file_varaschini_composizione_tavoli(
+                str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
@@ -3310,19 +3481,11 @@ def main():
         #     addon-price sub-rule, or stays a permanent flagged known_gap
         #     -- undecided, so excluded rather than left at a misleading
         #     42%.
-        #   Basi Tavolini: 27% parse rate -- genuinely flat-price (not a
-        #     mislabeling), but as densely packed as Composizione Tavoli's
-        #     matrix pages, so line-based code-block-boundary detection
-        #     bleeds adjacent codes' prices into each other. Needs the same
-        #     pdftotext -tsv coordinate-based technique as Shape E, to be
-        #     done together with that work.
-        #   Carpet Design: 0% parse rate (found while fixing the unrelated
-        #     "506" phantom-code bug, not one of the originally-known 4) --
-        #     same root cause as Basi Tavolini, its 4 real codes (after
-        #     removing the phantom) sit on an equally dense page and hit
-        #     the same block-boundary bleed. Grouped with Basi Tavolini for
-        #     the same TSV-based fix rather than left unexplained.
-        SHAPE_D_EXCLUDED_COLLECTIONS = {"Outdoor Cooking", "Basi Tavolini", "Carpet Design"}
+        #   (Basi Tavolini and Carpet Design were also here, both genuinely
+        #   flat-price/densely-packed like Composizione Tavoli's matrix
+        #   pages -- fixed via the same pdftotext -tsv technique, now in
+        #   COLLECTION_PARSER_OVERRIDES above instead of excluded.)
+        SHAPE_D_EXCLUDED_COLLECTIONS = {"Outdoor Cooking"}
         skipped_wrong_shape = 0
         skipped_multi_page = 0
         skipped_excluded_collection = 0
