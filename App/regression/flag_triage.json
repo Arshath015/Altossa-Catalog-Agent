@@ -996,10 +996,6 @@
       "status": "known_gap",
       "note": "Code found in its expected block but no price detected nearby -- the majority are confirmed phantom catalog_index entries (a dash-prefixed accessory cross-reference like \"- art. XXXX\", or an explanatory-prose mention, independently indexed as if it were its own product -- the same pattern fixed for Shape A/D this session on Tibidabo/Outdoor Cooking/Teli di Copertura). Zero rows returned, not silently wrong."
     },
-    "Big / Big Light A B White": {
-      "status": "known_gap",
-      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
-    },
     "Big / Big Light 13614": {
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
@@ -1012,15 +1008,7 @@
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
     },
-    "Big / Big Light Ø7,5 74 Ø7,5 74": {
-      "status": "known_gap",
-      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
-    },
     "Big / Big Light Ø7,5 Ø7,5 (13630L)": {
-      "status": "known_gap",
-      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
-    },
-    "Big / Big Light Ø10 74 Ø10 74": {
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
     },
@@ -1984,10 +1972,6 @@
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
     },
-    "Teli di Copertura 105 Ø50 Ø50 Ø30": {
-      "status": "known_gap",
-      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
-    },
     "Teli di Copertura 3021": {
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
@@ -2167,6 +2151,22 @@
     "Cuscini e Tessuti cm 90 x 65 (35 3/8”x 25 5/8”) 2704 B (ml /h 1,40) €\b 60": {
       "status": "known_gap",
       "note": "cat. tier label count doesn't match the price count found in the block -- most are the orphaned-digit pattern (a tier's price digit run and its \"€\" symbol print on non-adjacent lines with nothing reliable to pair them, confirmed on Cricket's \"2989\" and Cuscini e Tessuti's \"2736\") or a same-block extra price this page's layout doesn't fit any known exclusion pattern for yet. Skipped rather than guessing a pairing."
+    },
+    "Big / Big Light 13610": {
+      "status": "known_gap",
+      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
+    },
+    "Big / Big Light 13630": {
+      "status": "known_gap",
+      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
+    },
+    "Big / Big Light 13632": {
+      "status": "known_gap",
+      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
+    },
+    "Teli di Copertura 245": {
+      "status": "known_gap",
+      "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
     }
   }
 }

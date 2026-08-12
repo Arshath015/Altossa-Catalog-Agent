@@ -763,6 +763,58 @@ def _varaschini_full_text_by_page(pdf_path: str, total_pages: int) -> dict[int, 
 _VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
 _VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
 
+# Confirmed on real page images (p146-159, the diagram-cluttered Big/Big
+# Light cluster already flagged for price extraction, plus Dolmen/Tight/
+# Outdoor Lighting/Teli di Copertura -- 11 entries total, checked
+# individually against the raw extracted text): a code's own physical line
+# on these pages holds scattered SIZE-VARIANT markers (bare "A"/"B" plate
+# labels), diameter/dimension callouts (bare numbers, "Ø16" etc.), and/or
+# ONE word from a repeating multi-language finish/color legend that gets
+# stranded there by pdftotext's column-linearization breaking down --
+# never a real description. Each of these tokens individually passes the
+# existing junk check above (non-empty, not pure currency/digits), so the
+# combination silently became the product's own display name (e.g. "Big /
+# Big Light A B White") instead of falling through to the same "collection
+# + bare code" fallback that already works fine for every OTHER product on
+# these same pages whose own line happens to be empty. This is a NAME
+# extraction bug, separate from and not fixing the price-extraction gap
+# already logged for this cluster.
+_VARASCHINI_FINISH_LEGEND_WORDS = {
+    "bianco", "white", "grigio", "seta", "silk", "grey", "gray", "denim",
+    "ruggine", "rust", "bronzo", "metal", "bronze", "verde", "green",
+    "moka", "dark", "brown", "nero", "black",
+}
+
+
+def _varaschini_is_scattered_diagram_junk(s: str) -> bool:
+    """True if EVERY token of an already-whitespace-collapsed fragment is a
+    bare single letter (a size-variant marker like "A"/"B"), a bare
+    dimension/diameter number (with or without a leading "Ø"), or a known
+    finish/color-legend word -- i.e. the fragment has zero real descriptive
+    content of its own. Also true for any fragment containing Cyrillic (or
+    other non-Latin) script, confirmed only ever cross-language legend text
+    stranded by the same linearization corruption, never a real product
+    description (Varaschini's real names are Italian/English, Latin
+    script). Verified against the whole current catalog_index.json before
+    landing: exactly 11 entries match, all individually confirmed against
+    their real page text as this exact pattern, zero false positives
+    against any genuinely-descriptive name elsewhere in the catalog."""
+    if re.search(r"[Ѐ-ӿ]", s):
+        return True
+    tokens = s.split()
+    if not tokens:
+        return False
+    for tok in tokens:
+        low = tok.lower()
+        if re.fullmatch(r"[a-z]", low):
+            continue
+        if re.fullmatch(r"ø?\d+(?:[.,]\d+)?", low):
+            continue
+        if low in _VARASCHINI_FINISH_LEGEND_WORDS:
+            continue
+        return False
+    return True
+
 
 def _varaschini_clean_name(s: str) -> str:
     """Collapse internal whitespace runs and reject junk captured instead of
@@ -772,6 +824,8 @@ def _varaschini_clean_name(s: str) -> str:
     s = re.sub(r"\s{2,}", " ", s).strip(" -")
     s = s.lstrip("\x08﻿").strip()
     if not s or s.startswith("€") or re.match(r"^[\d.,€\s]+$", s):
+        return ""
+    if _varaschini_is_scattered_diagram_junk(s):
         return ""
     return s[:60]
 
