@@ -2383,6 +2383,51 @@ def _varaschini_find_art_blocks(lines):
     return blocks
 
 
+def _varaschini_classify_top_tiers(block_lines, prices_found):
+    """Classify a "no cat.-label, multiple unclaimed prices" block as a
+    TOP-MATERIAL price grid (HPL / HPL Perla-Ardesia premium edge /
+    Ceramica Bocciardata) instead of leaving it a permanent "materials-
+    grid, not yet parsed" flag. Confirmed on System/System Star (e.g.
+    p463's "2440": HPL=539, HPL premium edge=627, Ceramica Bocciardata=765)
+    -- this is the SAME underlying pattern behind many of Shape A's
+    already-flagged materials-grid items across OTHER collections too
+    (Allegra, Babylon, Cricket, Customade, ...), not something unique to
+    System.
+
+    Unlike the "cat." tiers, there is no clean per-price text label here --
+    a price's tier is only knowable from which swatch-group section it
+    prints closest to (a "CERAMICA BOCCIARDATA" header, or "Perla"/
+    "Ardesia"/"black edge" premium-finish color names). Pairing is done by
+    scanning the TEXT BETWEEN each price and the previous one for these
+    markers, defaulting to "HPL" only when nothing else matches (the
+    standard/first tier has no marker of its own).
+
+    Returns [] (never guesses) unless: every price segment finds a marker
+    (or is the plain HPL default), the resulting tier labels are all
+    distinct, and at least one is "HPL" -- since a page that's actually
+    some OTHER kind of multi-price grid (not this TOP-material pattern)
+    would fail one of these checks and correctly fall through to the
+    existing "flag, don't guess" behavior instead.
+    """
+    prev_li = 0
+    tiers = []
+    for li, _pos, price in prices_found:
+        segment = "\n".join(block_lines[prev_li:li + 1]).lower()
+        if "ceramica" in segment or "bocciardata" in segment:
+            tier = "Ceramica Bocciardata"
+        elif "perla" in segment or "ardesia" in segment or "black edge" in segment:
+            tier = "HPL Perla/Ardesia"
+        elif "hpl" in segment or not tiers:
+            tier = "HPL"
+        else:
+            return []
+        tiers.append(tier)
+        prev_li = li
+    if len(set(tiers)) != len(tiers) or "HPL" not in tiers:
+        return []
+    return list(zip(tiers, (pr for _, _, pr in prices_found)))
+
+
 def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini", block_finder=None, tier_label_re=None):
     """entries_for_page: catalog_index.json dicts (must include 'art_code'
     and 'product_name') that this ONE shared page contains. Returns
@@ -2530,8 +2575,8 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
             # options, no fabric tiers at all since it has no upholstery).
             # Only trust EXACTLY ONE unclaimed, non-cover price as the flat
             # price -- more than one with no tier labels to disambiguate
-            # them is the materials-grid case, which this does not yet
-            # parse (flagged instead of guessed).
+            # them is the materials-grid case, tried below via
+            # _varaschini_classify_top_tiers before falling back to a flag.
             candidates = [pr for _, _, pr in prices_found]
             if len(candidates) == 1:
                 rows.append({
@@ -2549,9 +2594,25 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
             elif len(candidates) == 0:
                 flags.append((page_num, product_name, f"no price found in block for art_code {code}"))
             else:
-                flags.append((page_num, product_name,
-                               f"{len(candidates)} unlabeled prices found for art_code {code} with no fabric tiers -- "
-                               f"likely a materials-grid item (e.g. HPL/Ceramica TOP options), not yet parsed, skipped rather than guessed"))
+                top_tiers = _varaschini_classify_top_tiers(block_lines, prices_found)
+                if top_tiers:
+                    for tier_label, price in top_tiers:
+                        rows.append({
+                            "brand": brand,
+                            "product_name": product_name,
+                            "model_variant": product_name,
+                            "variant_context": None,
+                            "size": size,
+                            "fabric_tier": tier_label,
+                            "tier_label": "TOP",
+                            "code": code,
+                            "price_eur": price,
+                            "source_pdf_page": page_num,
+                        })
+                else:
+                    flags.append((page_num, product_name,
+                                   f"{len(candidates)} unlabeled prices found for art_code {code} with no fabric tiers -- "
+                                   f"likely a materials-grid item (e.g. HPL/Ceramica TOP options), not yet parsed, skipped rather than guessed"))
 
     return rows, flags
 
@@ -3187,6 +3248,7 @@ def main():
         #      guess here.
         SHAPE_PARSERS = {
             "A": parse_file_varaschini_shape_a,
+            "B": parse_file_varaschini_shape_a,
             "D": parse_file_varaschini_shape_d,
         }
         # Per-COLLECTION overrides of the generic per-shape parser, needed
