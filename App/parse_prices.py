@@ -2263,6 +2263,40 @@ def parse_file_bonaldo(path, product_name, brand, all_headings=None, heading_tex
 VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
 VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
 VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b", re.IGNORECASE)
+# Cuscini e Tessuti's tier labels have NO "cat." prefix at all and use
+# periods ("B - C.O.M." not "B - COM"), confirmed on p571's raw text. A
+# bare single-letter "C"/"D"/"E" is a real false-positive risk if matched
+# anywhere in a line the way the "cat."-prefixed pattern safely can be --
+# so this requires the REST of the (column-sliced) line after the label to
+# be JUST an optional trailing "(ml X,XX /h Y,YY)" metraggio parenthetical
+# (only ever trails the "B - C.O.M." row, never the bare C/D/E/Luxury rows)
+# and/or an optional trailing price -- p571's 2-column layout puts
+# label+price on the SAME line for one column while the other column's
+# label and price fall on separate lines (confirmed: which column gets
+# which pattern depends on how much horizontal room its dimension text
+# used up), so the label match must tolerate a same-line price without
+# over-matching into the next column (handled separately by column-slicing
+# the line BEFORE this regex ever sees it, in parse_file_varaschini_shape_a).
+# The label itself is NOT anchored to the start of the line -- confirmed on
+# p571's "2737" (Cuscino "SOFT"/"SOFT" Cushion): a custom item name prints
+# BEFORE the B-C.O.M. label on that same physical line, so a start-anchor
+# would silently drop that one tier row instead of just its price. Requiring
+# a preceding start-of-string-or-whitespace still blocks a label matching
+# mid-word (e.g. the "C" in "Cuscino"). The trailing price digit run is
+# OPTIONAL even when a "€" is present -- confirmed on p572's "2736": its
+# "C" tier's "€" prints alone on the label's own line with no digits after
+# it at all, while the digit run ("187") lands on a DIFFERENT, otherwise
+# unrelated line with no "€" of its own (a PDF vertical-reflow artifact
+# splitting one price glyph run away from its symbol). Requiring digits
+# here would make the label regex simply not match this line, silently
+# producing an equal (wrong) labels/prices count that hides the gap
+# instead of flagging it. Matching the label anyway --with an empty price
+# capture-- keeps the label in labels_found so the label/price COUNT
+# MISMATCH this creates surfaces as a normal flagged, triaged gap rather
+# than a silently missing row.
+VARASCHINI_TIER_LABEL_RE_BARE = re.compile(
+    r"(?:^|\s)(B\s*-\s*C\.?O\.?M\.?|C|D|E|Luxury)\s*(?:\(ml[^)]*\))?"
+    r"\s*(?:€[\s\x00-\x1f]*[\d.,]*)?\s*$", re.IGNORECASE)
 # Strip stray control bytes (e.g. '\x08') this PDF's font occasionally
 # emits right after the € glyph (confirmed on Dolmen p210, Bali p16)
 # before hunting for a price digit run.
@@ -2336,15 +2370,40 @@ def _varaschini_find_art_blocks(lines):
     return blocks
 
 
-def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini"):
+def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini", block_finder=None, tier_label_re=None):
     """entries_for_page: catalog_index.json dicts (must include 'art_code'
     and 'product_name') that this ONE shared page contains. Returns
     (rows, flags) -- flags is a list of (page, product_name, reason).
+
+    block_finder: defaults to _varaschini_find_art_blocks (the "art."
+    label detector). Everything AFTER block detection here -- dimension
+    extraction, tier label/price pairing, row construction -- is about the
+    PRICE TABLE format, not how a code's block boundary was found, so it's
+    reusable for any collection using Shape A's 5-tier structure regardless
+    of whether its codes are "art."-prefixed or bare. Confirmed on Cuscini
+    e Tessuti (p571: art 2713/2709/2708/2701 each get 5 tier rows) --
+    passing block_finder=_varaschini_find_flat_code_blocks (the same
+    bare-code detector Shape D uses) reuses this logic instead of
+    duplicating it for a collection that was only ever mislabeled "D",
+    never structurally different from Shape A.
+
+    tier_label_re: defaults to VARASCHINI_TIER_LABEL_RE (requires a literal
+    "cat." prefix, e.g. "cat. B - COM"). NOT actually byte-identical
+    everywhere, unlike the claim in an earlier version of this docstring:
+    Cuscini e Tessuti's labels have NO "cat." prefix at all and use
+    periods ("B - C.O.M." not "B - COM", bare "C"/"D"/"E"/"Luxury" with
+    nothing before them) -- confirmed by direct inspection of p571's raw
+    text, not assumed from the "reuse Shape A" framing. Its override passes
+    a whole-line-anchored variant instead, since a bare single-letter "C"/
+    "D"/"E" would be a real false-positive risk if matched anywhere in a
+    line the way the "cat."-prefixed version safely can.
     """
+    finder = block_finder or _varaschini_find_art_blocks
+    label_re = tier_label_re or VARASCHINI_TIER_LABEL_RE
     with open(path, encoding="utf-8") as f:
         lines = f.read().splitlines()
 
-    blocks = _varaschini_find_art_blocks(lines)
+    blocks = finder(lines)
     rows = []
     flags = []
 
@@ -2352,10 +2411,22 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
         code = entry["art_code"]
         product_name = entry["product_name"]
         if code not in blocks:
-            flags.append((page_num, product_name, f"art_code {code} not found via 'art.' block detection on its recorded page"))
+            flags.append((page_num, product_name, f"art_code {code} not found via {finder.__name__} block detection on its recorded page"))
             continue
-        start, end = blocks[code]
-        block_lines = lines[start:end]
+        block = blocks[code]
+        # 4-tuple (start, end, col_start, col_end) means block_finder found
+        # this code in a genuine 2-column table (see
+        # _varaschini_find_flat_code_blocks) and each of its lines must be
+        # sliced to JUST this code's column before any regex sees it --
+        # otherwise the OTHER column's label/price text on a shared
+        # physical line gets scanned too. 2-tuple (start, end) from the
+        # default "art." block finder means single-column, no slicing.
+        if len(block) == 4:
+            start, end, col_start, col_end = block
+            block_lines = [ln[col_start:col_end] for ln in lines[start:end]]
+        else:
+            start, end = block
+            block_lines = lines[start:end]
         block_text = "\n".join(block_lines)
 
         dim_m = VARASCHINI_DIMENSION_RE.search(block_text)
@@ -2374,7 +2445,7 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
         prices_found = []
         for li, bl in enumerate(block_lines):
             has_label_this_line = False
-            for m in VARASCHINI_TIER_LABEL_RE.finditer(bl):
+            for m in label_re.finditer(bl):
                 labels_found.append((li, m.start(), re.sub(r"\s+", " ", m.group(1).strip())))
                 has_label_this_line = True
             low = bl.lower()
@@ -2465,25 +2536,154 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
 def _varaschini_find_flat_code_blocks(lines):
     """Shape D block detection: unlike Shape A, there is no 'art.' label at
     all per item -- just one shared 'ART./CODE' column header per page/
-    table, then each SKU is a bare code as the first token of its own line
-    (confirmed on Carpet Design p554: '2560', '2560R', '2563'... with no
-    'art.' anywhere nearby). A code's block runs from its own trigger line
-    to the next bare-code trigger line, or EOF."""
-    triggers = []
-    for i, raw in enumerate(lines):
-        line = raw.strip()
-        if not line:
-            continue
-        first_tok = line.split()[0] if line.split() else ""
-        if VARASCHINI_CODE_TOKEN.match(first_tok):
-            triggers.append((i, first_tok.upper()))
-    triggers.sort(key=lambda t: t[0])
+    table, then each SKU is a bare code as the first token of its own
+    COLUMN-CHUNK (a line split on runs of 2+ spaces, matching this
+    codebase's existing column-boundary convention -- see
+    _varaschini_find_records_flat's docstring in extract_catalog.py for
+    the same fix on the discovery side).
+
+    Genuinely 2-column pages (confirmed on Cuscini e Tessuti p571: a
+    left-column code like "2713" and a right-column code like "2730"
+    share one physical line) need column-position awareness for BLOCK
+    BOUNDARIES too, not just trigger detection: a naive "block ends at the
+    next trigger's line" collapses the left code's block to zero lines,
+    since the right code's trigger sits on that SAME line.
+
+    Column boundaries come from the page's own header row, which prints
+    "CODE" once per column-group (e.g. p571: "CODE ... CODE ..." with the
+    2nd "CODE" at col 93; p572/p573: col 102) -- NOT from clustering code-
+    token trigger positions by proximity. Proximity clustering was tried
+    first and is unreliable: VARASCHINI_CODE_TOKEN also matches a bare
+    price-digit run with no adjacent price context (confirmed on p572:
+    a wrapped price like "187" with its "€" stranded on another line looks
+    exactly like a product code), and those false triggers pull a
+    proximity-derived boundary to the wrong place -- confirmed on p572,
+    where trigger clustering computed col 92 (truncating the left column's
+    real price digits, which print out to ~col 100) while the header's
+    actual boundary is 102. Falls back to proximity clustering only when
+    no repeated "CODE" header is found (single-column pages).
+
+    An earlier version filtered triggers to a caller-supplied target-code
+    allowlist to keep false-positive digit-run triggers from corrupting a
+    real code's block boundary. That approach was reverted: it ALSO
+    discarded a genuine trigger for a code that's simply not one of THIS
+    collection's own entries (e.g. Tibidabo's "2729" prints on this same
+    Cuscini e Tessuti page as a cross-referenced accessory row) -- and that
+    trigger is still needed as a boundary marker even though nobody ever
+    looks its price up. Confirmed on p572: allowlisting away "2729" made
+    "2732"'s block swallow 2729's own 5 price rows instead of stopping
+    before them. has_later_content below is the fix that actually
+    distinguishes real codes from price noise, without needing to know
+    the target code set at all.
+
+    Chunk-based per-line scanning (multiple triggers per physical line)
+    only runs when a page's own header confirms it's genuinely 2-column
+    (see header_bounds below). Single-column pages use the ORIGINAL
+    first-token-of-the-whole-line check instead of chunk-scanning --
+    switching every page to chunk-scanning regressed Marketing
+    Communication's "901D1" (page 8, single column): its line also lists
+    bundled reference codes "901D2 901D3 901D4 901D5" further along the
+    SAME line before the price, and chunk-scanning treated each of those
+    as its own trigger too, collapsing 901D1's block to nothing before it
+    ever reached its own price.
+    """
+    header_bounds = []
+    for raw in lines[:8]:
+        positions = [m.start() for m in re.finditer(r"\bCODE\b", raw)]
+        if len(positions) >= 2:
+            header_bounds = positions
+            break
+
+    triggers = []  # (line_idx, char_pos, code)
+    if header_bounds:
+        for i, raw in enumerate(lines):
+            if not raw.strip():
+                continue
+            chunks = re.split(r"(\s{2,})", raw)
+            chunk_positions = []
+            pos = 0
+            for chunk in chunks:
+                chunk_positions.append((chunk, pos))
+                pos += len(chunk)
+            for ci, (chunk, cpos) in enumerate(chunk_positions):
+                if not chunk.strip():
+                    continue
+                chunk_toks = chunk.split()
+                first_tok = chunk_toks[0] if chunk_toks else ""
+                if not VARASCHINI_CODE_TOKEN.match(first_tok):
+                    continue
+                # A genuine product code is always followed by more content
+                # later on the SAME line (a dimension "cm ...", a name, an
+                # addon annotation like "B (ml...)"). A bare trailing digit
+                # run with nothing after it on the line is a price
+                # continuation that happens to match the code-token shape
+                # (its '€' printed on an earlier or later row instead) --
+                # confirmed on p572: "187"/"220"/"473" etc. are each the
+                # LAST token on an otherwise-spent row. Without this check
+                # they get treated as real block-boundary triggers and
+                # corrupt neighboring blocks.
+                has_later_content = any(c.strip() for c, _ in chunk_positions[ci + 1:])
+                if not has_later_content:
+                    continue
+                triggers.append((i, cpos, first_tok.upper()))
+    else:
+        for i, raw in enumerate(lines):
+            line = raw.strip()
+            if not line:
+                continue
+            first_tok = line.split()[0] if line.split() else ""
+            if VARASCHINI_CODE_TOKEN.match(first_tok):
+                triggers.append((i, 0, first_tok.upper()))
+    triggers.sort(key=lambda t: t[1])  # cluster by position first
+
+    clusters: list[list[tuple[int, int, str]]] = []
+    if header_bounds:
+        # bucket each trigger by which header-derived column it falls in,
+        # rather than by proximity to other triggers
+        clusters = [[] for _ in header_bounds]
+        for t in triggers:
+            bi = 0
+            for b in range(len(header_bounds)):
+                if t[1] >= header_bounds[b]:
+                    bi = b
+            clusters[bi].append(t)
+        # Within a bucket, only keep triggers sitting AT (within a small
+        # tolerance of) the header's own "CODE" column position -- a real
+        # code always prints in that field. A trigger deeper inside the
+        # same bucket is really that column-group's OWN internal
+        # PREZZO/PRICE sub-field, which can independently print a bare
+        # 3-digit price matching the code-token shape (confirmed on p572:
+        # the left group's ART field sits at col 0 while its own price
+        # sub-field sits at col 92, both < the col-102 boundary with the
+        # right group, so position-bucketing alone still lets "165"/"220"/
+        # etc. through as if they were codes). has_later_content doesn't
+        # catch these either, since the OTHER column's text often prints
+        # further along the very same physical line.
+        clusters = [[t for t in c if abs(t[1] - header_bounds[bi]) <= 5]
+                    for bi, c in enumerate(clusters)]
+        clusters = [c for c in clusters if c]  # drop empty columns
+        cluster_col_starts = [header_bounds[i] for i in range(len(clusters))]
+        cluster_col_ends = [header_bounds[i + 1] if i + 1 < len(header_bounds) else None
+                             for i in range(len(clusters))]
+    else:
+        for t in triggers:
+            if clusters and abs(t[1] - clusters[-1][-1][1]) <= 25:
+                clusters[-1].append(t)
+            else:
+                clusters.append([t])
+        cluster_col_starts = [min(t[1] for t in c) for c in clusters]
+        cluster_col_ends = [cluster_col_starts[i + 1] if i + 1 < len(clusters) else None
+                             for i in range(len(clusters))]
 
     blocks = {}
-    for idx, (i, code) in enumerate(triggers):
-        end = triggers[idx + 1][0] if idx + 1 < len(triggers) else len(lines)
-        if code not in blocks:
-            blocks[code] = (i, end)
+    for ci, cluster in enumerate(clusters):
+        cluster.sort(key=lambda t: t[0])  # within a column, order by line
+        col_start = cluster_col_starts[ci]
+        col_end = cluster_col_ends[ci]
+        for idx, (i, _pos, code) in enumerate(cluster):
+            end = cluster[idx + 1][0] if idx + 1 < len(cluster) else len(lines)
+            if code not in blocks:
+                blocks[code] = (i, end, col_start, col_end)
     return blocks
 
 
@@ -2519,7 +2719,13 @@ def parse_file_varaschini_shape_d(path, page_num, entries_for_page, brand="Varas
         if code not in blocks:
             flags.append((page_num, product_name, f"art_code {code} not found via bare-code block detection on its recorded page"))
             continue
-        start, end = blocks[code]
+        # blocks[code] may be a 4-tuple (start, end, col_start, col_end)
+        # now that _varaschini_find_flat_code_blocks also reports column
+        # bounds for parse_file_varaschini_shape_a's benefit -- this flat
+        # single-price parser doesn't need column slicing (none of its
+        # collections are confirmed 2-column), so only the line range is
+        # used here.
+        start, end = blocks[code][0], blocks[code][1]
         block_lines = lines[start:end]
 
         candidates = []
@@ -2960,6 +3166,23 @@ def main():
             "A": parse_file_varaschini_shape_a,
             "D": parse_file_varaschini_shape_d,
         }
+        # Per-COLLECTION overrides of the generic per-shape parser, needed
+        # when a collection shares Shape A's price-table format but not
+        # its code layout. Cuscini e Tessuti is labeled "A" (folded in from
+        # "D" -- confirmed its price table is Shape A's exact cat.
+        # B-COM/C/D/E/Luxury tier structure) but its codes are bare, not
+        # "art."-prefixed, so it needs parse_file_varaschini_shape_a's
+        # SAME tier-extraction logic with Shape D's bare-code block finder
+        # instead of the default "art." block finder. A plain
+        # shape->parser map can't express this (both collections share the
+        # shape "A" key but need different block_finder arguments), hence
+        # this second, more specific lookup checked first.
+        COLLECTION_PARSER_OVERRIDES = {
+            "Cuscini e Tessuti": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
+                path, page_num, entries, brand,
+                block_finder=_varaschini_find_flat_code_blocks,
+                tier_label_re=VARASCHINI_TIER_LABEL_RE_BARE),
+        }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
         # Cuscini e Tessuti/Teli di Copertura, which were relabeled away
@@ -2989,35 +3212,43 @@ def main():
         skipped_wrong_shape = 0
         skipped_multi_page = 0
         skipped_excluded_collection = 0
-        # group by (page, shape) so mixed-shape pages still get each
-        # shape's entries routed to the right parser
+        # group by (page, dispatch_key) so mixed-shape/mixed-override pages
+        # still get each group's entries routed to the right parser.
+        # dispatch_key is the collection name when a per-collection
+        # override exists, otherwise the shape -- this keeps Cuscini e
+        # Tessuti (shape "A", override parser) from being grouped together
+        # with real "art."-prefixed Shape A entries that happen to share a
+        # page, even though that never actually occurs today (Cuscini e
+        # Tessuti's pages are its own), it's the correct general rule.
         pages_to_entries: dict[tuple[int, str], list] = {}
         for p in products:
             shape = p.get("shape")
-            if shape not in SHAPE_PARSERS:
+            collection = p["collection"]
+            if collection not in COLLECTION_PARSER_OVERRIDES and shape not in SHAPE_PARSERS:
                 skipped_wrong_shape += 1
                 continue
-            if shape == "D" and p["collection"] in SHAPE_D_EXCLUDED_COLLECTIONS:
+            if shape == "D" and collection in SHAPE_D_EXCLUDED_COLLECTIONS:
                 skipped_excluded_collection += 1
                 continue
             if p["printed_page_start"] != p["printed_page_end"]:
                 skipped_multi_page += 1
                 continue
-            pages_to_entries.setdefault((p["printed_page_start"], shape), []).append(p)
+            dispatch_key = collection if collection in COLLECTION_PARSER_OVERRIDES else shape
+            pages_to_entries.setdefault((p["printed_page_start"], dispatch_key), []).append(p)
 
-        print(f"varaschini format: {len(pages_to_entries)} (page, shape) groups covering "
+        print(f"varaschini format: {len(pages_to_entries)} (page, dispatch) groups covering "
               f"{sum(len(v) for v in pages_to_entries.values())} entries across shapes "
-              f"{sorted(SHAPE_PARSERS)} ({skipped_wrong_shape} entries in shapes with no "
-              f"parser yet, {skipped_excluded_collection} entries in excluded known-gap "
-              f"collections, and {skipped_multi_page} multi-page-span entries excluded from "
-              f"this pass).")
+              f"{sorted(SHAPE_PARSERS)} + collection overrides {sorted(COLLECTION_PARSER_OVERRIDES)} "
+              f"({skipped_wrong_shape} entries in shapes with no parser yet, "
+              f"{skipped_excluded_collection} entries in excluded known-gap collections, and "
+              f"{skipped_multi_page} multi-page-span entries excluded from this pass).")
 
-        for (page_num, shape), entries in pages_to_entries.items():
+        for (page_num, dispatch_key), entries in pages_to_entries.items():
             text_path = base_dir / entries[0]["text_file"]
             if not text_path.exists():
                 print(f"  WARNING: text file missing for page {page_num} ({text_path})")
                 continue
-            parser_fn = SHAPE_PARSERS[shape]
+            parser_fn = COLLECTION_PARSER_OVERRIDES.get(dispatch_key) or SHAPE_PARSERS[dispatch_key]
             rows, flags = parser_fn(str(text_path), page_num, entries, entries[0]["brand"])
             review_flags.extend((page, name, reason, entries[0]["brand"]) for page, name, reason in flags)
             found_names = {r["product_name"] for r in rows}

@@ -850,25 +850,43 @@ VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS: set[str] = {
 
 
 def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
-    """Shape D/E fallback: a bare line whose first token is a code AND a
-    '€' appears within the next 2 lines. Needed because dense flat-list
-    shapes print one 'ART./CODE' column header ONCE per page, not a
-    per-item 'art.' label -- confirmed on Carpet Design p554."""
+    """Shape D/E fallback: a bare CODE as the first token of its own
+    column-chunk, with a '€' within the next 2 lines. Needed because dense
+    flat-list shapes print one 'ART./CODE' column header ONCE per page/
+    table, not a per-item 'art.' label -- confirmed on Carpet Design p554.
+
+    A line is split on runs of 2+ spaces (matching this codebase's existing
+    column-boundary convention, e.g. Bolzan's slice_chunk/tokenize_chunk in
+    parse_prices.py) rather than checked only at line-start. Needed for
+    genuinely 2-COLUMN pages like Cuscini e Tessuti's, where a left-column
+    code (e.g. "2713") and a right-column code (e.g. "2730") share one
+    physical line -- confirmed via real output: checking only
+    line.split()[0] silently discovered ZERO of the ~18 right-column codes
+    on that page (they were never a first token on ANY line at all, not
+    merely mis-parsed), a real coverage gap, not just a parsing gap. This
+    naturally avoids false-positiving on price VALUES too (a lone 3-digit
+    price like "104" always sits in its own "€ 104"-style chunk, so "€",
+    not the digits, is that chunk's first token).
+    """
     records = []
     lines = text.splitlines()
     for i, raw in enumerate(lines):
         line = raw.strip()
         if not line:
             continue
-        first_tok = line.split()[0] if line.split() else ""
-        if not _VARASCHINI_CODE_TOKEN.match(first_tok):
-            continue
-        if (page_num, first_tok.upper()) in VARASCHINI_FALSE_POSITIVE_CODES:
-            continue
-        window = " ".join(lines[i:i + 3])
-        if "€" in window:
-            rest = line[len(first_tok):].strip()
-            records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
+        for chunk in re.split(r"\s{2,}", line):
+            chunk_toks = chunk.split()
+            if not chunk_toks:
+                continue
+            first_tok = chunk_toks[0]
+            if not _VARASCHINI_CODE_TOKEN.match(first_tok):
+                continue
+            if (page_num, first_tok.upper()) in VARASCHINI_FALSE_POSITIVE_CODES:
+                continue
+            window = " ".join(lines[i:i + 3])
+            if "€" in window:
+                rest = chunk[len(first_tok):].strip()
+                records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
     return records
 
 
