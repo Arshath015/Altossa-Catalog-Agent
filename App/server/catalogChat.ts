@@ -1201,6 +1201,20 @@ export class CatalogChat {
         .filter((t): t is string => !!t)
     )].map(normalize);
 
+    // Generic label word every one of Varaschini's Shape A tier values is
+    // wrapped in ("cat. E", "cat. B - COM", "cat. Luxury", ...) -- never
+    // distinguishes one tier from another, so it's excluded before any
+    // token comparison below. Without this, a short requested code sharing
+    // just its first LETTER with this filler word (e.g. "c") would
+    // spuriously prefix-match every tier in the list via raw-string
+    // startsWith, not just the one actually meant -- confirmed live: a
+    // bare "c" resolved to BOTH "cat. B - COM" and "cat. C" (both raw
+    // strings begin with the character "c") before this exclusion, and
+    // even "cat. B - COM" alone still begins with "c" via its "com" token.
+    const TIER_FILLER_WORDS = new Set(['cat', 'category']);
+    const significantTokens = (t: string) =>
+      t.split(/[^a-z0-9]+/).filter(Boolean).filter(tok => !TIER_FILLER_WORDS.has(tok));
+
     const resolved = new Set<string>();
     for (const requested of requestedTiers) {
       const reqNorm = normalize(requested);
@@ -1208,16 +1222,30 @@ export class CatalogChat {
         resolved.add(reqNorm);
         continue;
       }
-      // partial match: requested is a prefix/whole-word piece of a real tier
-      // (e.g. "b" -> "b e tcl"), or a real tier is contained in the request.
-      // For very short requests (1-2 chars), skip the loose "appears
-      // anywhere" substring check -- e.g. a bare "e" could otherwise
-      // incorrectly match "extra" (which starts with "e") on some future
-      // catalog that doesn't also have a standalone "e" tier to win the
-      // exact-match check above first.
-      const partial = availableTiers.find(t =>
-        t.startsWith(reqNorm) || reqNorm.startsWith(t) || (reqNorm.length >= 3 && t.includes(reqNorm))
-      );
+      const partial = availableTiers.find(t => {
+        const tTokens = significantTokens(t);
+        // Exact whole-TOKEN match (e.g. "e" -> "cat. E", tokens ["e"] after
+        // the filler word is stripped) -- needed because Varaschini's real
+        // tier values wrap the distinguishing code in "cat. ", so it's
+        // never a PREFIX of the raw string the way Bolzan's own tier values
+        // are ("extra" starts with "e"). Checked first and unconditionally
+        // (even for 1-2 char codes): it can only match a tier whose own
+        // token is verbatim equal, never one that merely shares a leading
+        // character. Confirmed live: "give allegra category e"/"give
+        // allegra cat e" against Allegra Poltrona returned all 5 tiers
+        // unfiltered before this, because bare "e" never resolved to
+        // "cat. e".
+        if (tTokens.includes(reqNorm)) return true;
+        // Looser prefix/substring matching (Bolzan's original "b" -> "b e
+        // tcl" case, etc.) is gated to reqNorm.length >= 3 -- for 1-2 char
+        // codes, only the exact token match above is trusted, since a
+        // short prefix check has no way to tell "c" deliberately meaning
+        // the tier "C" apart from "c" just being the first letter of some
+        // unrelated token (e.g. "com", another tier's own significant
+        // token) or the stripped filler word itself.
+        return reqNorm.length >= 3 &&
+          (tTokens.some(tok => tok.startsWith(reqNorm) || reqNorm.startsWith(tok)) || t.includes(reqNorm));
+      });
       if (partial) resolved.add(partial);
     }
     return [...resolved];
@@ -1388,7 +1416,27 @@ export class CatalogChat {
     // the clause-exclusion half of this bug was fixed.
     const queryTokens = new Set(queryMinusProductName.split(/[^a-z0-9]+/).filter(Boolean));
     const rawTierHits = realTierValues.filter(t => {
-      const tierTokens = normalize(t).split(/\s+/).filter(Boolean);
+      // Tokenize the SAME way queryTokens was built (split on any
+      // non-alphanumeric char) rather than whitespace-only -- otherwise a
+      // real tier value with embedded punctuation right against a word
+      // (e.g. Varaschini's "cat. E", period with no trailing space) keeps
+      // that punctuation as PART of its token ("cat."), which can never
+      // equal anything in queryTokens: that side strips punctuation from
+      // the raw query text too, so it can only ever produce a clean "cat"
+      // token, never "cat." with the period. Confirmed live: this silently
+      // broke every phrasing of every Varaschini Shape A tier ("cat e",
+      // "cat. b-com", even the standalone word "luxury" within "cat.
+      // Luxury"), not just the originally-reported "cat e"/"category e".
+      const tierTokens = normalize(t).split(/[^a-z0-9]+/).filter(Boolean)
+        // "cat"/"category" is the generic label word every one of
+        // Varaschini's Shape A tier values starts with -- it never
+        // distinguishes one tier from another, so it's not required to be
+        // typed for the phrase to count as a real mention (same spirit as
+        // the existing GENERIC_CATEGORY_WORDS/RISKY_SIZE_CODE_WORDS filler
+        // lists in this file). Only relaxes what's REQUIRED; the tier's
+        // own distinguishing token(s) -- "e", "b", "com", "luxury" -- still
+        // must be present, so this can't cause an unrelated tier to match.
+        .filter(tok => tok !== 'cat' && tok !== 'category');
       return tierTokens.length > 0 && tierTokens.every(tok => queryTokens.has(tok));
     });
     const tiersWithRawHits = [...new Set([...tiers, ...rawTierHits])];
