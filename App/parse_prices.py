@@ -2263,6 +2263,16 @@ def parse_file_bonaldo(path, product_name, brand, all_headings=None, heading_tex
 VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
 VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
 VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b", re.IGNORECASE)
+# A "frame only" (no cushion) flat-price option that sits ALONGSIDE the 5
+# "cat." fabric tiers in the SAME block on upholstered items (confirmed
+# widespread: 32 pages, e.g. Barcode p22's "2180E"). Its own price must be
+# excluded from the cat.-tier price scan (same reason as "cover") to avoid
+# a 5-vs-6 count mismatch, but -- unlike a "cover" accessory -- it's a
+# real, separately purchasable variant of THIS product, so it's captured
+# as its own row rather than just discarded.
+VARASCHINI_FRAME_ONLY_RE = re.compile(
+    r"(?:solo\s+scocca|only\s+frame)[^\d€]{0,80}€[\s\x00-\x1f]*([\d][\d.,]*)",
+    re.IGNORECASE)
 # Cuscini e Tessuti's tier labels have NO "cat." prefix at all and use
 # periods ("B - C.O.M." not "B - COM"), confirmed on p571's raw text. A
 # bare single-letter "C"/"D"/"E" is a real false-positive risk if matched
@@ -2490,6 +2500,21 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
         dim_m = VARASCHINI_DIMENSION_RE.search(block_text)
         size = dim_m.group(0).strip() if dim_m else None
 
+        frame_only_m = VARASCHINI_FRAME_ONLY_RE.search(block_text)
+        if frame_only_m:
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": product_name,
+                "variant_context": None,
+                "size": size,
+                "fabric_tier": "Solo Scocca / Only Frame",
+                "tier_label": "Imbottitura/Rivestimento",
+                "code": code,
+                "price_eur": frame_only_m.group(1),
+                "source_pdf_page": page_num,
+            })
+
         # Tier label and its price are USUALLY on the same physical line,
         # but not always -- confirmed on Bali p16's "2384": "cat. B - COM"
         # sits on one line (interrupted by a "Teak" structure-color name
@@ -2525,7 +2550,10 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # prices into this block's scan range, turning a clean
                 # 5-labels/5-prices match into a 5-vs-7 mismatch that
                 # silently dropped all 5 real rows.
-                if "cover" in low[:m.start()] or re.search(r"-\s*art\.?\s", low[:m.start()]):
+                # "solo scocca"/"only frame" (see VARASCHINI_FRAME_ONLY_RE)
+                # is captured separately below, not as a cat.-tier price.
+                if ("cover" in low[:m.start()] or re.search(r"-\s*art\.?\s", low[:m.start()])
+                        or "solo scocca" in low[:m.start()] or "only frame" in low[:m.start()]):
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
@@ -3249,6 +3277,7 @@ def main():
         SHAPE_PARSERS = {
             "A": parse_file_varaschini_shape_a,
             "B": parse_file_varaschini_shape_a,
+            "C": parse_file_varaschini_shape_a,
             "D": parse_file_varaschini_shape_d,
         }
         # Per-COLLECTION overrides of the generic per-shape parser, needed
