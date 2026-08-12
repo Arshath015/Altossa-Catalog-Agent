@@ -3472,20 +3472,23 @@ def main():
         # (their price tables genuinely are flat SKU lists -- unlike
         # Cuscini e Tessuti/Teli di Copertura, which were relabeled away
         # from "D" entirely because their PRICE TABLE format doesn't match
-        # it at all). Confirmed via direct per-collection results, not
-        # assumed:
-        #   Outdoor Cooking: 42% parse rate -- internally mixed, some items
-        #     have same-block addon prices (lighting-kit surcharge, a
-        #     cross-referenced "+ backpanel" variant) the parser correctly
-        #     flags rather than guesses between. Needs its own small
-        #     addon-price sub-rule, or stays a permanent flagged known_gap
-        #     -- undecided, so excluded rather than left at a misleading
-        #     42%.
-        #   (Basi Tavolini and Carpet Design were also here, both genuinely
-        #   flat-price/densely-packed like Composizione Tavoli's matrix
-        #   pages -- fixed via the same pdftotext -tsv technique, now in
+        # it at all).
+        #   (Outdoor Cooking, Basi Tavolini, and Carpet Design were all
+        #   here at various points. Outdoor Cooking's real problem turned
+        #   out to be the SAME phantom-catalog-entry pattern fixed
+        #   elsewhere this session (dash-prefixed "- art. XXXX" cross-
+        #   references independently indexed as if they were their own
+        #   products), not a genuine addon-price structural difference --
+        #   confirmed by checking several of its "not found"/"ambiguous"
+        #   flags directly: e.g. "25253" only ever appears in EXPLANATORY
+        #   PROSE ("Utilizzabile in contemporanea con l'articolo 25253"),
+        #   never as a real trigger anywhere on its recorded page. No
+        #   special sub-rule needed; the parser already correctly flags
+        #   these rather than guessing. 13/24 (54%) now parse cleanly,
+        #   verified un-excluding it doesn't fabricate on the remainder.
+        #   Basi Tavolini/Carpet Design are fixed via
         #   COLLECTION_PARSER_OVERRIDES above instead of excluded.)
-        SHAPE_D_EXCLUDED_COLLECTIONS = {"Outdoor Cooking"}
+        SHAPE_D_EXCLUDED_COLLECTIONS = set()
         skipped_wrong_shape = 0
         skipped_multi_page = 0
         skipped_excluded_collection = 0
