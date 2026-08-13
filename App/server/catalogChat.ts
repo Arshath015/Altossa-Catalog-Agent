@@ -1761,7 +1761,22 @@ export class CatalogChat {
 
     if (size) {
       const requestedNums = (size.match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
-      if (requestedNums.length > 0) {
+      // If NONE of this product's rows have any real size data at all, a
+      // numeric size filter can never mean anything for it -- `realNums`
+      // below is always empty, so applying the filter would zero out
+      // every row regardless of what number was requested, treating "no
+      // size data exists to compare against" as "size mismatch, no
+      // results" instead of what it actually is: an unanswerable filter
+      // that should just be ignored. Confirmed this isn't a one-
+      // collection edge case: a large share of Varaschini's own
+      // collections are entirely or mostly null-size (Composizione
+      // Tavoli, Cuscini e Tessuti, Teli di Copertura, Basi Tavolini,
+      // Outdoor Cooking and several others 100%; Big/Big Light, Smart,
+      // Summer Set mostly so) -- any of them hits this the moment a
+      // numeric qualifier (the LLM's own `size` guess, or a literal
+      // "dimension N"/"size N" the user typed) reaches this function.
+      const hasAnyRealSize = rows.some(r => !!r.size);
+      if (requestedNums.length > 0 && hasAnyRealSize) {
         const sizeFiltered = rows.filter(r => {
           const realNums = ((r.size || '').match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
           if (requestedNums.length === realNums.length) {
