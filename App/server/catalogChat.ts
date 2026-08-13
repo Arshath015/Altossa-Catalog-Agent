@@ -231,7 +231,20 @@ export function similarity(query: string, candidate: string): number {
   // "chair" (nothing left over) or "chair price" ("price" is ordinary
   // filler) still match as before -- this only suppresses the case where
   // the query looks like it's naming something specific that isn't here.
-  if (overlap.every(t => GENERIC_CATEGORY_WORDS.has(t))) {
+  // Same treatment for a bare NUMBER as for a generic category word above:
+  // a shared digit-only token carries no real product-identity signal on
+  // its own (a size, a code fragment, a page number -- anything), so
+  // scoring it the same as a genuine name-word overlap lets two totally
+  // unrelated products tie purely by coincidence. Confirmed real: "give
+  // all Composizione dimension 80 price" tied "Composizione Tavoli 13610"
+  // (real overlap: "composizione") together with "Emma Sofa | 3 seats 80"
+  // (the ONLY overlap is the bare "80", coincidentally Emma Sofa's own
+  // seat-width suffix) -- both scored ~10-12 via the diluted-overlap
+  // formula below, landing in the same tied candidate set with no
+  // relation to each other at all. A query that's JUST a number ("140",
+  // nothing else) still matches normally -- `leftover` is empty in that
+  // case, same safety valve as the generic-word check.
+  if (overlap.every(t => GENERIC_CATEGORY_WORDS.has(t) || /^\d+$/.test(t))) {
     const leftover = qTokens.filter(t => !overlap.includes(t) && !cTokens.includes(t) && !RISKY_SIZE_CODE_WORDS.has(t));
     if (leftover.length > 0) return 0;
   }
