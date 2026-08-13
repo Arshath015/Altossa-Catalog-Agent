@@ -2607,6 +2607,10 @@
     "Cuscini e Tessuti cm 90 x 65 (35 3/8”x 25 5/8”)": {
       "status": "known_gap",
       "note": "cat. tier label count doesn't match the price count found in the block -- most are the orphaned-digit pattern (a tier's price digit run and its \"€\" symbol print on non-adjacent lines with nothing reliable to pair them, confirmed on Cricket's \"2989\" and Cuscini e Tessuti's \"2736\") or a same-block extra price this page's layout doesn't fit any known exclusion pattern for yet. Skipped rather than guessing a pairing."
+    },
+    "Cuscini e Tessuti B (ml /h 1,40) €\b 60": {
+      "status": "known_gap",
+      "note": "2704 is a newly-discovered code (2026-08-13, part of the Cuscini e Tessuti discovery correction) whose own name-capture is genuinely poor (\"B (ml /h 1,40) EUR 60\" -- a fragment of its own tier-price block, not a real dimension, since its source line has no clean standalone description the way most other codes in this collection do) AND whose tier extraction hits a real ambiguity: 4 tier labels vs 5 prices on its own block, correctly flagged rather than guessed at a pairing. Left as a documented gap rather than force-fixed -- the code and its existence are real (confirmed via direct page text, p572), only its name/price extraction is ambiguous."
     }
   }
 }

@@ -1053,6 +1053,32 @@ def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, i
     return records
 
 
+# Cuscini e Tessuti's pages (571-573) also contain ~53 bare 2-3 digit
+# numbers that satisfy _VARASCHINI_CODE_TOKEN's shape but are NOT real
+# product codes -- individually verified (not assumed from the digit
+# count alone): a full scan of every occurrence of every one of these 53
+# tokens across all 3 pages found each one sitting immediately adjacent
+# to a "€" (a price value, e.g. "€ 275") or embedded inside a "NNN/4"-
+# style fraction denominator within a dimension string (e.g. "113" from
+# "193/4x113/4"). None ever appear with a dimension/description of their
+# own the way a real code does. Confirmed real codes (229H, 2701, 2720,
+# etc.) are always 4+ digits or carry a letter suffix; every one of these
+# false positives is a bare 2-3 digit run. Scoped to this collection only
+# (not a general code-shape tightening, which risks losing real codes
+# elsewhere) -- same precedent as VARASCHINI_FALSE_POSITIVE_CODES, just
+# collection-scoped (all 3 pages) rather than page-scoped, since these
+# aren't one-off artifacts but a systemic property of this collection's
+# dense price-table layout.
+VARASCHINI_CUSCINI_E_TESSUTI_FALSE_POSITIVE_CODES: set[str] = {
+    "102", "104", "109", "110", "112", "113", "116", "118", "124", "127",
+    "130", "132", "136", "137", "138", "143", "145", "149", "154", "157",
+    "162", "163", "165", "170", "176", "182", "187", "191", "193", "195",
+    "207", "215", "220", "225", "231", "234", "239", "253", "271", "275",
+    "279", "285", "286", "297", "308", "310", "341", "352", "374", "435",
+    "473", "484", "627",
+}
+
+
 def _varaschini_find_cuscini_e_tessuti_records(page_num: int, text: str) -> list[tuple[str, int, str]]:
     """Cuscini e Tessuti-only variant of _varaschini_find_records_flat,
     fixing a real name-capture bug the shared function has: it only ever
@@ -1113,6 +1139,8 @@ def _varaschini_find_cuscini_e_tessuti_records(page_num: int, text: str) -> list
             chunk = chunks[ci]
             first_tok = chunk.split()[0]
             if (page_num, first_tok.upper()) in VARASCHINI_FALSE_POSITIVE_CODES:
+                continue
+            if first_tok.upper() in VARASCHINI_CUSCINI_E_TESSUTI_FALSE_POSITIVE_CODES:
                 continue
             window = " ".join(lines[i:i + 3])
             if "€" not in window:
