@@ -967,7 +967,41 @@ export class CatalogChat {
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
     const combinedImages = [...new Set(perProduct.flatMap(p => p.result.image_urls || []))];
     const notFoundLines = unresolvedMentions.map(n => `${n}: couldn't find a matching product in the catalog.`);
-    const message = [...perProduct.map(p => `${p.name}: ${p.result.message}`), ...notFoundLines].join('\n\n');
+    // Above a certain count, concatenating every sub-lookup's own message
+    // (each one already a full sentence, sometimes a full price grid's
+    // worth of text) stops being a reply and becomes an unreadable wall
+    // of text -- confirmed real: "give me all Emma Cross prices" (96
+    // real products) produced a 13,296-character message that's just
+    // every per-product status line pasted back to back, BEFORE the
+    // actual structured tables/images even render. The full per-product
+    // detail already lives in `combinedMatches`/`combinedImages` below
+    // (what the UI actually renders as tables) -- the message text only
+    // needs to be a short human-readable summary once N is large, not a
+    // duplicate trace of the same data. A smaller multi-product reply
+    // (confirmed fine up to at least 13, e.g. "give barcode all price")
+    // keeps the existing full per-candidate text -- it's still short
+    // enough to read, and callers/tests may depend on its exact shape.
+    const LARGE_RESULT_THRESHOLD = 20;
+    let message: string;
+    if (validNames.length > LARGE_RESULT_THRESHOLD) {
+      const pricedCount = perProduct.filter(p => (p.result.matches?.length ?? 0) > 0).length;
+      const unpricedCount = perProduct.length - pricedCount;
+      // Use the real collection name in the summary when every candidate
+      // shares one (ground truth, same mechanism as the wantsFullList
+      // majority-group fix above) -- falls back to a generic phrasing
+      // when they don't (e.g. a mixed-name multi-product request), never
+      // guessing a collection that isn't actually true for the whole set.
+      const collections = new Set(validNames.map(n => this.productNameToCollection.get(n)));
+      const subject = collections.size === 1 && [...collections][0] ? [...collections][0] : 'matching';
+      const summaryParts = [`Found ${validNames.length} ${subject} products`];
+      if (pricedCount > 0 || unpricedCount > 0) {
+        summaryParts.push(`${pricedCount} priced, ${unpricedCount} without price data yet`);
+      }
+      const summary = `${summaryParts.join(' -- ')}. Full details and page images are shown below.`;
+      message = [summary, ...notFoundLines].join('\n\n');
+    } else {
+      message = [...perProduct.map(p => `${p.name}: ${p.result.message}`), ...notFoundLines].join('\n\n');
+    }
 
     return {
       status: 'multi_product',
