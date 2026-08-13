@@ -99,6 +99,16 @@ export default function CatalogChatWidget({
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastProductRef = useRef<string | null>(null);
   const lastModelVariantRef = useRef<string | null>(null);
+  /** The candidate list from the most recent `clarify_product` turn, when
+   * nothing has been confirmed yet -- mutually exclusive with
+   * lastProductRef (exactly one is non-null at a time, or neither),
+   * symmetrically cleared the same way Issue 5 fixed lastProductRef: any
+   * turn that DOES resolve a real product clears this, any OTHER
+   * unresolved/ambiguous turn clears both. Lets a content-free follow-up
+   * ("give all", "yes") right after a clarify_product turn reference the
+   * list the user was just shown, instead of having nothing to anchor to
+   * at all (the gap Issue 5's fix correctly left safe but unhelpful). */
+  const lastCandidatesRef = useRef<string[] | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -118,6 +128,7 @@ export default function CatalogChatWidget({
           history: messages.slice(-4).map(m => ({ role: m.role, text: m.text })),
           lastProduct: lastProductRef.current,
           lastModelVariant: lastModelVariantRef.current,
+          lastCandidates: lastCandidatesRef.current,
         }),
       });
       const result: ChatResult = await res.json();
@@ -133,10 +144,23 @@ export default function CatalogChatWidget({
       // sets product_name) -> "yes, give all" still silently returned
       // Bahia 2260M's price grid. Mirrors the existing lastModelVariantRef
       // else-clears-to-null branch just below, which never had this bug.
+      //
+      // lastCandidatesRef is the mutually-exclusive sibling: a
+      // clarify_product turn sets IT (and clears lastProduct via the else
+      // branch above), a resolved turn clears IT (and sets lastProduct),
+      // any other outcome (no_product_match, etc.) clears both -- exactly
+      // one of the two anchors is ever populated at a time, never both, so
+      // a later content-free follow-up always has a single unambiguous
+      // source of context to fall back on.
       if (result.product_name) {
         lastProductRef.current = result.product_name;
+        lastCandidatesRef.current = null;
+      } else if (result.status === 'clarify_product' && result.candidates && result.candidates.length > 0) {
+        lastProductRef.current = null;
+        lastCandidatesRef.current = result.candidates;
       } else {
         lastProductRef.current = null;
+        lastCandidatesRef.current = null;
       }
       const variantsInResult = [...new Set((result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
       if (variantsInResult.length === 1) {

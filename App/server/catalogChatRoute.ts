@@ -57,12 +57,13 @@ function getCatalogChat(brand: string): CatalogChat | null {
 }
 
 router.post('/chat', async (req: Request, res: Response) => {
-  const { brand, message, history, lastProduct, lastModelVariant } = req.body as {
+  const { brand, message, history, lastProduct, lastModelVariant, lastCandidates } = req.body as {
     brand?: string;
     message?: string;
     history?: ChatTurn[];
     lastProduct?: string | null;
     lastModelVariant?: string | null;
+    lastCandidates?: string[] | null;
   };
 
   if (!brand || typeof brand !== 'string') {
@@ -118,6 +119,12 @@ router.post('/chat', async (req: Request, res: Response) => {
   // needed to decide this).
   const currentMessageNamesOwnProduct = catalogChat.detectNamedProductsInText(message).length > 0;
   const effectiveLastProduct = currentMessageNamesOwnProduct ? null : (lastProduct || null);
+  // Same gating as effectiveLastProduct just above, same reasoning: a
+  // message that already names something fresh shouldn't have a stale
+  // candidate-list anchor injected either.
+  const effectiveLastCandidates = currentMessageNamesOwnProduct
+    ? null
+    : (Array.isArray(lastCandidates) && lastCandidates.length > 0 ? lastCandidates : null);
 
   // Logged unconditionally (not just for multi-product calls) -- cheap,
   // and this is exactly the trail needed to catch a real recurrence of
@@ -135,8 +142,8 @@ router.post('/chat', async (req: Request, res: Response) => {
   }
 
   const result: ChatResult = intent
-    ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list)
-    : catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct);
+    ? catalogChat.answerFromIntentMulti(intent.product_names, intent.size, intent.fabric_tier, message, brand, lastModelVariant || null, intent.wants_full_list, effectiveLastProduct, effectiveLastCandidates)
+    : catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct, effectiveLastCandidates);
 
   // Full raw request/response capture for every MULTI-PRODUCT resolution
   // specifically -- this is the exact class of call where cross-product

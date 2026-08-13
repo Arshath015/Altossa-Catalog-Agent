@@ -1003,7 +1003,13 @@ export class CatalogChat {
    * exactly how to present it, including whether to show a screenshot and
    * whether to flag ambiguity.
    */
-  answer(query: string, brand: string, lastModelVariant: string | null = null, lastProduct: string | null = null): ChatResult {
+  answer(
+    query: string,
+    brand: string,
+    lastModelVariant: string | null = null,
+    lastProduct: string | null = null,
+    lastCandidates: string[] | null = null
+  ): ChatResult {
     // Deterministic multi-product backstop: run BEFORE the single-product
     // matcher below, so a message literally naming 2+ real products (e.g.
     // "italia pelle and italia couture pelle") is combined into one
@@ -1073,6 +1079,29 @@ export class CatalogChat {
       if (isContentFree && lastProduct && this.productNames.includes(lastProduct)) {
         const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
         return this.lookupForProduct(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
+      }
+      // Sibling anchor to lastProduct above, for the case where the PREVIOUS
+      // turn was itself unresolved -- a clarify_product candidate list, not
+      // a confirmed product. Without this, a content-free follow-up right
+      // after being shown a candidate list ("give all", "yes, give all")
+      // had nothing to anchor to at all (lastProduct is correctly null in
+      // this state, per the Issue 5 fix) and fell straight to the generic
+      // "couldn't find a product" message below -- safe, but unhelpful
+      // right after the user was just shown real options. Re-surfaces the
+      // SAME list rather than guessing which one or trying to resolve all
+      // of them (that's a separate, deliberately deferred design decision
+      // -- see the caller for the phased plan). Re-validates each name
+      // against the current catalog defensively, same precedent as the
+      // lastProduct check just above (this.productNames.includes(...)).
+      if (isContentFree && lastCandidates && lastCandidates.length > 0) {
+        const validCandidates = lastCandidates.filter(c => this.productNames.includes(c));
+        if (validCandidates.length > 0) {
+          return {
+            status: 'clarify_product',
+            message: `I found a few products that could match: ${validCandidates.join(', ')}. Which one did you mean?`,
+            candidates: validCandidates,
+          };
+        }
       }
       return {
         status: 'no_product_match',
@@ -1278,7 +1307,9 @@ export class CatalogChat {
     rawQuery: string,
     brand: string,
     lastModelVariant: string | null = null,
-    wantsFullList: boolean = false
+    wantsFullList: boolean = false,
+    lastProduct: string | null = null,
+    lastCandidates: string[] | null = null
   ): ChatResult {
     const validProductName = productNameGuess && this.productNames.includes(productNameGuess)
       ? productNameGuess
@@ -1287,7 +1318,16 @@ export class CatalogChat {
     if (!validProductName) {
       // LLM guess missing or not a real product -- fall back to the
       // tested deterministic matcher on the raw text instead of guessing.
-      return this.answer(rawQuery, brand, lastModelVariant);
+      // lastProduct/lastCandidates were PREVIOUSLY dropped here (a real,
+      // pre-existing gap found while wiring up lastCandidates for Issue
+      // 3): this is exactly the path a content-free follow-up takes
+      // whenever Groq is live but returns an uncertain product_names guess
+      // (as opposed to being fully unavailable, which correctly threads
+      // effectiveLastProduct via the OUTER null-intent branch in
+      // catalogChatRoute.ts) -- so the anchor was silently unavailable in
+      // that specific case even before either anchor mattered for the
+      // question actually being asked here (which one to reuse).
+      return this.answer(rawQuery, brand, lastModelVariant, lastProduct, lastCandidates);
     }
 
     // A real product CODE mentioned in the query is a more authoritative
@@ -1430,7 +1470,9 @@ export class CatalogChat {
     rawQuery: string,
     brand: string,
     lastModelVariant: string | null = null,
-    wantsFullList: boolean = false
+    wantsFullList: boolean = false,
+    lastProduct: string | null = null,
+    lastCandidates: string[] | null = null
   ): ChatResult {
     // Union of what the LLM guessed (normalized-matched against the real
     // catalog list, so a guess that's right in substance but differs only
@@ -1455,13 +1497,15 @@ export class CatalogChat {
     );
 
     if (validNames.length <= 1 && unresolved.length === 0) {
-      return this.answerFromIntent(validNames[0] || null, size, tier, rawQuery, brand, lastModelVariant, wantsFullList);
+      return this.answerFromIntent(validNames[0] || null, size, tier, rawQuery, brand, lastModelVariant, wantsFullList, lastProduct, lastCandidates);
     }
     if (validNames.length === 0) {
       // Nothing resolved at all -- defer to the deterministic matcher's
       // own no-match/clarify handling rather than building an empty
-      // multi-product shell around pure LLM noise.
-      return this.answer(rawQuery, brand, lastModelVariant);
+      // multi-product shell around pure LLM noise. lastProduct/
+      // lastCandidates threaded through here too, same reasoning as
+      // answerFromIntent's own fallback just above.
+      return this.answer(rawQuery, brand, lastModelVariant, lastProduct, lastCandidates);
     }
 
     // lastModelVariant is a single product's own anchor -- it doesn't
