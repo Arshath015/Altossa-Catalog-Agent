@@ -676,7 +676,7 @@ VARASCHINI_SECTIONS: list[tuple] = [
 
     ("Outdoor Lighting", 555, 555, "D", "reference", "flat SKU list"),
     ("Strumenti Commerciali", 556, 556, "D", "reference", "sales tools, flat SKU list"),
-    ("Teli di Copertura", 557, 569, "REFERENCE_MATRIX", "reference", "NOT a product list -- a compatibility matrix: generic cover codes (e.g. 9400M, priced PER LINEAR METER '/ML', not a flat total) cross-referenced against which OTHER collections' furniture codes each cover fits (bahia/barcode/belt/emma/etc., each at its own size). Reclassified out of 'D' 2026-08-11 after its parser pass came back 0/98 -- structurally unlike anything built so far, needs its own scoping discussion before any parser design (same discipline as Shape E originally)."),
+    ("Teli di Copertura", 557, 569, "REFERENCE_MATRIX", "reference", "NOT a product list -- a compatibility matrix: generic cover codes (e.g. 9400M, priced PER LINEAR METER '/ML', not a flat total) cross-referenced against which OTHER collections' furniture codes each cover fits (bahia/barcode/belt/emma/etc., each at its own size). Reclassified out of 'D' 2026-08-11 after its parser pass came back 0/98 -- structurally unlike anything built so far, needs its own scoping discussion before any parser design (same discipline as Shape E originally). 2026-08-13: the section's other code family, '9C5XXX' base-cover codes (103 total, 0 previously discovered -- structural regex gap, not this compatibility-matrix issue), is now covered too: 40 flat 'art. 9C5XXX' codes (pages 562/564) via VARASCHINI_EXTRA_CODE_PATTERNS, 63 grid codes (pages 565/567/569, shape 'REFERENCE_MATRIX_GRID') via _varaschini_teli_di_copertura_grid_codes."),
     ("Prodotti per la Pulizia", 570, 570, "D", "reference", "cleaning products, flat SKU list"),
     ("Cuscini e Tessuti", 571, 573, "A", "reference", "reclassified out of 'D' 2026-08-11: NOT a flat SKU list -- confirmed on p571 (art 2713/2709/2708/2701) it's Shape A's exact cat. B-COM/C/D/E/Luxury 5-tier structure, just with bare codes instead of an 'art.' prefix. Needs Shape A's tier-pairing logic combined with Shape D's bare-code block detection, not Shape D's flat-price assumption."),
     ("Composizione Tavoli", 574, 585, "E", "reference", "base x top-size x top-finish price MATRIX -- handled by a dedicated pdftotext -tsv pass, see _varaschini_composizione_tavoli_codes"),
@@ -762,6 +762,55 @@ def _varaschini_full_text_by_page(pdf_path: str, total_pages: int) -> dict[int, 
 
 _VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
 _VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
+
+# Teli di Copertura's "9C5XXX" cover-for-table-base codes (pages 562/564,
+# confirmed real: "art. 9C5001 allegra / 81x76 h80 / €275 / 2582") have a
+# digit-letter-digits shape (one leading digit, then a letter, THEN 3-4
+# digits) that neither regex above can ever match -- both require 3-6
+# LEADING digits before any letter appears. Confirmed structural, not a
+# layout artifact: verified 103 total "9C5[0-9A-Z]*" occurrences across
+# pages 557-569, 0 present in catalog_index.json before this fix. Kept as
+# a SEPARATE, narrowly-scoped pattern (checked in addition to, never
+# replacing, the base regexes) rather than broadening the shared ones --
+# this exact shape is unique to this one collection, so there's no reason
+# to widen what every OTHER collection's discovery also matches against.
+_VARASCHINI_9C5_CODE_TOKEN = re.compile(r"^9C5[0-9]{2,4}[A-Z]?$")
+_VARASCHINI_9C5_ART_PREFIX = re.compile(r"\bart\.?\s+(9C5[0-9]{2,4}[A-Z]?)\b", re.IGNORECASE)
+
+# Per-collection (art_prefix_re, code_token_re) pairs checked IN ADDITION
+# to the base regexes in _varaschini_find_records -- see
+# _VARASCHINI_9C5_CODE_TOKEN comment above for why this is additive-only
+# and collection-scoped rather than a global regex change.
+VARASCHINI_EXTRA_CODE_PATTERNS: dict[str, tuple] = {
+    "Teli di Copertura": (_VARASCHINI_9C5_ART_PREFIX, _VARASCHINI_9C5_CODE_TOKEN),
+}
+
+# Teli di Copertura pages 565-569 are a base-height x TOP-dimension GRID
+# (confirmed on p567: a row of 6 "art." labels + 6 "9C5XXX" codes,
+# followed a few lines later by a row of 6 prices in matching left-to-
+# right order, repeated for each height band; the codes repeat densely
+# enough -- e.g. 6 per header row -- that the same per-"art."-occurrence
+# scan used for the flat pages (562/564, one code per "art.") would
+# either miss 5 of every 6 codes or attach them all to one garbled name).
+# Excluded from the regular per-line scan here and handled by a dedicated
+# TSV coordinate pass instead (_varaschini_teli_di_copertura_grid_codes),
+# same technique already built for Composizione Tavoli/Basi Tavolini/
+# Carpet Design -- reused, not reinvented, because the underlying problem
+# (a row's code and its price ending up far apart in -layout's linearized
+# text) is the same class of issue, confirmed on p567/569's clean grid
+# layout and p565's mix of the same grid plus instructional text. Pages
+# 566/568's own -layout text turns out to be just as badly scrambled
+# (confirmed once actually generated: codes, dimension callouts, and
+# fragment words interleaved out of order, e.g. "9C5200 Coffee table
+# Ø70A9C5204..." on p566) -- no p566.txt/p568.txt previously existed only
+# because asset generation is keyed off which pages an ALREADY-discovered
+# catalog entry references, and nothing referenced these two pages before
+# this fix (not because -layout produced literally nothing). Either way,
+# per-line scanning was never going to work here; included in the
+# exclusion set (and the TSV pass's page range) for that reason.
+VARASCHINI_GRID_EXCLUDED_PAGES: dict[str, set[int]] = {
+    "Teli di Copertura": {565, 566, 567, 568, 569},
+}
 
 # Confirmed on real page images (p146-159, the diagram-cluttered Big/Big
 # Light cluster already flagged for price extraction, plus Dolmen/Tight/
@@ -869,7 +918,9 @@ def _varaschini_clean_name(s: str) -> str:
     return s[:60]
 
 
-def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, str]]:
+def _varaschini_find_records(
+    page_num: int, text: str, extra_patterns: tuple | None = None
+) -> list[tuple[str, int, str]]:
     """Find every (code, page, name_guess) triple on one page via 'art.'
     detection. Three physical arrangements of a code relative to its 'art.'
     label are all handled, confirmed against real text across Allegra/
@@ -878,14 +929,23 @@ def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, s
       2) "art." alone, code some lines BELOW (Allegra/Bahia/System style)
       3) "art." alone, code some lines ABOVE (Dolmen p210: "1820L" prints
          one line before its own bare "art." label)
+
+    `extra_patterns`, when given, is a (art_prefix_re, code_token_re) pair
+    checked IN ADDITION to the base regexes -- see
+    VARASCHINI_EXTRA_CODE_PATTERNS for why this stays opt-in per collection
+    rather than widening the base regexes for everyone.
     """
+    extra_art_re, extra_code_re = extra_patterns if extra_patterns else (None, None)
     records = []
     lines = text.splitlines()
     for i, raw in enumerate(lines):
         line = raw.strip()
         if not line:
             continue
-        for m in _VARASCHINI_ART_PREFIX.finditer(line):
+        art_matches = list(_VARASCHINI_ART_PREFIX.finditer(line))
+        if extra_art_re:
+            art_matches += list(extra_art_re.finditer(line))
+        for m in art_matches:
             prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
             if "cover" in prefix_ctx:
                 continue
@@ -898,7 +958,7 @@ def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, s
                 if not cand_line:
                     continue
                 first_tok = cand_line.split()[0] if cand_line.split() else ""
-                if _VARASCHINI_CODE_TOKEN.match(first_tok):
+                if _VARASCHINI_CODE_TOKEN.match(first_tok) or (extra_code_re and extra_code_re.match(first_tok)):
                     rest = cand_line[len(first_tok):].strip()
                     records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
                     found = True
@@ -911,7 +971,7 @@ def _varaschini_find_records(page_num: int, text: str) -> list[tuple[str, int, s
                     if not cand_line:
                         continue
                     first_tok = cand_line.split()[0] if cand_line.split() else ""
-                    if _VARASCHINI_CODE_TOKEN.match(first_tok):
+                    if _VARASCHINI_CODE_TOKEN.match(first_tok) or (extra_code_re and extra_code_re.match(first_tok)):
                         rest = cand_line[len(first_tok):].strip()
                         records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
                     break
@@ -1029,6 +1089,44 @@ def _varaschini_composizione_tavoli_codes(pdf_path: str) -> dict[str, int]:
     return code_first_page
 
 
+def _varaschini_teli_di_copertura_grid_codes(pdf_path: str) -> dict[str, int]:
+    """Teli di Copertura's base-height x TOP-dimension cover-price GRID
+    (pages 565-569 -- see VARASCHINI_GRID_EXCLUDED_PAGES) has the same
+    per-line-scan problem as Composizione Tavoli: a header row of several
+    "art. 9C5XXX" codes prints several physical lines above its matching
+    price row, so per-line detection either misses codes or attaches them
+    to the wrong/garbled name. Reuses the same `pdftotext -tsv` word-
+    coordinate technique as _varaschini_composizione_tavoli_codes for the
+    same reason -- coordinates don't depend on -layout's linearized
+    reading order. Pages 566/568 are real, densely-code-populated grid
+    pages whose own -layout text is just as scrambled as the rest of this
+    grid (see VARASCHINI_GRID_EXCLUDED_PAGES) -- -tsv finds them fine
+    regardless, since it was never using -layout's reading order to begin
+    with.
+
+    Returns {code: first_page_seen}.
+    """
+    result = subprocess.run(
+        [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", "565", "-l", "569", pdf_path, "-"],
+        capture_output=True,
+    )
+    tsv_text = result.stdout.decode("utf-8", errors="replace")
+
+    code_first_page: dict[str, int] = {}
+    lines = tsv_text.splitlines()
+    if not lines:
+        return code_first_page
+    for line in lines[1:]:  # skip TSV header row
+        parts = line.split("\t")
+        if len(parts) < 12 or parts[0] != "5":  # level 5 = word-level token
+            continue
+        page = int(parts[1])
+        text = parts[11]
+        if _VARASCHINI_9C5_CODE_TOKEN.match(text) and text not in code_first_page:
+            code_first_page[text] = page
+    return code_first_page
+
+
 # PDF column-table headers that occasionally bleed into a captured
 # product_name -- confirmed on flat-price accessory/table items, where the
 # price-table header line sits close enough to the product name line for
@@ -1080,10 +1178,14 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         # that could ever find them, even though nothing about their LAYOUT
         # changed. VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS keeps the
         # layout-driven decision independent of the shape label.
+        grid_excluded = VARASCHINI_GRID_EXCLUDED_PAGES.get(name, set())
+        extra_patterns = VARASCHINI_EXTRA_CODE_PATTERNS.get(name)
         section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
         for p in range(start, end + 1):
+            if p in grid_excluded:
+                continue  # handled separately below (TSV-based, not per-line)
             text = page_text.get(p, "")
-            recs = _varaschini_find_records(p, text)
+            recs = _varaschini_find_records(p, text, extra_patterns)
             if shape in ("D", "E") or name in VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS:
                 recs += _varaschini_find_records_flat(p, text)
             for code, page, nm in recs:
@@ -1125,6 +1227,42 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
             "section_category": "reference",
         })
     print(f"      -> {len(ct_codes)} verified codes")
+
+    print("[3b/6] Teli di Copertura grid (pages 565-569): dedicated pdftotext -tsv pass...")
+    tdc_grid_codes = _varaschini_teli_di_copertura_grid_codes(pdf_path)
+    # 10 codes (9C5264-9C5273) are found by BOTH the flat p564 pass above
+    # AND this grid pass -- confirmed genuinely the same product cross-
+    # referenced on two pages (its own detail entry on p564, its
+    # compatibility-grid entry on p568), not a data conflict: both passes
+    # agree on price (e.g. 9C5264 = EUR226 either way). The grid pass wins
+    # for attribution (TSV coordinates are more mechanically reliable than
+    # -layout's linearized text on this dense a page, same reasoning as
+    # everywhere else this technique is used) -- drop the flat duplicate
+    # rather than keep two catalog_index entries for one code.
+    dupes = [e for e in catalog if e["collection"] == "Teli di Copertura" and e["art_code"] in tdc_grid_codes]
+    if dupes:
+        catalog = [e for e in catalog if not (e["collection"] == "Teli di Copertura" and e["art_code"] in tdc_grid_codes)]
+        print(f"      -> dropping {len(dupes)} flat-pass duplicate(s) also found by the grid pass: "
+              f"{sorted(e['art_code'] for e in dupes)}")
+    for code, page in sorted(tdc_grid_codes.items()):
+        catalog.append({
+            "brand": brand,
+            "collection": "Teli di Copertura",
+            "product_name": f"Teli di Copertura {code}",
+            "art_code": code,
+            "printed_page_start": page,
+            "printed_page_end": page,
+            "pdf_page_start": page,
+            "pdf_page_end": page,
+            # Distinct from the flat "94XXC" cover codes' "REFERENCE_MATRIX"
+            # shape (mapped to the Shape A parser in parse_prices.py) --
+            # this grid needs its own price-pairing logic (code -> nearest
+            # price token below it in the same column), so it needs its own
+            # dispatch key, not to be silently forced through Shape A.
+            "shape": "REFERENCE_MATRIX_GRID",
+            "section_category": "reference",
+        })
+    print(f"      -> {len(tdc_grid_codes)} verified codes")
 
     print("[4/6] Cleaning + disambiguating product names...")
     for e in catalog:

@@ -2265,6 +2265,14 @@ def parse_file_bonaldo(path, product_name, brand, all_headings=None, heading_tex
 
 VARASCHINI_CODE_TOKEN = re.compile(r"^[0-9]{3,6}[A-Z]{0,3}[0-9]{0,2}[A-Z]{0,2}$")
 VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re.IGNORECASE)
+
+# Mirrors extract_catalog.py's _VARASCHINI_9C5_CODE_TOKEN -- same digit-
+# letter-digits code shape ("9C5001"), same reason it can't match
+# VARASCHINI_CODE_TOKEN above (requires 3-6 LEADING digits before any
+# letter). Used by parse_file_varaschini_teli_di_copertura, which needs no
+# "art." prefix regex of its own -- it pairs codes to prices via TSV
+# coordinates, not a text-prefix trigger.
+VARASCHINI_9C5_CODE_TOKEN = re.compile(r"^9C5[0-9]{2,4}[A-Z]?$")
 VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b", re.IGNORECASE)
 # A "frame only" (no cushion) flat-price option that sits ALONGSIDE the 5
 # "cat." fabric tiers in the SAME block on upholstered items (confirmed
@@ -3038,6 +3046,105 @@ def parse_file_varaschini_composizione_tavoli(pdf_path, page_num, entries_for_pa
     return rows, flags
 
 
+def parse_file_varaschini_teli_di_copertura(pdf_path, page_num, entries_for_page, brand="Varaschini"):
+    """Teli di Copertura's per-page code/price pairing via TSV coordinates,
+    used for the WHOLE collection (not just the base-height x TOP-dimension
+    GRID pages 565-569 -- see _varaschini_teli_di_copertura_grid_codes in
+    extract_catalog.py for that discovery-side counterpart), including its
+    flat "art. CODE" pages (558-564).
+
+    Originally built only for the grid pages, then extended to the flat
+    ones too after verifying the default "art." block-finder badly
+    undercounts them: p562/p564 pack several "art. CODE name" occurrences
+    onto ONE physical line (confirmed p564: 5 codes across one row), which
+    the block finder's "this code's block runs to the NEXT trigger" logic
+    can't correctly bound (test run: 7/16 priced on p562, 1/31 on p564).
+    Every code here (whole collection, confirmed: 0 of the collection's
+    existing price rows have ever had a fabric tier) is a single flat-
+    priced item, never Shape A's cat. B-COM/C/D/E/Luxury tier structure --
+    coordinate pairing needs no block boundary at all, so it isn't
+    sensitive to how many codes share a physical line. Retested on
+    p562/p564 with this approach: 16/16 and 29/31 (the 2 remaining misses,
+    "220"/"245", are a pre-existing, different, genuine gap -- multiple
+    unlabeled prices with no tier markers, a materials-grid item neither
+    approach can safely parse without guessing).
+
+    Every target code is paired with the CLOSEST price token below it in
+    roughly the same column (20-unit horizontal tolerance -- keeps a code
+    from ever pairing with an adjacent column's price in the same physical
+    row) -- no fixed vertical distance cap, unlike
+    parse_file_varaschini_composizione_tavoli's 30-unit ceiling: the
+    code->price gap is NOT constant across this collection's pages (~38
+    units on p567's first 3 row-groups, but confirmed 126 units on p568,
+    whose rows have much bigger diagrams between a code and its price).
+    "Closest in this column, whatever the distance" is safe here because
+    every code has exactly one real next-price-below in its own column
+    (never a puzzle with 2+ genuine candidates at similar depth -- verified
+    across all of pages 558-569: adding this fixed a p567-tolerance-563/
+    p568/p569 undercounts of 6-24 codes each, taking the collection from
+    164/221 real prices to 218/221; the 3 remaining misses -- "3021",
+    "220", "245" -- are a pre-existing, unrelated gap: multiple unlabeled
+    prices with no tier markers, a materials-grid item neither this nor
+    any other approach here can safely parse without guessing).
+    """
+    tokens = _varaschini_tsv_tokens(pdf_path)
+    target_codes = {e["art_code"] for e in entries_for_page}
+
+    euro_tokens = [(l, t, "al mq" if "/mq" in txt else None)
+                   for l, t, txt in tokens if txt.startswith("€")]
+    digit_tokens = [(l, t, txt) for l, t, txt in tokens
+                     if txt != "2026" and VARASCHINI_TSV_PRICE_DIGIT_RE.match(txt)]
+    prices = []
+    for el, et, unit in euro_tokens:
+        best = None
+        for dl, dt, dtxt in digit_tokens:
+            if abs(dt - et) <= 8 and 0 <= (dl - el) <= 45:
+                if best is None or dl < best[0]:
+                    best = (dl, dt, dtxt)
+        if best:
+            dl, dt, dtxt = best
+            prices.append((el, dt, dtxt, unit))
+
+    code_tokens = [(l, t, txt) for l, t, txt in tokens
+                    if (VARASCHINI_CODE_TOKEN.match(txt) or VARASCHINI_9C5_CODE_TOKEN.match(txt))
+                    and txt in target_codes]
+
+    rows = []
+    flags = []
+    found_codes = set()
+    for l, t, txt in code_tokens:
+        if txt in found_codes:
+            continue
+        candidates = [(l2, t2, pr, unit) for l2, t2, pr, unit in prices if t2 > t and abs(l2 - l) <= 20]
+        if not candidates:
+            continue
+        l2, t2, pr, unit = min(candidates, key=lambda c: c[1])
+
+        found_codes.add(txt)
+        entry = next((e for e in entries_for_page if e["art_code"] == txt), None)
+        product_name = entry["product_name"] if entry else f"Teli di Copertura {txt}"
+        rows.append({
+            "brand": brand,
+            "product_name": product_name,
+            "model_variant": product_name,
+            "variant_context": None,
+            "size": None,
+            "fabric_tier": unit,
+            "tier_label": None,
+            "code": txt,
+            "price_eur": pr,
+            "source_pdf_page": page_num,
+        })
+
+    for entry in entries_for_page:
+        code = entry["art_code"]
+        if code not in found_codes:
+            flags.append((page_num, entry["product_name"],
+                           f"art_code {code} not found or no own-price located via TSV coordinate pass on this page"))
+
+    return rows, flags
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -3477,6 +3584,21 @@ def main():
             "Basi Tavolini": lambda path, page_num, entries, brand: parse_file_varaschini_composizione_tavoli(
                 str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
             "Carpet Design": lambda path, page_num, entries, brand: parse_file_varaschini_composizione_tavoli(
+                str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
+            # Teli di Copertura (both shapes: pre-existing "94XXC"/new flat
+            # "9C5XXX" codes on pages 558-564, and new grid "9C5XXX" codes
+            # on pages 565-569) goes entirely through the TSV-coordinate
+            # parser, not Shape A's "art." block finder -- confirmed the
+            # block finder badly undercounts the flat pages too (several
+            # "art. CODE" occurrences routinely share one physical line,
+            # e.g. 5 across one row on p564; test run 7/16 priced on p562,
+            # 1/31 on p564 vs 16/16 and 29/31 via coordinates), and the
+            # collection's price table is uniformly a single flat price
+            # (confirmed: 0 of its existing price rows have ever had a
+            # fabric tier), so there's no Shape A tier structure being lost
+            # by skipping that parser. See
+            # parse_file_varaschini_teli_di_copertura's docstring.
+            "Teli di Copertura": lambda path, page_num, entries, brand: parse_file_varaschini_teli_di_copertura(
                 str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
         }
         # Collections excluded from Shape D even though still labeled "D"
