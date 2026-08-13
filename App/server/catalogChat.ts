@@ -490,19 +490,41 @@ export class CatalogChat {
     }
     if (found.size <= 1) return [...found];
 
+    let candidates = [...found];
     const contextTokens = new Set(
       tokens.filter(t => !codeTokensUsed.has(t) && !CONVERSATIONAL_FILLER_WORDS.has(t))
     );
-    if (contextTokens.size === 0) return [...found];
+    if (contextTokens.size > 0) {
+      const scored = candidates.map(name => {
+        const nameTokens = new Set(tokenizeLoose(name));
+        const overlap = [...contextTokens].filter(t => nameTokens.has(t)).length;
+        return { name, overlap };
+      });
+      const maxOverlap = Math.max(...scored.map(s => s.overlap));
+      if (maxOverlap > 0) candidates = scored.filter(s => s.overlap === maxOverlap).map(s => s.name);
+    }
+    if (candidates.length <= 1) return candidates;
 
-    const scored = [...found].map(name => {
-      const nameTokens = new Set(tokenizeLoose(name));
-      const overlap = [...contextTokens].filter(t => nameTokens.has(t)).length;
-      return { name, overlap };
-    });
-    const maxOverlap = Math.max(...scored.map(s => s.overlap));
-    if (maxOverlap === 0) return [...found];
-    return scored.filter(s => s.overlap === maxOverlap).map(s => s.name);
+    // Secondary tie-break: prefer candidates with real price data over ones
+    // without, when a tie survives context scoring (or there was no
+    // context at all, e.g. a bare "price of <code>" query). Confirmed
+    // common, not a one-off: 46 of the catalog's 98 real code collisions
+    // are exactly this shape -- one candidate is a documented phantom
+    // catalog_index entry (e.g. Plinto's "(pag. 412)"-style cross-
+    // reference mentions, see the multi-page-filter investigation) with
+    // zero price rows, tied against a genuinely priced product that
+    // happens to share the same code. Without this, the phantom entry
+    // sits in the candidate list forever, offering the user a choice
+    // that always dead-ends in "no price data" for one option. Only
+    // narrows when the split is genuinely uneven (SOME but not ALL tied
+    // candidates have price data) -- never removes anything when every
+    // candidate is priced (a real, unresolvable collision) or none are
+    // (nothing to prefer).
+    const pricedCandidates = candidates.filter(name => this.prices.some(r => r.product_name === name));
+    if (pricedCandidates.length > 0 && pricedCandidates.length < candidates.length) {
+      candidates = pricedCandidates;
+    }
+    return candidates;
   }
 
   /** Removes any recognized real tier phrase (longest-match-first, whole
