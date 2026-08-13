@@ -997,6 +997,37 @@ export class CatalogChat {
     return entry.images.map(img => `/data/${brand}/images/${img}`);
   }
 
+  /** How many candidates a clarify_product response shows/returns at once.
+   * Reused from the deterministic ambiguity branch's own pre-existing
+   * limit (rather than inventing a new number) -- the goal here is
+   * CONSISTENCY between the 4 places in this file that build a
+   * clarify_product result (previously: 5 in one, uncapped -- up to 32 in
+   * Big/Big Light's case -- in the other 3), not a fresh design. */
+  private static readonly CLARIFY_CANDIDATE_CAP = 5;
+
+  /** Single, shared way to build a clarify_product result, used by every
+   * call site in this file that needs one (previously each built its own
+   * inline, with 3 of the 4 uncapped and none disclosing a cap at all --
+   * confirmed live: the same query type returned 5 candidates via one
+   * path and 32 via another). Caps to CLARIFY_CANDIDATE_CAP and appends an
+   * explicit "(and N more)" note when there's more to disclose, rather
+   * than silently dropping them -- callers should pass the FULL candidate
+   * set here and let this be the only place any truncation happens (never
+   * pre-slice before calling this, since an early cap can corrupt logic
+   * that needs to see the true full set first, e.g. a "which candidate
+   * contains all the others" maximal check run on an already-truncated
+   * list can miss a genuine dominant candidate that got cut). */
+  private buildClarifyProductResult(allCandidates: string[]): ChatResult {
+    const shown = allCandidates.slice(0, CatalogChat.CLARIFY_CANDIDATE_CAP);
+    const hiddenCount = allCandidates.length - shown.length;
+    const disclosure = hiddenCount > 0 ? ` (and ${hiddenCount} more)` : '';
+    return {
+      status: 'clarify_product',
+      message: `I found a few products that could match: ${shown.join(', ')}${disclosure}. Which one did you mean?`,
+      candidates: shown,
+    };
+  }
+
   /**
    * Main entry point for pure deterministic matching (no LLM). Returns a
    * structured result -- never a bare string -- so the caller can decide
@@ -1052,11 +1083,7 @@ export class CatalogChat {
         );
       }
       if (codeMatches.length > 1) {
-        return {
-          status: 'clarify_product',
-          message: `I found a few products that could match: ${codeMatches.join(', ')}. Which one did you mean?`,
-          candidates: codeMatches,
-        };
+        return this.buildClarifyProductResult(codeMatches);
       }
     }
 
@@ -1096,11 +1123,7 @@ export class CatalogChat {
       if (isContentFree && lastCandidates && lastCandidates.length > 0) {
         const validCandidates = lastCandidates.filter(c => this.productNames.includes(c));
         if (validCandidates.length > 0) {
-          return {
-            status: 'clarify_product',
-            message: `I found a few products that could match: ${validCandidates.join(', ')}. Which one did you mean?`,
-            candidates: validCandidates,
-          };
+          return this.buildClarifyProductResult(validCandidates);
         }
       }
       return {
@@ -1110,7 +1133,13 @@ export class CatalogChat {
     }
 
     const topScore = matches[0].score;
-    const topMatches = matches.filter(m => m.score >= topScore - 5).slice(0, 5);
+    // NOT capped here -- the maximal containment check just below needs to
+    // see the TRUE full tied set to decide correctly (a cap applied before
+    // that check runs could hide the real dominant candidate if more than
+    // CLARIFY_CANDIDATE_CAP names tie, silently corrupting the check
+    // rather than just under-displaying results). Any display/return cap
+    // happens once, at the very end, via buildClarifyProductResult.
+    const topMatches = matches.filter(m => m.score >= topScore - 5);
 
     if (topMatches.length > 1 && topScore < 100) {
       // Any time there's more than one candidate and it's not a clean,
@@ -1150,11 +1179,7 @@ export class CatalogChat {
         });
       });
       if (maximal.length !== 1) {
-        return {
-          status: 'clarify_product',
-          message: `I found a few products that could match: ${topMatches.map(m => m.name).join(', ')}. Which one did you mean?`,
-          candidates: topMatches.map(m => m.name),
-        };
+        return this.buildClarifyProductResult(topMatches.map(m => m.name));
       }
       const productName = maximal[0].name;
       const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(query, productName);
@@ -1351,11 +1376,7 @@ export class CatalogChat {
     // satisfied members -- never touches the ordinary single-product case.
     const familyCandidates = this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
     if (familyCandidates) {
-      return {
-        status: 'clarify_product',
-        message: `I found a few products that could match: ${familyCandidates.join(', ')}. Which one did you mean?`,
-        candidates: familyCandidates,
-      };
+      return this.buildClarifyProductResult(familyCandidates);
     }
 
     // Tier(s) from the LLM might not exactly match our normalized whitelist
