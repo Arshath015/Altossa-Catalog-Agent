@@ -82,6 +82,20 @@ const STATUS_STYLES: Record<string, { badge: string; color: string; icon?: 'warn
   clarify_product: { badge: 'WHICH ONE?', color: 'text-[var(--riso-pink)] border-[var(--riso-pink)]', icon: 'help' },
 };
 
+// Same summarization need as buildMultiProductResult's message fix, just for
+// the ImagePanel's label -- result.product_name is a raw comma-joined
+// concatenation of every candidate name (all ~77 for a large multi_product
+// result), never meant to be displayed whole as a single-line label.
+const LABEL_NAME_THRESHOLD = 6;
+function buildImagePanelLabel(result: ChatResult, variantsInResult: string[]): string | null {
+  if (variantsInResult.length === 1) return variantsInResult[0];
+  const names = (result.product_name || '').split(', ').filter(Boolean);
+  if (names.length > LABEL_NAME_THRESHOLD) {
+    return `${names.length} matching products`;
+  }
+  return result.product_name || null;
+}
+
 export default function CatalogChatWidget({
   brand,
   onLatestImages,
@@ -186,7 +200,7 @@ export default function CatalogChatWidget({
 
       onLatestImages?.({
         urls: result.image_urls || [],
-        label: variantsInResult.length === 1 ? variantsInResult[0] : (result.product_name || null),
+        label: buildImagePanelLabel(result, variantsInResult),
         status: result.status,
       });
 
@@ -298,10 +312,10 @@ function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShow
 
   function recallImages() {
     if (!message.result || !onShowImages) return;
-    const variants = new Set((message.result.matches || []).map(m => m.model_variant).filter(Boolean));
+    const variants = [...new Set((message.result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
     onShowImages({
       urls: message.result.image_urls || [],
-      label: variants.size === 1 ? [...variants][0] as string : (message.result.product_name || null),
+      label: buildImagePanelLabel(message.result, variants),
       status: message.result.status,
     });
   }
