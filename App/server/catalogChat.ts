@@ -1246,6 +1246,44 @@ export class CatalogChat {
         });
       });
       if (maximal.length !== 1) {
+        // A genuinely ambiguous tie normally still asks -- EXCEPT when the
+        // query explicitly says "all"/"full"/"complete"/"every": this
+        // deterministic path previously had no equivalent of the LLM
+        // path's `wants_full_list` handling at this decision point, so the
+        // exact same query could return a full resolved multi-product list
+        // (LLM path, via answerFromIntentMulti/buildMultiProductResult) or
+        // a capped 5-candidate clarify prompt (this path) purely depending
+        // on whether Groq happened to be available for that one request --
+        // a real inconsistency with no relation to phrasing (confirmed:
+        // "give barcode all price" sent 3x back to back returned a full
+        // 36-row multi_product answer twice and a 5-candidate clarify once,
+        // as the Groq key pool cycled between available and exhausted).
+        //
+        // Group tied candidates by their own FIRST token (not blindly
+        // resolve the whole tied set) -- confirmed real risk: "barcode"
+        // ties 13 genuine Barcode products (first token "barcode") AND 2
+        // garbled Teli di Copertura cross-reference names that only
+        // coincidentally mention "barcode" deep in a long compatibility
+        // list (first token "teli") at the SAME score, since a diluted
+        // overlap-fraction score doesn't care where in the name a shared
+        // token sits. The majority group is the real, coherent match; an
+        // outlier group that only ties by accident is excluded rather than
+        // silently mixed into the bulk answer. Falls through to the normal
+        // clarify prompt if no group has more than one member (nothing
+        // coherent enough to safely bulk-resolve).
+        const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+        if (wantsFullList) {
+          const groups = new Map<string, typeof topMatches>();
+          for (const m of topMatches) {
+            const key = tokenizeLoose(m.name)[0] || '';
+            const group = groups.get(key);
+            if (group) group.push(m); else groups.set(key, [m]);
+          }
+          const largestGroup = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+          if (largestGroup.length > 1) {
+            return this.buildMultiProductResult(largestGroup.map(m => m.name), [], null, [], query, brand, true);
+          }
+        }
         return this.buildClarifyProductResult(topMatches.map(m => m.name));
       }
       const productName = maximal[0].name;
