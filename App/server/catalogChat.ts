@@ -318,6 +318,14 @@ const RISKY_SIZE_CODE_WORDS = new Set([
   // tested across all 3 brands. Also checked for real size-value
   // collisions first -- none found.
   'full', 'list',
+  // Added for the Issue 3 Phase 2 "give all"/"all of them" auto-resolve
+  // distinction -- "all of them" wasn't previously recognized as
+  // content-free at all (neither "of" nor "them" was in this list),
+  // so it fell straight to the flat no-match message instead of ever
+  // reaching the lastCandidates auto-resolve logic. Checked for real
+  // size/model-variant/code collisions across all 4 brands first, same
+  // precedent as every other addition here -- none found.
+  'of', 'them',
 ]);
 
 /** Pull the meaningful non-numeric "code"/"qualifier" words out of a real
@@ -841,8 +849,21 @@ export class CatalogChat {
       const tierArray = Array.isArray(tier) ? tier : (tier ? [tier] : []);
       const scopedTierArray = tierArray.filter(t => containsWholeWord(normalize(scopedQuery), normalize(t)));
       return {
+        // Every `name` here is already a CONFIRMED specific product (this
+        // is the whole point of validNames) -- never a guess still needing
+        // disambiguation, so the family-ambiguity backstop must not
+        // re-apply per product. Without this, a name belonging to a
+        // multi-member family (e.g. a Big/Big Light SKU) whose scoped
+        // clause happens not to repeat that SKU's own distinguishing code
+        // text verbatim gets silently re-flagged as "ambiguous" all over
+        // again here, turning what should be a real price answer for a
+        // known product into a nested "which one did you mean?" -- most
+        // visible with a content-free scoped clause (every candidate gets
+        // the same unscoped rawQuery when there's nothing to split on, see
+        // scopeQueryPerProduct above), but the underlying issue is general
+        // to this call site, not specific to any one caller.
         name,
-        result: this.answerFromIntent(name, scopedSize, scopedTierArray.length > 0 ? scopedTierArray : null, scopedQuery, brand, null, wantsFullList),
+        result: this.answerFromIntent(name, scopedSize, scopedTierArray.length > 0 ? scopedTierArray : null, scopedQuery, brand, null, wantsFullList, null, null, true),
       };
     });
     const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
@@ -1114,15 +1135,39 @@ export class CatalogChat {
       // had nothing to anchor to at all (lastProduct is correctly null in
       // this state, per the Issue 5 fix) and fell straight to the generic
       // "couldn't find a product" message below -- safe, but unhelpful
-      // right after the user was just shown real options. Re-surfaces the
-      // SAME list rather than guessing which one or trying to resolve all
-      // of them (that's a separate, deliberately deferred design decision
-      // -- see the caller for the phased plan). Re-validates each name
-      // against the current catalog defensively, same precedent as the
-      // lastProduct check just above (this.productNames.includes(...)).
+      // right after the user was just shown real options. Re-validates
+      // each name against the current catalog defensively, same precedent
+      // as the lastProduct check just above (this.productNames.includes(...)).
+      //
+      // Two different responses depending on what was actually asked
+      // (this is Phase 2 of a deliberately staged rollout -- Phase 1
+      // shipped with EVERY content-free follow-up re-asking, regardless of
+      // wording, until Issue 4 established a consistent cap to safely
+      // auto-resolve within):
+      //   - An EXPLICIT "give all"/"all of them"/"everything" signal is a
+      //     real, specific request -- auto-resolve every one of the
+      //     (already-capped-to-CLARIFY_CANDIDATE_CAP, by construction)
+      //     candidates as a genuine multi-product answer instead of just
+      //     repeating the same question the user was clearly trying to
+      //     move past.
+      //   - A bare confirmation ("yes", "ok") carries no such signal --
+      //     still re-surface the same list and ask, same as Phase 1.
       if (isContentFree && lastCandidates && lastCandidates.length > 0) {
         const validCandidates = lastCandidates.filter(c => this.productNames.includes(c));
         if (validCandidates.length > 0) {
+          const wantsAllExplicitly = /\b(all|full|complete|every)\b/i.test(query);
+          if (wantsAllExplicitly && validCandidates.length > 1) {
+            return this.buildMultiProductResult(validCandidates, [], null, [], query, brand, true);
+          }
+          if (wantsAllExplicitly && validCandidates.length === 1) {
+            // Same reasoning as buildMultiProductResult's per-product loop:
+            // this candidate is already confirmed (it came from the prior
+            // clarify_product turn's own candidate list), not a guess, so
+            // skip the family-ambiguity backstop -- a content-free "give
+            // all" carries no distinguishing text for checkFamilyAmbiguity
+            // to find anyway.
+            return this.answerFromIntent(validCandidates[0], null, [], query, brand, lastModelVariant, true, null, null, true);
+          }
           return this.buildClarifyProductResult(validCandidates);
         }
       }
@@ -1334,7 +1379,8 @@ export class CatalogChat {
     lastModelVariant: string | null = null,
     wantsFullList: boolean = false,
     lastProduct: string | null = null,
-    lastCandidates: string[] | null = null
+    lastCandidates: string[] | null = null,
+    skipFamilyAmbiguityCheck: boolean = false
   ): ChatResult {
     const validProductName = productNameGuess && this.productNames.includes(productNameGuess)
       ? productNameGuess
@@ -1374,7 +1420,20 @@ export class CatalogChat {
     // checkFamilyAmbiguity's own doc comment for the full reasoning and
     // verification). Only fires for a genuine family + zero/multiple
     // satisfied members -- never touches the ordinary single-product case.
-    const familyCandidates = this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
+    //
+    // skipFamilyAmbiguityCheck exists for callers where productNameGuess
+    // is already a CONFIRMED specific product, not a guess needing
+    // disambiguation -- buildMultiProductResult's per-product loop is the
+    // only such caller (see there). Found via a real reproduction, not
+    // theoretical: auto-resolving a content-free "give all" against a
+    // multi-member family (Issue 3 Phase 2) called this per candidate
+    // with a scoped query of literally just "give all" -- no product's
+    // own distinguishing code text anywhere in it -- so this check
+    // (correctly, from its own narrow view) found nothing satisfying any
+    // SINGLE family member and re-flagged the WHOLE family as ambiguous
+    // again, for every one of the already-chosen candidates, turning a
+    // multi-product price answer into N nested "which one?" messages.
+    const familyCandidates = skipFamilyAmbiguityCheck ? null : this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
     if (familyCandidates) {
       return this.buildClarifyProductResult(familyCandidates);
     }
