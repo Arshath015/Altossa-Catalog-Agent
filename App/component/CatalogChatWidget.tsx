@@ -408,23 +408,75 @@ function sizeSortKey(size: string | null): number {
  * delegates to the existing single-product grid renderer unchanged for
  * each one. For the normal single-product case this is a pass-through --
  * nothing about that behavior changes. */
+/** One product's own section: name header + its price grid(s) -- factored
+ * out of PriceGrid so both the always-visible first batch and the
+ * collapsed rest render it identically. */
+function ProductSection({ product, rows }: { product: string; rows: PriceRow[] }) {
+  return (
+    <div className="space-y-2">
+      <div className="font-display font-bold text-sm text-[var(--riso-text)] border-b-2 border-[var(--riso-line)] pb-1">
+        {product}
+      </div>
+      <PriceGridSingleProduct rows={rows} />
+    </div>
+  );
+}
+
 function PriceGrid({ rows }: { rows: PriceRow[] }) {
+  const [expanded, setExpanded] = useState(false);
   const products = [...new Set(rows.map(r => r.product_name))];
 
   if (products.length <= 1) {
     return <PriceGridSingleProduct rows={rows} />;
   }
 
+  // Same collapse/expand treatment as PriceGridSingleProduct just below
+  // (fade + "see more" toggle, already-rendered content just visually
+  // clipped via max-height so expanding is instant) -- applied one level
+  // up, to the PRODUCT grouping this component adds on top of that one.
+  // Needed because that existing mechanism only ever collapsed VARIANTS
+  // within a single product (e.g. Cameo Maison's "h.7" vs "h.29"); a
+  // multi_product result spanning many distinct products (confirmed
+  // real: "give me all Emma Cross prices", 20 rendered product sections)
+  // had no equivalent at this level, forcing a long scroll through every
+  // one of them at once regardless of count.
+  const VISIBLE_PRODUCTS = 4;
+  const isBulky = products.length > VISIBLE_PRODUCTS;
+  const hiddenCount = products.length - VISIBLE_PRODUCTS;
+  const visibleProducts = isBulky ? products.slice(0, VISIBLE_PRODUCTS) : products;
+  const restProducts = isBulky ? products.slice(VISIBLE_PRODUCTS) : [];
+
   return (
     <div className="space-y-6">
-      {products.map(product => (
-        <div key={product} className="space-y-2">
-          <div className="font-display font-bold text-sm text-[var(--riso-text)] border-b-2 border-[var(--riso-line)] pb-1">
-            {product}
-          </div>
-          <PriceGridSingleProduct rows={rows.filter(r => r.product_name === product)} />
-        </div>
+      {visibleProducts.map(product => (
+        <ProductSection key={product} product={product} rows={rows.filter(r => r.product_name === product)} />
       ))}
+
+      {isBulky && (
+        <div className="relative">
+          <div
+            className="overflow-hidden transition-[max-height] duration-300 ease-out"
+            style={{ maxHeight: expanded ? '1000000px' : '0px' }}
+          >
+            <div className="space-y-6 pt-1">
+              {restProducts.map(product => (
+                <ProductSection key={product} product={product} rows={rows.filter(r => r.product_name === product)} />
+              ))}
+            </div>
+          </div>
+
+          {!expanded && (
+            <div className="relative -mt-4 pt-4 bg-gradient-to-t from-[var(--riso-bg)] via-[var(--riso-bg)]/90 to-transparent" />
+          )}
+
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="w-full border-2 border-[var(--riso-line)] hover:border-[var(--riso-pink)] py-2 font-data text-[11px] tracking-widest text-stone-300 hover:text-[var(--riso-pink)] transition-colors"
+          >
+            {expanded ? 'SHOW LESS ▲' : `SEE ${hiddenCount} MORE PRODUCT${hiddenCount === 1 ? '' : 'S'} ▼`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
