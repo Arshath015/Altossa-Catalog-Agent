@@ -22,3 +22,41 @@ get me all prices for Richard bed
 wlima pelle glove
 sierra pouf 100x94x41h pelle and tina pelle
 gve me greta wood pelle and wlima pelle glove
+
+bonaldo
+get me cuff bench
+give cuff bench and pouf full price
+give KESHI
+give agea
+give CASABLANCA 300 400 price
+give casablanca
+give LIAISON all price
+give for Grant sofa Semicircolare dx/sx
+give all nairobi olive green price
+give amman 200 300
+get me basket and basket hi
+spy black onyx
+give aspen full price
+amour capri
+ellison procida
+
+varaschini
+Bahia 2260M price — expect full grid: B-COM 592 / C 643 / D 721 / E 803 / Luxury 1.210
+Big Big Light 13610 price — expect resolves to "Big / Big Light A B White" with honest "no price data yet" (garbled-name fix)
+Big Big Light 13614 price — known gap, expect clean not-found/ambiguous, never fabricated
+System Tavolino 2440 all prices — expect HPL 539 / HPL Perla-Ardesia 627 / Ceramica Bocciardata 765
+System Star 244S6 price — expect HPL 4.026 / HPL Perla-Ardesia 4.452
+Barcode 2180E price — expect Solo Scocca 1.990, plus B-COM 2.474 / C 2.537 / D 2.622 / E 2.718 / Luxury 3.310
+Trama 2245 price — expect flat €219
+Outdoor Cooking 25252 price — expect flat €627 (Cestello asciuga piatti)
+Composizione Tavoli 13630L price — expect flat €957 (base's own price)
+Composizione Tavoli 34127 price — expect flat €451 (top's own price)
+Cuscini e Tessuti 2701 all prices — expect B-COM 109 / C 130 / D...
+Cuscini e Tessuti 2736 price — known gap, expect clean fail
+give me all Emma Cross prices — broad, large multi-tier collection
+Cricket price (no specific code) — expect clarify/multi-guess
+Varaschini Model ZZZ99 price — nonexistent, expect clean no-match
+a Cattelan or Bonaldo product name asked under Varaschini — expect no cross-brand leakage
+Emma Tavolino 23670 price — known gap, expect clean fail
+Belt Air 249C3 price — now should resolve with real data (was a discovery gap, just fixed)
+Teli di Copertura 9C5210 price (or similar 9C5XXX code) — now should resolve with real data (was a discovery gap, just fixed)
