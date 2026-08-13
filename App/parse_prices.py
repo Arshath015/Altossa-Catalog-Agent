@@ -2404,6 +2404,43 @@ def _varaschini_find_art_blocks(lines):
     return blocks
 
 
+def _varaschini_find_belt_composition_blocks(lines, target_codes):
+    """Block finder for Belt/Belt Air's "ESEMPI DI COMPOSIZIONI" pages
+    (129-131) -- see _varaschini_belt_composition_codes in
+    extract_catalog.py for the discovery-side counterpart and its full
+    explanation of why the default `_varaschini_find_art_blocks` fails
+    here: these pages have only ONE "art ." trigger (note the space before
+    the period) per page, shared by several composition codes, so the
+    default finder's "block runs to the next TRIGGER" logic either misses
+    every code past the first (confirmed: block detection failed for
+    249C2C/249C3/249C3C entirely) or, worse, silently absorbs a
+    NEIGHBORING code's whole price table into the wrong block (confirmed:
+    249C2's block absorbed all 10 of 249C2+249C3's combined tier prices).
+
+    Unlike the generic block finders, this one is handed the TARGET codes
+    directly (from catalog_index, already correctly discovered via TSV
+    coordinates) rather than re-discovering triggers itself -- each code
+    reliably appears as the first token of its own physical line in this
+    page's -layout text (confirmed: "249C2C" prints as one clean line-
+    starting token here, unlike some other TSV-split cases), so blocks are
+    built the same way as the default finder (start of one code's line to
+    the start of the next KNOWN code's line) but seeded with every real
+    code's line, not just whichever one sits closest to the shared header.
+    """
+    code_lines: dict[str, int] = {}
+    for i, raw in enumerate(lines):
+        first_tok = raw.strip().split()[0] if raw.strip() else ""
+        if first_tok in target_codes and first_tok not in code_lines:
+            code_lines[first_tok] = i
+
+    ordered = sorted(code_lines.items(), key=lambda kv: kv[1])
+    blocks = {}
+    for idx, (code, start) in enumerate(ordered):
+        end = ordered[idx + 1][1] if idx + 1 < len(ordered) else len(lines)
+        blocks[code] = (start, end)
+    return blocks
+
+
 def _varaschini_classify_top_tiers(block_lines, prices_found):
     """Classify a "no cat.-label, multiple unclaimed prices" block as a
     TOP-MATERIAL price grid (HPL / HPL Perla-Ardesia premium edge /
@@ -2563,8 +2600,18 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # silently dropped all 5 real rows.
                 # "solo scocca"/"only frame" (see VARASCHINI_FRAME_ONLY_RE)
                 # is captured separately below, not as a cat.-tier price.
-                if ("cover" in low[:m.start()] or re.search(r"-\s*art\.?\s", low[:m.start()])
-                        or "solo scocca" in low[:m.start()] or "only frame" in low[:m.start()]):
+                # "outfit cover" is an exception to the "cover" exclusion --
+                # confirmed (grepped every occurrence, 10 total across
+                # Belt/Belt Air's p61/72/129/130/131) it's always THIS
+                # product's own single price ("249C2C ... OUTFIT COVER ...
+                # €1.210"), never a "cover - art. XXXX" cross-reference
+                # mention embedded in a DIFFERENT product's block -- the
+                # bare "cover" check below exists to exclude the latter,
+                # not this.
+                prefix = low[:m.start()]
+                if "outfit cover" not in prefix and (
+                        "cover" in prefix or re.search(r"-\s*art\.?\s", prefix)
+                        or "solo scocca" in prefix or "only frame" in prefix):
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
@@ -3540,17 +3587,12 @@ def main():
             "B": parse_file_varaschini_shape_a,
             "C": parse_file_varaschini_shape_a,
             "D": parse_file_varaschini_shape_d,
-            # Teli di Copertura's "9XXXC"-style cover codes (confirmed
-            # p558: "art. 9442C" + single flat price, plus a compatibility
-            # list of unrelated OTHER collections' furniture codes) use
-            # the same "art." + single-unclaimed-price convention as Shape
-            # A -- no new parser needed for this part. Its OTHER page type
-            # (p567+: a base x cover-size GRID using entirely different
-            # "9C5XXX" codes) is a distinct, deeper problem -- those codes
-            # aren't in catalog_index at all yet, a discovery gap not a
-            # parsing one, left for a dedicated follow-up (same class of
-            # issue as Belt/Belt Air's missing composition codes).
-            "REFERENCE_MATRIX": parse_file_varaschini_shape_a,
+            # No "REFERENCE_MATRIX"/"REFERENCE_MATRIX_GRID"/"C+BUNDLE" here
+            # -- Teli di Copertura and Belt/Belt Air (the only collections
+            # using those shapes) are both ALWAYS in
+            # COLLECTION_PARSER_OVERRIDES below, which the dispatch key
+            # picks over shape unconditionally -- an entry here for either
+            # would be dead, unreachable code.
         }
         # Per-COLLECTION overrides of the generic per-shape parser, needed
         # when a collection shares Shape A's price-table format but not
@@ -3600,6 +3642,21 @@ def main():
             # parse_file_varaschini_teli_di_copertura's docstring.
             "Teli di Copertura": lambda path, page_num, entries, brand: parse_file_varaschini_teli_di_copertura(
                 str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
+            # Belt/Belt Air's composition codes (pages 129-131) share the
+            # exact cat. B-COM/C/D/E/Luxury tier price table as Shape A --
+            # only the BLOCK-BOUNDARY detection needs to differ (see
+            # _varaschini_find_belt_composition_blocks), not the tier-
+            # extraction logic itself. Applied to the WHOLE collection
+            # (not just pages 129-131): the other ~141 module/diagram-only
+            # codes (pages 55-128) have no price anywhere on their own
+            # recorded page either way, so they correctly fall through to
+            # a "not found" flag under this override exactly like they
+            # would under the default -- no special-casing needed to keep
+            # them safe.
+            "Belt / Belt Air": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
+                path, page_num, entries, brand,
+                block_finder=lambda lines: _varaschini_find_belt_composition_blocks(
+                    lines, {e["art_code"] for e in entries})),
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike

@@ -808,8 +808,18 @@ VARASCHINI_EXTRA_CODE_PATTERNS: dict[str, tuple] = {
 # this fix (not because -layout produced literally nothing). Either way,
 # per-line scanning was never going to work here; included in the
 # exclusion set (and the TSV pass's page range) for that reason.
-VARASCHINI_GRID_EXCLUDED_PAGES: dict[str, set[int]] = {
+#
+# Also covers a second, non-grid case: Belt/Belt Air's "ESEMPI DI
+# COMPOSIZIONI" pages 129-131 (see _varaschini_belt_composition_codes) --
+# several composition codes share ONE distant "art ." header per page, so
+# the standard 6-line lookahead window only ever catches whichever code
+# happens to sit closest to it. Different underlying problem than the
+# grid pages, same fix shape (TSV coordinates, not per-line scanning), so
+# reuses this same per-collection page-exclusion mechanism rather than a
+# second parallel one.
+VARASCHINI_TSV_ONLY_PAGES: dict[str, set[int]] = {
     "Teli di Copertura": {565, 566, 567, 568, 569},
+    "Belt / Belt Air": {129, 130, 131},
 }
 
 # Confirmed on real page images (p146-159, the diagram-cluttered Big/Big
@@ -990,8 +1000,16 @@ def _varaschini_find_records(
 #   confirmed by direct inspection of the raw extracted text, not guessed.
 #   Format: (page_num, code) -- scoped to the specific page it was found
 #   on, not a blanket exclusion of the number everywhere.
+#   "130" (Belt/Belt Air p130): that page's own footer page number
+#   ("130 - VARASCHIN EXPORT 2026") happens to print left-aligned rather
+#   than right-aligned like every neighboring page's footer (p129/p131
+#   both print theirs far right, confirmed via direct TSV coordinate
+#   check) -- landing in the same left-column x-position
+#   _varaschini_belt_composition_codes filters on for real "art ."-column
+#   codes, and "130" itself happens to satisfy the same digit-shape regex.
 VARASCHINI_FALSE_POSITIVE_CODES: set[tuple[int, str]] = {
     (554, "506"),
+    (130, "130"),
 }
 
 # Collections whose codes are bare (no "art." prefix) even though their
@@ -1091,7 +1109,7 @@ def _varaschini_composizione_tavoli_codes(pdf_path: str) -> dict[str, int]:
 
 def _varaschini_teli_di_copertura_grid_codes(pdf_path: str) -> dict[str, int]:
     """Teli di Copertura's base-height x TOP-dimension cover-price GRID
-    (pages 565-569 -- see VARASCHINI_GRID_EXCLUDED_PAGES) has the same
+    (pages 565-569 -- see VARASCHINI_TSV_ONLY_PAGES) has the same
     per-line-scan problem as Composizione Tavoli: a header row of several
     "art. 9C5XXX" codes prints several physical lines above its matching
     price row, so per-line detection either misses codes or attaches them
@@ -1100,7 +1118,7 @@ def _varaschini_teli_di_copertura_grid_codes(pdf_path: str) -> dict[str, int]:
     same reason -- coordinates don't depend on -layout's linearized
     reading order. Pages 566/568 are real, densely-code-populated grid
     pages whose own -layout text is just as scrambled as the rest of this
-    grid (see VARASCHINI_GRID_EXCLUDED_PAGES) -- -tsv finds them fine
+    grid (see VARASCHINI_TSV_ONLY_PAGES) -- -tsv finds them fine
     regardless, since it was never using -layout's reading order to begin
     with.
 
@@ -1124,6 +1142,82 @@ def _varaschini_teli_di_copertura_grid_codes(pdf_path: str) -> dict[str, int]:
         text = parts[11]
         if _VARASCHINI_9C5_CODE_TOKEN.match(text) and text not in code_first_page:
             code_first_page[text] = page
+    return code_first_page
+
+
+def _varaschini_belt_composition_codes(pdf_path: str) -> dict[str, int]:
+    """Belt/Belt Air's "ESEMPI DI COMPOSIZIONI" (composition examples)
+    pages 129-131 each list several composition codes (e.g. "249C2",
+    "249C3") in one page's own price table, each with its own "OUTFIT
+    COVER" accessory variant ("249C2C"). The default "art." trigger scan
+    (_varaschini_find_records) only found the FIRST one per page: this
+    page's header literally prints as "art ." (a SPACE before the period,
+    confirmed p129) rather than "art.", which still satisfies the bare-
+    trigger regex, but there's only ONE such header per page while several
+    composition codes sit at increasing distance below it -- the first
+    (3 lines below) falls inside the 6-line lookahead window, the rest
+    (found 249C3 sits 34 lines below the same one header) don't.
+
+    Fixed via `pdftotext -tsv` coordinates instead: every genuine
+    composition/accessory code sits in the SAME leftmost column as that
+    "art ." header (confirmed: left~28-33 across all 3 pages), while
+    inline cross-reference mentions of a composition's own COMPONENT
+    codes (e.g. "2493", "24902" -- the modules that make up 249C2, printed
+    in a middle column purely for description, not their own priced item)
+    sit far to the right (left~150-240) despite ending up close to an
+    unrelated price line after -layout's linearization -- confirmed via
+    direct coordinate check this is a clean, reliable separator, not a
+    coincidence of these 3 pages alone.
+
+    Two page-specific quirks handled: (1) p130's own footer page number
+    ("130") happens to print left-aligned instead of right-aligned like
+    its neighbors, landing in this same left column and satisfying the
+    code-shape regex -- excluded via VARASCHINI_FALSE_POSITIVE_CODES, same
+    precedent as Carpet Design's "506". (2) "249C2C" (p129 only -- its
+    siblings 249C3C/249C4C/etc. on other pages come through as one whole
+    token) splits into two adjacent tokens ("249C2" + a lone "C") due to a
+    font-kerning boundary poppler treats as a word break -- merged back
+    together when a lone "C" token immediately follows a leftmost-column
+    code at a small horizontal gap on the same row.
+
+    Returns {code: first_page_seen}.
+    """
+    result = subprocess.run(
+        [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", "129", "-l", "131", pdf_path, "-"],
+        capture_output=True,
+    )
+    tsv_text = result.stdout.decode("utf-8", errors="replace")
+
+    tokens: list[tuple[int, float, float, str]] = []  # (page, left, top, text)
+    for line in tsv_text.splitlines()[1:]:  # skip TSV header row
+        parts = line.split("\t")
+        if len(parts) < 12 or parts[0] != "5":  # level 5 = word-level token
+            continue
+        try:
+            page = int(parts[1])
+            left, top = float(parts[6]), float(parts[7])
+        except ValueError:
+            continue
+        tokens.append((page, left, top, parts[11]))
+
+    LEFT_COLUMN_MAX = 50.0
+    code_first_page: dict[str, int] = {}
+    left_col = [t for t in tokens if t[1] < LEFT_COLUMN_MAX and _VARASCHINI_CODE_TOKEN.match(t[3])]
+    # The lone "C" continuation sits to the RIGHT of its own base code (that's
+    # why it split off as its own token), so it's deliberately NOT bounded by
+    # LEFT_COLUMN_MAX here -- only the tight (<=40 horizontal, <=3 vertical)
+    # proximity check below constrains which "C" tokens can match.
+    lone_c = [t for t in tokens if t[3] == "C"]
+    for page, left, top, text in left_col:
+        if (page, text) in VARASCHINI_FALSE_POSITIVE_CODES:
+            continue
+        code = text
+        for c_page, c_left, c_top, _ in lone_c:
+            if c_page == page and abs(c_top - top) <= 3 and 0 < (c_left - left) <= 40:
+                code = text + "C"
+                break
+        if code not in code_first_page:
+            code_first_page[code] = page
     return code_first_page
 
 
@@ -1178,11 +1272,11 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         # that could ever find them, even though nothing about their LAYOUT
         # changed. VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS keeps the
         # layout-driven decision independent of the shape label.
-        grid_excluded = VARASCHINI_GRID_EXCLUDED_PAGES.get(name, set())
+        tsv_only_pages = VARASCHINI_TSV_ONLY_PAGES.get(name, set())
         extra_patterns = VARASCHINI_EXTRA_CODE_PATTERNS.get(name)
         section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
         for p in range(start, end + 1):
-            if p in grid_excluded:
+            if p in tsv_only_pages:
                 continue  # handled separately below (TSV-based, not per-line)
             text = page_text.get(p, "")
             recs = _varaschini_find_records(p, text, extra_patterns)
@@ -1263,6 +1357,23 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
             "section_category": "reference",
         })
     print(f"      -> {len(tdc_grid_codes)} verified codes")
+
+    print("[3c/6] Belt/Belt Air compositions (pages 129-131): dedicated pdftotext -tsv pass...")
+    belt_codes = _varaschini_belt_composition_codes(pdf_path)
+    for code, page in sorted(belt_codes.items()):
+        catalog.append({
+            "brand": brand,
+            "collection": "Belt / Belt Air",
+            "product_name": f"Belt / Belt Air {code}",
+            "art_code": code,
+            "printed_page_start": page,
+            "printed_page_end": page,
+            "pdf_page_start": page,
+            "pdf_page_end": page,
+            "shape": "C+BUNDLE",
+            "section_category": "collection",
+        })
+    print(f"      -> {len(belt_codes)} verified codes")
 
     print("[4/6] Cleaning + disambiguating product names...")
     for e in catalog:
