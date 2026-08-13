@@ -249,8 +249,23 @@ export function similarity(query: string, candidate: string): number {
   // relation to each other at all. A query that's JUST a number ("140",
   // nothing else) still matches normally -- `leftover` is empty in that
   // case, same safety valve as the generic-word check.
-  if (overlap.every(t => GENERIC_CATEGORY_WORDS.has(t) || /^\d+$/.test(t))) {
-    const leftover = qTokens.filter(t => !overlap.includes(t) && !cTokens.includes(t) && !RISKY_SIZE_CODE_WORDS.has(t));
+  //
+  // Same treatment again for a shared CONVERSATIONAL FILLER word ("for",
+  // "the", "please", ...) -- confirmed real: "give me the price for
+  // Zorblatt XQ9000" (a nonexistent product) matched "Cuscini e Tessuti
+  // Zavorra per cuscino 2kg - 2 kg Ballast for cushion" (and 3 other
+  // unrelated products) purely because both happen to contain the word
+  // "for" -- CONVERSATIONAL_FILLER_WORDS/RISKY_SIZE_CODE_WORDS already
+  // exclude filler from the LEFTOVER check just below, but the overlap-
+  // classification check above it never consulted either list, so a
+  // shared filler word was scored exactly like a real name-word overlap.
+  // Reuses both existing, already-audited lists (each word individually
+  // checked against real size-code/product-name collisions when added)
+  // rather than a new one -- CONVERSATIONAL_FILLER_WORDS adds a few
+  // request-phrasing words (what, are, you, show, tell, pricing, cost,
+  // complete, every, ...) RISKY_SIZE_CODE_WORDS doesn't have.
+  if (overlap.every(t => GENERIC_CATEGORY_WORDS.has(t) || /^\d+$/.test(t) || RISKY_SIZE_CODE_WORDS.has(t) || CONVERSATIONAL_FILLER_WORDS.has(t))) {
+    const leftover = qTokens.filter(t => !overlap.includes(t) && !cTokens.includes(t) && !RISKY_SIZE_CODE_WORDS.has(t) && !CONVERSATIONAL_FILLER_WORDS.has(t));
     if (leftover.length > 0) return 0;
   }
   return (overlap.length / Math.max(qTokens.length, cTokens.length)) * 60;
