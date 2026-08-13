@@ -2148,10 +2148,6 @@
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
     },
-    "Cuscini e Tessuti cm 90 x 65 (35 3/8”x 25 5/8”) 2704 B (ml /h 1,40) €\b 60": {
-      "status": "known_gap",
-      "note": "cat. tier label count doesn't match the price count found in the block -- most are the orphaned-digit pattern (a tier's price digit run and its \"€\" symbol print on non-adjacent lines with nothing reliable to pair them, confirmed on Cricket's \"2989\" and Cuscini e Tessuti's \"2736\") or a same-block extra price this page's layout doesn't fit any known exclusion pattern for yet. Skipped rather than guessing a pairing."
-    },
     "Big / Big Light 13610": {
       "status": "known_gap",
       "note": "Block has 2+ unclaimed prices with no \"cat.\" fabric-tier labels and no HPL/Ceramica/Perla/Ardesia markers _varaschini_classify_top_tiers looks for -- likely a DIFFERENT materials-grid sub-pattern (e.g. a STRUTTURA/frame-material choice rather than TOP material) not yet reverse-engineered. Skipped rather than guessing which price maps to which choice."
@@ -2607,6 +2603,10 @@
     "Belt / Belt Air art. 221TD art. 221TDB art. 22103D art. 22103DB art. 22103S": {
       "status": "known_gap",
       "note": "Batch-triaged 2026-08-13 after wiring \"C+BUNDLE\" into the price parser (previously entirely unrouted, so these never even surfaced as flags). Belt/Belt Air is a modular sofa system: these ~110 codes are individual module pieces (corners, terminals, poufs, connector kits, joint sets) confirmed via direct page inspection to have NO standalone price anywhere in the source PDF -- only 5 of the collection's 76 pages contain a '€' at all (p61/p72 = per-module fabric-tier tables for the 'base' armchair/daybed SKUs, p129-131 = composition/bundle prices, both already fixed and priced). Consistent with how modular furniture catalogs commonly work: only base configurations and named compositions get a published price, sub-modules are catalog-listed for identification/composition purposes only. Zero rows returned, not silently wrong."
+    },
+    "Cuscini e Tessuti cm 90 x 65 (35 3/8”x 25 5/8”)": {
+      "status": "known_gap",
+      "note": "cat. tier label count doesn't match the price count found in the block -- most are the orphaned-digit pattern (a tier's price digit run and its \"€\" symbol print on non-adjacent lines with nothing reliable to pair them, confirmed on Cricket's \"2989\" and Cuscini e Tessuti's \"2736\") or a same-block extra price this page's layout doesn't fit any known exclusion pattern for yet. Skipped rather than guessing a pairing."
     }
   }
 }

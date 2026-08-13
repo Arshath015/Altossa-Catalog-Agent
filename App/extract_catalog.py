@@ -1012,14 +1012,6 @@ VARASCHINI_FALSE_POSITIVE_CODES: set[tuple[int, str]] = {
     (130, "130"),
 }
 
-# Collections whose codes are bare (no "art." prefix) even though their
-# shape label doesn't imply that on its own -- see the discovery-loop
-# comment in run_varaschini() for why this must be decoupled from "shape".
-VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS: set[str] = {
-    "Cuscini e Tessuti",
-}
-
-
 def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
     """Shape D/E fallback: a bare CODE as the first token of its own
     column-chunk, with a '€' within the next 2 lines. Needed because dense
@@ -1058,6 +1050,79 @@ def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, i
             if "€" in window:
                 rest = chunk[len(first_tok):].strip()
                 records.append((first_tok.upper(), page_num, _varaschini_clean_name(rest)))
+    return records
+
+
+def _varaschini_find_cuscini_e_tessuti_records(page_num: int, text: str) -> list[tuple[str, int, str]]:
+    """Cuscini e Tessuti-only variant of _varaschini_find_records_flat,
+    fixing a real name-capture bug the shared function has: it only ever
+    looks INSIDE a code's own 2+-space chunk for its name (`chunk[len(
+    first_tok):]`), never at the chunks that follow it on the same line.
+    On this collection's genuinely 2-column pages this produces two
+    distinct, confirmed-real failure modes:
+
+    1) Empty names for codes whose OWN description sits in a SEPARATE
+       following chunk with real content between it and the code (e.g.
+       "24620S" + a 2+-space gap + "Zavorra per cuscino 2kg..." on the
+       exact same line) -- the shared function captures nothing at all
+       here, even though the real name is right there.
+
+    2) (Previously a live, shipped bug in catalog_index.json, not merely
+       theoretical) A stale, pre-fix build of the shared logic instead
+       captured EVERYTHING to end-of-line, bleeding the RIGHT column's own
+       code+dimension into the LEFT column code's name (e.g. "2701"'s
+       name including "...2726 cm 60 x 40..." -- 2726's own text, not
+       2701's). Confirmed via direct page text: a representative sample of
+       affected codes (2701, 2708, 2709, 2713, 2716, 2719, 2727, 2736,
+       2737, plus the 229H/24610/24620 family) all show this exact
+       garbled-concatenation shape in the live catalog_index.
+
+    Fix: for each code-shaped chunk, capture the rest of its OWN chunk
+    PLUS every following chunk on the line, but STOP before the next
+    code-shaped chunk (case 2's fix) rather than running to end-of-line
+    (which would also cause case 1's original bug of finding nothing when
+    there's no next code to bound against, since a code with no
+    following-code chunk previously fell through with rest="" anyway).
+
+    NOT applied to `_varaschini_find_records_flat` itself, which 8 OTHER
+    collections also use (Marketing Communication, Outdoor Cooking,
+    Trama, Carpet Design, Outdoor Lighting, Strumenti Commerciali,
+    Prodotti per la Pulizia, Basi Tavolini) -- verified via a direct
+    before/after diff across all of them that "capture until the next
+    code chunk, else run to end of line" is NOT safe there: on their
+    (mostly single-column, one-code-per-line) pages there's usually no
+    next code chunk to stop at, so it captured page-header fragments
+    ("...STRUCTURE PREZZO/PRICE"), footnote sentences ("N.B. Qualora il
+    telecomando..."), and even bare price values into the name instead.
+    Kept as its own collection-scoped function instead, same precedent as
+    VARASCHINI_EXTRA_CODE_PATTERNS/VARASCHINI_TSV_ONLY_PAGES elsewhere in
+    this file, rather than risking those other 8 collections.
+    """
+    records = []
+    lines = text.splitlines()
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        chunks = re.split(r"\s{2,}", line)
+        code_chunk_idxs = [
+            ci for ci, chunk in enumerate(chunks)
+            if chunk.split() and _VARASCHINI_CODE_TOKEN.match(chunk.split()[0])
+        ]
+        for pos, ci in enumerate(code_chunk_idxs):
+            chunk = chunks[ci]
+            first_tok = chunk.split()[0]
+            if (page_num, first_tok.upper()) in VARASCHINI_FALSE_POSITIVE_CODES:
+                continue
+            window = " ".join(lines[i:i + 3])
+            if "€" not in window:
+                continue
+            rest_of_own_chunk = chunk[len(first_tok):].strip()
+            next_code_ci = code_chunk_idxs[pos + 1] if pos + 1 < len(code_chunk_idxs) else len(chunks)
+            extra_chunks = chunks[ci + 1:next_code_ci]
+            name_parts = ([rest_of_own_chunk] if rest_of_own_chunk else []) + extra_chunks
+            name = " ".join(p for p in name_parts if p)
+            records.append((first_tok.upper(), page_num, _varaschini_clean_name(name)))
     return records
 
 
@@ -1270,8 +1335,9 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         # "art." prefix) and the flat-code fallback below was gated on
         # shape in ("D", "E") -- losing "D" lost the only detection method
         # that could ever find them, even though nothing about their LAYOUT
-        # changed. VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS keeps the
-        # layout-driven decision independent of the shape label.
+        # changed. Explicitly checking `name == "Cuscini e Tessuti"` below
+        # (its own dedicated branch, not folded into the shape check) keeps
+        # that layout-driven decision independent of the shape label.
         tsv_only_pages = VARASCHINI_TSV_ONLY_PAGES.get(name, set())
         extra_patterns = VARASCHINI_EXTRA_CODE_PATTERNS.get(name)
         section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
@@ -1279,9 +1345,31 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
             if p in tsv_only_pages:
                 continue  # handled separately below (TSV-based, not per-line)
             text = page_text.get(p, "")
-            recs = _varaschini_find_records(p, text, extra_patterns)
-            if shape in ("D", "E") or name in VARASCHINI_FLAT_CODE_DISCOVERY_COLLECTIONS:
-                recs += _varaschini_find_records_flat(p, text)
+            if name == "Cuscini e Tessuti":
+                # _varaschini_find_records is skipped entirely for this
+                # collection, not just supplemented -- its codes are bare
+                # (no "art." prefix at all), so the ONLY thing that
+                # function ever found here was a false positive: this
+                # page range's own "ART." column-header line (printed
+                # once per page, uppercase) matches _varaschini_find_
+                # records' bare-"art."-trigger regex, whose lookahead then
+                # grabs the FIRST code-shaped token on a nearby line as if
+                # it followed a real trigger and captures the rest of that
+                # WHOLE PHYSICAL LINE (no column-chunk bounding at all) as
+                # its name -- confirmed exactly 1 such false match per
+                # page (2713/2736/2450H), each with the same garbled
+                # left+right-column-bled name this collection's real bug
+                # report was about. Since this function contributes zero
+                # legitimate signal here, calling it and merging its
+                # result in would let this false positive win the "first
+                # non-empty name wins" merge race over the correct,
+                # properly-bounded name _varaschini_find_cuscini_e_
+                # tessuti_records finds for the exact same code.
+                recs = _varaschini_find_cuscini_e_tessuti_records(p, text)
+            else:
+                recs = _varaschini_find_records(p, text, extra_patterns)
+                if shape in ("D", "E"):
+                    recs += _varaschini_find_records_flat(p, text)
             for code, page, nm in recs:
                 if code not in section_records:
                     section_records[code] = [page, page, nm]
