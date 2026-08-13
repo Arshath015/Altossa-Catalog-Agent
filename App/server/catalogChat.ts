@@ -23,6 +23,11 @@ export interface CatalogEntry {
   brand: string;
   product_name: string;
   slug: string;
+  // Only present in Varaschini's catalog_index.json (its 39 named
+  // collections + 16 back-matter reference sections) -- the other 3
+  // brands' single flat per-product catalogs have no equivalent grouping
+  // concept, so this stays optional/undefined for them.
+  collection?: string;
   printed_page_start: number;
   printed_page_end: number;
   pdf_page_start: number;
@@ -473,6 +478,16 @@ export class CatalogChat {
    * all) had no way to resolve, even when that code unambiguously
    * identifies one real product. */
   private codeToProductNames: Map<string, string[]>;
+  /** product_name -> its real catalog_index `collection` value, ONLY for
+   * brands that have one (Varaschini). Ground truth for grouping tied
+   * candidates that genuinely belong together vs. two unrelated
+   * collections that only coincidentally share a leading word -- see
+   * answer()'s wantsFullList majority-group logic for why a naive
+   * shared-first-token heuristic isn't safe on its own (confirmed real:
+   * "Big / Big Light" and "Big In&Out" both tokenize to "big" first, but
+   * are two completely different collections). Empty for brands with no
+   * `collection` field at all. */
+  private productNameToCollection: Map<string, string>;
 
   /** @param dataDir folder containing catalog_index.json and prices.json for one brand */
   constructor(private dataDir: string) {
@@ -481,6 +496,10 @@ export class CatalogChat {
     this.productNames = [...new Set(this.catalogIndex.map(p => p.product_name))];
     this.realTierPhrases = [...new Set(this.prices.map(r => r.fabric_tier).filter((t): t is string => !!t))]
       .sort((a, b) => normalize(b).length - normalize(a).length);
+    this.productNameToCollection = new Map();
+    for (const e of this.catalogIndex) {
+      if (e.collection) this.productNameToCollection.set(e.product_name, e.collection);
+    }
     this.codeToProductNames = new Map();
     const addCode = (rawCode: string | undefined, productName: string) => {
       if (!rawCode) return;
@@ -1301,23 +1320,47 @@ export class CatalogChat {
         // 36-row multi_product answer twice and a 5-candidate clarify once,
         // as the Groq key pool cycled between available and exhausted).
         //
-        // Group tied candidates by their own FIRST token (not blindly
-        // resolve the whole tied set) -- confirmed real risk: "barcode"
-        // ties 13 genuine Barcode products (first token "barcode") AND 2
-        // garbled Teli di Copertura cross-reference names that only
-        // coincidentally mention "barcode" deep in a long compatibility
-        // list (first token "teli") at the SAME score, since a diluted
-        // overlap-fraction score doesn't care where in the name a shared
-        // token sits. The majority group is the real, coherent match; an
-        // outlier group that only ties by accident is excluded rather than
-        // silently mixed into the bulk answer. Falls through to the normal
-        // clarify prompt if no group has more than one member (nothing
-        // coherent enough to safely bulk-resolve).
+        // Group tied candidates by their REAL catalog `collection` (not
+        // blindly resolve the whole tied set) -- confirmed real risk:
+        // "barcode" ties 13 genuine Barcode products AND 2 garbled Teli di
+        // Copertura cross-reference names that only coincidentally
+        // mention "barcode" deep in a long compatibility list, at the
+        // SAME score, since a diluted overlap-fraction score doesn't care
+        // where in the name a shared token sits.
+        //
+        // An EARLIER version of this fix grouped by shared FIRST TOKEN
+        // instead of real collection -- caught before shipping by testing
+        // "give all big price": "Big / Big Light" and "Big In&Out" are
+        // two completely different, unrelated Varaschini collections that
+        // BOTH tokenize to "big" as their first word, so that heuristic
+        // silently merged 29 products from both into one bulk answer.
+        // Real `collection` grouping fixes this outright (it's ground
+        // truth, not a string guess) -- Varaschini's own "Teli di
+        // Copertura barcode..." entries are correctly excluded too, since
+        // their real collection is "Teli di Copertura", not "Barcode",
+        // regardless of what word their (separately, already-known-
+        // garbled) display name happens to start with.
+        //
+        // Falls back to the OLD per-candidate-name grouping only when a
+        // candidate has no `collection` mapping at all (every non-
+        // Varaschini brand, which has no collection concept) -- each such
+        // candidate becomes its own singleton group, so the largest-group
+        // step below can only ever pick a real, ground-truthed group of
+        // 2+, never merge two ungrounded guesses together.
+        //
+        // When 2+ DIFFERENT real collections are substantially tied (both
+        // "Big / Big Light" and "Big In&Out" have many members) this
+        // still auto-resolves the larger one rather than asking which
+        // collection was meant -- a deliberate, narrower scope than full
+        // disambiguation: the bug this fixes is silent, incorrect mixing
+        // of unrelated products in one answer, which is now impossible:
+        // every resolved answer is one single real collection's own
+        // complete member list, never a blend.
         const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
         if (wantsFullList) {
           const groups = new Map<string, typeof topMatches>();
           for (const m of topMatches) {
-            const key = tokenizeLoose(m.name)[0] || '';
+            const key = this.productNameToCollection.get(m.name) ?? `__ungrouped__:${m.name}`;
             const group = groups.get(key);
             if (group) group.push(m); else groups.set(key, [m]);
           }
