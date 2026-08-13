@@ -262,6 +262,36 @@ export function extractSize(query: string): string | null {
   return m[3] ? `${m[1]}x${m[2]}x${m[3]}` : `${m[1]}x${m[2]}`;
 }
 
+/** Removes an already-normalized `name` from an already-normalized query,
+ * both as a literal substring AND (if the literal doesn't appear) as its
+ * longest leading word-prefix that does. The prefix pass matters because a
+ * short query typically only names the FRONT part of a collection/product
+ * (e.g. "Cuscini e Tessuti 2701 price"), while a real catalog product_name
+ * can be much longer and never appear verbatim in it (Varaschini's Cuscini
+ * e Tessuti entries are garbled multi-dimension concatenations) -- without
+ * it, a collection's own name that happens to contain a real tier word as
+ * a standalone word is never excluded at all. Confirmed real: "Cuscini e
+ * Tessuti" contains the Italian conjunction "e" ("and"), which is ALSO
+ * Varaschini's bare tier code "E", silently narrowing a 5-tier answer down
+ * to 1 in BOTH extractTiers and lookupForProduct's own raw-tier-scan
+ * safety net below (two independent tier-matching code paths, same root
+ * cause, needed fixing in both). Requires at least 2 shared words for the
+ * prefix pass (not 1) to avoid a weak, coincidental single-word strip
+ * removing unrelated context. */
+function stripNameFromQuery(normalizedQuery: string, normalizedName: string): string {
+  if (!normalizedName) return normalizedQuery;
+  let q = normalizedQuery.replace(new RegExp(escapeRegex(normalizedName), 'gi'), ' ');
+  const nameWords = normalizedName.split(/\s+/).filter(Boolean);
+  for (let len = nameWords.length; len >= 2; len--) {
+    const prefix = nameWords.slice(0, len).join(' ');
+    if (q.includes(prefix)) {
+      q = q.replace(new RegExp(escapeRegex(prefix), 'gi'), ' ');
+      break;
+    }
+  }
+  return q;
+}
+
 /** Extract a known fabric tier mentioned in free text -- as a real whole
  * word/phrase, never a raw substring (otherwise single-letter tiers like
  * 'e' would false-match inside ordinary words like "bed"). */
@@ -278,8 +308,7 @@ export function extractTiers(query: string, excludeNames: string[] = []): string
   // query, at every one of its call sites in answer().
   let q = normalize(query);
   for (const name of excludeNames) {
-    const n = normalize(name);
-    if (n) q = q.replace(new RegExp(escapeRegex(n), 'gi'), ' ');
+    q = stripNameFromQuery(q, normalize(name));
   }
   const found: string[] = [];
   for (const tier of KNOWN_TIERS) {
@@ -1887,9 +1916,7 @@ export class CatalogChat {
     // request down to just that one tier -- same root cause as the
     // ARENA/PASCAL size-token fixes, here in the tier-matching path.
     const normalizedRawQuery = normalize(rawQueryHint);
-    let queryMinusProductName = normalize(productName)
-      ? normalizedRawQuery.replace(new RegExp(escapeRegex(normalize(productName)), 'gi'), ' ')
-      : normalizedRawQuery;
+    let queryMinusProductName = stripNameFromQuery(normalizedRawQuery, normalize(productName));
     // Also strip this product's own MODEL VARIANT names (e.g. Bonaldo's
     // leg-material option "Metallo Special") before scanning for tier
     // mentions -- a variant name can coincidentally share a word with a
