@@ -816,6 +816,45 @@ def _varaschini_is_scattered_diagram_junk(s: str) -> bool:
     return True
 
 
+# INVESTIGATED, deliberately NOT implemented (2026-08-13): a code's own
+# physical line on pages listing several MODULAR/BUNDLE piece codes
+# together (Belt/Belt Air's diagram-grid pages, Emma/Emma Cross's
+# "236M"/"248M" cushion series, Bento, Reuse, Wellness Therapy -- ~208
+# entries total) is a CROSS-REFERENCE LIST of other nearby codes ("art.
+# 22102B art. 22105S art. 22105SB..."), not a real description -- same
+# surface shape as the diagram-junk case above. A first attempt added a
+# rule rejecting this pattern (same way as _varaschini_is_scattered_
+# diagram_junk), but verification uncovered a SERIOUS, genuinely
+# pre-existing bug in the discovery merge logic that made shipping it
+# unsafe: run_varaschini's per-code merge ("if not section_records[code][2]
+# and nm: section_records[code][2] = nm") lets ANY later page within a
+# collection's full section range fill in a name once the first
+# occurrence is empty -- previously this rarely mattered (most rejected
+# occurrences had no later occurrence to fall back to), but rejecting this
+# NEW, much more common pattern let the search wander much further,
+# surfacing names with NO real connection to the code they got attached
+# to. Confirmed on 2 independent, different collections (not a one-off):
+# Belt/Belt Air's codes 1986/1987 (own real occurrence: p57, a bare
+# category-header listing, art_code "1986"/"1987" appear ONLY there) got
+# renamed to "Coffee table Ø50"/"Ø70" -- verified that exact text does
+# NOT appear anywhere in Belt/Belt Air's own defined section (pages
+# 55-131); Emma's code 236M01 (own real occurrence: p258, same category-
+# header shape) got renamed to "Armchair | 1 seat 80" -- verified "1 seat
+# 80" does not appear anywhere in Emma's own section (pages 221-286)
+# either. Both would have been silently WRONG, fabricated-looking names,
+# not just uninformative ones -- worse than the cross-reference-list
+# garbage this was meant to fix. Safely fixing this needs the merge logic
+# itself to stop treating the whole section range as fair game for a
+# fallback name (e.g. require the replacement to come from a page close
+# to the original occurrence, or verify the code's own "art." trigger --
+# not just a bare-token collision -- is what supplied it) -- a genuinely
+# larger redesign than a narrow, individually-verifiable string-cleaning
+# rule, out of scope for this pass. Not applied to the live catalog_index.
+# The already-verified-safe _varaschini_is_scattered_diagram_junk rule
+# above (11 entries, single-page, no wandering risk observed) is
+# unaffected and stays in place.
+
+
 def _varaschini_clean_name(s: str) -> str:
     """Collapse internal whitespace runs and reject junk captured instead of
     a real description -- confirmed on Marketing Communication p8, where a
