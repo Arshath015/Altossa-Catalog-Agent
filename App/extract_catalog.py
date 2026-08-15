@@ -1996,7 +1996,22 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         writer.add_page(reader.pages[p - 1])
         with open(out_root / "pages" / f"p{p:03d}.pdf", "wb") as f:
             writer.write(f)
-        (out_root / "text" / f"p{p:03d}.txt").write_text(page_text.get(p, ""), encoding="utf-8")
+        # newline='' is required, not cosmetic: poppler's raw output uses
+        # \r\n for real line breaks and a bare \r for blank lines (verified
+        # by direct byte inspection). Without newline='', Path.write_text
+        # on Windows performs universal-newline translation on WRITE (every
+        # \n -> \r\n, doubling the existing \r\n into \r\r\n), and a later
+        # .read_text()/open() also translates on READ (any of \r\n, \r, \n
+        # collapsed to \n) -- the combination silently multiplies blank-
+        # line counts in the stored file (confirmed: a 1-blank-line gap in
+        # the source became 2-4 blank lines after one write/read round-
+        # trip). Found via a Ditre Shape-1 price parser returning 0 rows
+        # because its blank-line-run stop threshold, tuned against a fresh
+        # single-page pdftotext pull, was too tight for the corrupted
+        # stored text -- likely also why Bolzan's own tier-row scan uses a
+        # blank_run<4 threshold instead of the true 1-blank-line source
+        # structure.
+        (out_root / "text" / f"p{p:03d}.txt").write_text(page_text.get(p, ""), encoding="utf-8", newline='')
 
     # Images: batched pdftoppm calls over contiguous page runs (not one
     # subprocess per page) for the same efficiency reason as step 1 --
@@ -2243,7 +2258,10 @@ def main():
             for p in range(pdf_start, pdf_end + 1)
         ]
         text_path = out_root / "text" / f"{slug}.txt"
-        text_path.write_text("\n\n".join(text_chunks), encoding="utf-8")
+        # newline='' required -- see the matching write_text call in
+        # run_varaschini for the full explanation of the round-trip
+        # blank-line-doubling bug this avoids.
+        text_path.write_text("\n\n".join(text_chunks), encoding="utf-8", newline='')
 
         entry = {
             "brand": args.brand,
