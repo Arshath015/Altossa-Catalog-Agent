@@ -476,6 +476,315 @@ def printed_to_pdf_fallback(printed: int) -> int:
     return (printed + 1) // 2 + 1 if printed % 2 == 0 else (printed + 1) // 2
 
 
+# ---------------------------------------------------------------------------
+# Ditre Italia -- like Bonaldo, a flat two-column "NNN  Name" index with no
+# dot leaders, so it reuses the same -tsv coordinate approach and
+# _bonaldo_index_split_x helper for the left/right column split. But Ditre's
+# column layout is the mirror image of Bonaldo's (page-number FIRST, name
+# SECOND, vs. Bonaldo's name-then-number) -- and critically, at least 4
+# confirmed product names across the 6 source PDFs are themselves bare
+# 3-digit numbers ("356", an armchair/living-chair/outdoor-sofa/outdoor-chair
+# model name). A first-word-is-a-1-4-digit-number heuristic alone would
+# misread "356" as a page number and corrupt the following entry's page
+# (confirmed by hand: an early pass did exactly this). The fix, verified via
+# direct pdftotext -tsv inspection: a REAL page number and a product name
+# occupy two visually distinct x-position bands within a column (e.g. on
+# armchairs2026's TOC, real page numbers sit at left=~59pt while "356" the
+# product name sits at left=~95pt -- the exact same x as "Alta", a normal
+# name). So instead of trusting any 1-4-digit first word, this computes the
+# actual page-number x-band per column (the x-position shared by MOST rows'
+# first word) and only accepts a leading number if it falls in that band.
+KNOWN_DITRE_TOC_LABELS = {
+    # Section headers (both indoor product-type sections and the shared
+    # back-matter sections repeated near-verbatim across all 6 source PDFs).
+    # Transcribed directly from each file's own "Products Index" page, not
+    # guessed -- see the step-1/step-2 conversation transcript this was
+    # built from for the source of each line.
+    "SOFA / SOFA", "ARMCHAIRS / ARMCHAIRS", "CHAIRS / CHAISES",
+    "TABLES / TABLES", "SMALL TABLES / TABLES BASSES",
+    "SIDEBOARDS / ENFILADES", "BOOKCASE / BIBLIOTHÈQUE",
+    "MIRRORS / MIROIR", "CARPETS / TAPISS", "POUFF / POUF",
+    "ACCESSORIES / ACCESSOIRES",
+    "MATERIALS, FINISHINGS AND WARNING /",
+    "MATÉRIAUX, FINITIONS ET AVERTISSEMENTS",
+    "MATERIALS, FINISHINGS AND WARNING / MATÉRIAUX, FINITIONS ET AVERTISSEMENTS",
+    "SALE GENERAL TERMS /", "CONDITIONS GÉNÉRALES DE VENTE",
+    "SALE GENERAL TERMS / CONDITIONS GÉNÉRALES DE VENTE",
+    "INFORMATION / INFORMATIONS",
+    "Beds / Letti", "Beds / Lits", "Sofa bed / Divani letto",
+    "Sofa bed / Canapés convertibles",
+    "Bed side tables / Comodini", "Drawers / Tables de chevet",
+    "Accessories for beds / Accessori per letti",
+    "Accessories for beds / Accessoires pour lits:",
+    "Not available bed / Letti non disponibili",
+    "Materials, finishes and warnings /",
+    "Materiali, finiture e avvertenze",
+    "Materials, finishes and warnings / Materiali, finiture e avvertenze",
+    "Materials, finishings and warning /",
+    "Matériaux, finitions et avertissements",
+    "Materials, finishings and warning / Matériaux, finitions et avertissements",
+    "Composition as per catalogue /", "Composizioni da catalogo",
+    "Composition as per catalogue / Composizioni da catalogo",
+    "Compositions du catalogue",
+    "Composition as per catalogue / Compositions du catalogue",
+    "Model comparison by price bracket", "Composition as per catalogue",
+    "Fabrics samples", "Configuration", "Sale general terms", "Care Kit",
+    "Technical bed section", "Technical sofa-bed section",
+    # NOTE: "Bed-base cover for bed" / "Bed-base cover for sofa bed" are
+    # NOT in this skip-list -- unlike the surrounding reference/appendix
+    # entries, these are real priced accessory products (see the step-2
+    # conversation's golden recount, which explicitly counts them among
+    # night2024/night2026's 3 accessory groups), and were wrongly skip-
+    # listed here on the first implementation pass, silently dropping both
+    # from parse_index_ditre's output. Caught by the golden-count diff.
+    "Marble finishes", "Wood, glass and bonded leather finishes",
+    "Upholstering used in the pictures of the",
+    "Upholstering used in the pictures of the catalogue",
+    "Finishes and materials used",
+    "Materials | Matériels",
+    "Outdoor Fabric Samples",
+    "Upholstery and finishes / Revêtements et finitions",
+}
+
+# The "this price list cancels and replaces the previous..." legal notice
+# (with its own per-file date) sits below the real index content on every
+# one of the 6 source PDFs' TOC pages, in the same x-range as whichever
+# column's last real entry happens to fall nearest it -- it carries no
+# page number of its own, so it can't be caught by KNOWN_DITRE_TOC_LABELS'
+# exact-match approach (the date/wording differs per file). Matched by
+# substring instead, in EN, FR, and IT (night2024 is Italian).
+DITRE_LEGAL_FOOTER_RE = re.compile(
+    r"cancels and replaces|annule et remplace|annulla e sostituisce"
+    r"|effective from|en vigueur|valid from|valable|in vigore",
+    re.IGNORECASE,
+)
+
+
+def parse_index_ditre(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
+    """Parse Ditre Italia's "Products Index" page(s): a flat two-column
+    "NNN  Name" list (no dot leaders, no "p." prefix -- number comes FIRST
+    on each row, unlike Bonaldo's name-then-number). See this section's
+    module comment for why a naive "first word is a number" rule breaks on
+    the bare-numeric product name "356".
+
+    Unlike parse_index_bonaldo, this does NOT pre-split the whole page into
+    a left half and a right half by one global x-coordinate. A first
+    attempt at that (using the same "widest gap closest to page half-width"
+    heuristic as _bonaldo_index_split_x) put the split point at x=331.5 on
+    sofa2026's TOC while a genuine right-column page number sat at
+    x=331.32 -- 0.18pt on the wrong side, silently merging that whole
+    right-column row into the left column's entry. Also, the number token
+    and its own name token on "the same" printed row don't always share an
+    identical `top` (e.g. "008" at top=77.69, "Ada" at top=78.58 -- these
+    round to DIFFERENT integers, so grouping by round(top) would split one
+    real row into two). Both confirmed by direct -tsv inspection, not
+    guessed.
+
+    The fix: detect visual ROWS first, globally, by clustering ALL words
+    (regardless of column) within a small top-tolerance -- then, within
+    each row, split at whatever gap is actually the column gutter (~200pt+
+    on every sampled page) rather than a page-wide constant. Within-column
+    word spacing (e.g. between "Papilo" and "plain" and "-" and "curvy" in
+    one long wrapped name) never exceeded ~35pt on any sampled page, so an
+    80pt threshold cleanly separates "still the same column" from "this is
+    the OTHER column's content on the same printed row" with margin on
+    both sides.
+    """
+    # 1.5 was tried first and confirmed too tight: living2026's "128  Boxy
+    # Eric Helios Multitude" row has the number at top=286.99 and the name
+    # at top=288.64 (a 1.65pt gap). 2.5 was tried next and STILL too tight:
+    # night2026's "106  Aany - Eric - Erys - Pop - Puppet - Skin" row has
+    # the number at top=179.74 and the name at top=182.26 -- a 2.52pt gap,
+    # 0.02pt over that threshold. Both cases silently dropped the whole
+    # entry (number-only "row" with no name, name-only "row" with no
+    # number to attach to). 3.0 covers both with a little headroom, and
+    # real distinct rows are still ~15-17pt apart on every sampled page,
+    # so there's no risk of merging two genuine entries at this tolerance.
+    ROW_TOP_TOLERANCE = 3.0
+    COLUMN_GUTTER_MIN_GAP = 80.0
+
+    entries: list[tuple[str, int]] = []
+    for pg in index_pages:
+        result = subprocess.run(
+            [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", str(pg), "-l", str(pg), pdf_path, "-"],
+            capture_output=True,
+        )
+        tsv_text = result.stdout.decode("utf-8", errors="replace")
+        tsv_rows = [ln.rstrip("\r").split("\t") for ln in tsv_text.split("\n") if ln.strip()]
+        if not tsv_rows:
+            continue
+        header = tsv_rows[0]
+        col = {name: i for i, name in enumerate(header)}
+        words = []  # (top, left, text)
+        for row in tsv_rows[1:]:
+            if len(row) <= max(col.values()):
+                continue
+            if row[col["level"]] != "5":
+                continue
+            words.append((float(row[col["top"]]), float(row[col["left"]]), row[col["text"]]))
+        if not words:
+            continue
+        words.sort()
+
+        # 1) Cluster into visual rows by top-tolerance (NOT round(top) --
+        # see docstring for why that broke on real data).
+        visual_rows: list[list[tuple[float, float, str]]] = []
+        for w in words:
+            if visual_rows and abs(w[0] - visual_rows[-1][0][0]) <= ROW_TOP_TOLERANCE:
+                visual_rows[-1].append(w)
+            else:
+                visual_rows.append([w])
+
+        # 2) Within each visual row, split into column-groups at whichever
+        # internal gap exceeds COLUMN_GUTTER_MIN_GAP (there is at most one
+        # such gap per row: the gutter between the two TOC columns). A row
+        # with content in only ONE column (common for wrapped-name
+        # continuation rows, e.g. a lone "Primopiano" under "Boxy - Eric -
+        # Helios - Multitude -") has no internal gap to split on at all --
+        # first pass below learns each column's real x-range from rows
+        # that DID split, then a second pass classifies those single-
+        # column rows by comparing their own x against that learned
+        # boundary, instead of defaulting them all to the left column
+        # (confirmed by hand: that default silently glued right-column
+        # continuations like "086 Configuration" onto the LEFT column's
+        # last real entry, e.g. "Chloè luxury").
+        rows_sorted = [sorted(row, key=lambda w: w[1]) for row in visual_rows]
+        split_indices: dict[int, int] = {}
+        for ri, row in enumerate(rows_sorted):
+            for i in range(1, len(row)):
+                if row[i][1] - row[i - 1][1] > COLUMN_GUTTER_MIN_GAP:
+                    split_indices[ri] = i
+                    break
+        left_starts = [rows_sorted[ri][0][1] for ri in split_indices]
+        right_starts = [rows_sorted[ri][split_indices[ri]][1] for ri in split_indices]
+        if left_starts and right_starts:
+            column_threshold = (max(left_starts) + min(right_starts)) / 2
+        else:
+            column_threshold = None  # no two-column rows found on this page at all
+
+        left_col_rows: list[list[tuple[float, str]]] = []
+        right_col_rows: list[list[tuple[float, str]]] = []
+        for ri, row in enumerate(rows_sorted):
+            if ri in split_indices:
+                split_at = split_indices[ri]
+                left_col_rows.append([(w[1], w[2]) for w in row[:split_at]])
+                right_col_rows.append([(w[1], w[2]) for w in row[split_at:]])
+            elif column_threshold is not None and row[0][1] >= column_threshold:
+                right_col_rows.append([(w[1], w[2]) for w in row])
+            else:
+                left_col_rows.append([(w[1], w[2]) for w in row])
+
+        for ordered_rows in (left_col_rows, right_col_rows):
+            if not ordered_rows:
+                continue
+            # The page-number x-band: the x-position shared by the FIRST
+            # word of the most rows in this column, restricted to rows
+            # whose first word is actually numeric (so a column whose top
+            # rows happen to be all-text section headers doesn't skew it).
+            numeric_first_xs = [
+                row[0][0] for row in ordered_rows
+                if row and re.fullmatch(r"\d{1,4}", row[0][1])
+            ]
+            if not numeric_first_xs:
+                continue
+            rounded = [round(x) for x in numeric_first_xs]
+            number_x_band = max(set(rounded), key=rounded.count)
+
+            last_entry_idx = None  # index into `entries` for wrapped continuations
+            for row_words in ordered_rows:
+                if not row_words:
+                    continue
+                row_text = " ".join(t for _, t in row_words).strip()
+                if not row_text or "products index" in row_text.lower():
+                    continue
+                if DITRE_LEGAL_FOOTER_RE.search(row_text):
+                    # The "this price list cancels and replaces..." legal
+                    # notice sits below the real index content, in the
+                    # same x-range as the last product column, with no
+                    # page number of its own -- without this check it gets
+                    # silently glued onto the last real entry as if it
+                    # were a wrapped continuation (confirmed: "Monolith"
+                    # picked up the entire notice paragraph on sofa2026).
+                    last_entry_idx = None
+                    continue
+                first_left, first_text = row_words[0]
+                is_real_page_number = (
+                    re.fullmatch(r"\d{1,4}", first_text)
+                    and abs(round(first_left) - number_x_band) <= 3
+                )
+                if is_real_page_number:
+                    name = " ".join(t for _, t in row_words[1:]).strip()
+                    if name and name not in KNOWN_DITRE_TOC_LABELS:
+                        entries.append((name, int(first_text)))
+                        last_entry_idx = len(entries) - 1
+                    else:
+                        last_entry_idx = None
+                elif row_text in KNOWN_DITRE_TOC_LABELS:
+                    # a genuine section/reference header, not a wrapped
+                    # continuation of the previous real entry -- do NOT
+                    # append it onto anything.
+                    last_entry_idx = None
+                elif last_entry_idx is not None:
+                    # wrapped continuation of the previous real entry in
+                    # THIS column (e.g. "128  Boxy - Eric - Helios -
+                    # Multitude -" / "Primopiano" on the next row).
+                    name, pg_num = entries[last_entry_idx]
+                    entries[last_entry_idx] = (f"{name} {row_text}".strip(), pg_num)
+                # else: unrecognized header-ish text with nothing to
+                # attach to yet (e.g. the "SOFA / SOFA" category line
+                # sitting above the first real entry) -- safe to drop.
+    seen = set()
+    unique = []
+    for name, pg in entries:
+        key = (name, pg)
+        if key not in seen:
+            seen.add(key)
+            unique.append((name, pg))
+    unique.sort(key=lambda x: x[1])
+    return unique
+
+
+def build_ditre_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Read every Ditre Italia page's footer to map printed page numbers ->
+    real PDF pages. Two confirmed footer formats coexist across the 6
+    source PDFs (verified by direct pdftotext inspection, not assumed):
+    the "Night" catalogs print "<N> | <ProductName>" on a left/verso page
+    and "<ProductName> | <N>" on the facing right/recto page (confirmed:
+    PDF page 8 -> "6 | Ada", PDF page 91 -> "Freedom 2.0 sofa-bed armrests
+    S | 89" -- the page NUMBER always sits toward the spread's outer edge,
+    mirroring which side of the spread the page is on -- an early version
+    of this only matched the second form and silently mapped zero even
+    printed-page numbers as a result). The other 4 files print a bare "<N>"
+    alongside the "Ditre Italia" wordmark, mirrored the same way (left
+    page: "<N> ... Ditre Italia"; right page: "Ditre Italia ... <N>").
+    Both regexes are tried on every page since they're mutually exclusive
+    formats -- whichever matches wins. No offset/formula fallback is
+    assumed: a page with neither pattern simply has no entry in the
+    returned map, same as build_bonaldo_page_map, so a genuinely unreadable
+    footer is visible as a gap rather than silently mismapped.
+    """
+    page_map: dict[int, int] = {}
+    name_pipe_re = re.compile(r"^\s*(\d{1,4})\s*\||\|\s*(\d{1,4})\s*$")
+    wordmark_re = re.compile(r"^\s*(\d{1,4})\s+.*ditre italia|ditre italia.*?(\d{1,4})\s*$", re.IGNORECASE)
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        lines = [ln.rstrip("\r") for ln in text.split("\n") if ln.strip()]
+        if not lines:
+            continue
+        last = lines[-1]
+        m = name_pipe_re.search(last)
+        if m:
+            printed = m.group(1) or m.group(2)
+            page_map[int(printed)] = pg
+            continue
+        m = wordmark_re.search(last)
+        if m:
+            printed = m.group(1) or m.group(2)
+            if printed:
+                page_map[int(printed)] = pg
+    return page_map
+
+
 # Known section/category headers from Cattelan's own two-level dot-leader
 # index (main catalog + "Novità" supplement). This catalog's index is
 # supposed to distinguish these from real product entries purely by
@@ -1589,7 +1898,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -1604,7 +1913,13 @@ def main():
                           "table (VARASCHINI_SECTIONS) plus per-page "
                           "article discovery instead. Runs its own "
                           "self-contained pipeline (run_varaschini),"
-                          " ignores --index-pages and --merge.")
+                          " ignores --index-pages and --merge. "
+                          "'ditre' = flat two-column '<N>  Name' index "
+                          "(number-then-name, the mirror of bonaldo's "
+                          "name-then-number), coordinate-based column "
+                          "split like bonaldo, footer is either "
+                          "'<Name> | <N>' (Night catalogs) or a bare <N> "
+                          "beside the 'Ditre Italia' wordmark (all others).")
     ap.add_argument("--merge", action="store_true",
                      help="Merge into an existing catalog_index.json instead "
                           "of overwriting it: entries from this run replace "
@@ -1646,6 +1961,8 @@ def main():
                   f"entr{'y' if len(dropped) == 1 else 'ies'} (see "
                   f"DUPLICATE_VARIANT_ENTRIES): {dropped}")
         entries = [(name, page) for name, page in entries if name not in DUPLICATE_VARIANT_ENTRIES]
+    elif args.style == "ditre":
+        entries = parse_index_ditre(pdf_path, index_pages)
     else:
         entries = parse_index(pdf_path, index_pages)
     print(f"      -> found {len(entries)} products")
@@ -1664,6 +1981,13 @@ def main():
         # verified 1:1 identity mapping catalog-wide (see build_bonaldo_page_map's
         # own docstring) -- any page missing from the read-footers pass falls
         # back to identity rather than a formula.
+        page_fallback = lambda p: p
+    elif args.style == "ditre":
+        page_map = build_ditre_page_map(pdf_path, total_pages)
+        # Same rationale as bonaldo: don't assume an arithmetic offset.
+        # Falling back to identity for the rare unreadable-footer page is
+        # safer than a formula neither confirmed nor even hypothesized for
+        # this brand.
         page_fallback = lambda p: p
     else:
         page_map = build_printed_to_pdf_page_map(pdf_path, total_pages)
