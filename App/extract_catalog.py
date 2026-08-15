@@ -546,16 +546,25 @@ KNOWN_DITRE_TOC_LABELS = {
     "Upholstery and finishes / Revêtements et finitions",
 }
 
-# The "this price list cancels and replaces the previous..." legal notice
-# (with its own per-file date) sits below the real index content on every
-# one of the 6 source PDFs' TOC pages, in the same x-range as whichever
-# column's last real entry happens to fall nearest it -- it carries no
-# page number of its own, so it can't be caught by KNOWN_DITRE_TOC_LABELS'
-# exact-match approach (the date/wording differs per file). Matched by
-# substring instead, in EN, FR, and IT (night2024 is Italian).
+# Two DISTINCT trailing text blocks sit below the real index content on
+# every source PDF's TOC page, at different vertical positions but both in
+# the same x-range as whichever column's last real entry happens to be
+# nearest -- neither carries a page number of its own, so neither can be
+# caught by KNOWN_DITRE_TOC_LABELS' exact-match approach (both vary by
+# file/date/language). The first is a "-- This price list cancels and
+# replaces the previous... / Valid from October 1st, 2024" legal notice.
+# The second (found only after the first version of this regex still let
+# "Isabel sofa bed" absorb a trailing "Night - Price list / Tarif" on
+# night2026 -- confirmed by hand, not assumed fixed) is a running document
+# title/date line ("Night - Price list / Tarif 10/2024", "Sofa Collection
+# - Price list / Tarif 06/2026", "Armchairs - Price list / Tarif
+# 06/2026" ...). The first pattern group below catches the legal notice;
+# "price list /" and "listino" catch the running title line generically
+# (every sampled instance contains one of those two substrings).
 DITRE_LEGAL_FOOTER_RE = re.compile(
     r"cancels and replaces|annule et remplace|annulla e sostituisce"
-    r"|effective from|en vigueur|valid from|valable|in vigore",
+    r"|effective from|en vigueur|valid from|valable|in vigore"
+    r"|price list\s*/|listino",
     re.IGNORECASE,
 )
 
