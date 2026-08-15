@@ -3508,6 +3508,326 @@ def parse_file(path, product_name, brand, all_product_names=None):
     return rows
 
 
+# ---------------------------------------------------------------------------
+# Ditre Italia -- two confirmed price-table shapes (see the extraction-side
+# step-2 design conversation for the full survey): Shape 1 is a graduated
+# upholstery-category tier grid (sofas, armchairs, beds, cushions, outdoor
+# seating); Shape 2 is a named material-finish-code grid (tables,
+# sideboards, mirrors, carpets, bookcase). Both share the SAME underlying
+# page layout -- a bare SKU-code header line with N codes side by side
+# (2-4 confirmed so far), no "Codice:" prefix at all (unlike Bolzan), one
+# short descriptive line, a "W..cm D..cm H..cm" dims line, a "Vol..." line,
+# then a stack of "Label.......Value €" rows -- so the multi-column
+# splitting and the model_variant/size extraction are shared; only the
+# PRICE-ROW matching rule (a fixed tier whitelist vs. a "Name (CODE)"
+# pattern) and the resulting tier_label differ.
+#
+# THIS PASS covers exactly the two products verified end-to-end against
+# their real rendered pages: "Ada (Sofa)" for Shape 1, "Claire (Tables)"
+# for Shape 2. Confirmed real variants NOT yet in scope here (deliberately
+# deferred to the "generalize to the rest of the shape" pass, not
+# fabricated ahead of verifying them against their own pages): outdoor's
+# "Category P/T/U/V outdoor" tier vocabulary (no Leather tiers), beds'
+# "Cod. XXXX" header prefix and "Leather Top" (vs "Leather Maxi - Top")
+# label, Cut armchair's "Mix by Leather..." extended tier ladder, and any
+# Shape-2 product whose named finishes are NOT flat-priced across a whole
+# row the way Claire's are (Arcade's marble finishes, sampled during
+# structural review, have a DIFFERENT price per finish, not one price for
+# the whole row like Claire -- both still fit this same row-matching rule
+# since it's per-cell, not per-row, but this hasn't been verified yet).
+
+# A bare Ditre SKU code as printed on its own header line (e.g.
+# "ADAXU1RQ0", "CLAIJTA01", "CALIP1000") -- confirmed via real pages:
+# uppercase letters/digits only, always contains at least one digit (a
+# pure-letter token this length would be real English/French text, not a
+# code), length 4-10 confirmed across every sampled code.
+_DITRE_SKU_CODE_RE = re.compile(r'\b(?=[A-Z0-9]*\d)[A-Z][A-Z0-9]{3,9}\b')
+
+# A code-header line has ONLY code tokens on it (nothing else) -- this is
+# what distinguishes a genuine SKU-code header row from a line that merely
+# contains a code-shaped substring elsewhere.
+_DITRE_CODE_HEADER_LINE_RE = re.compile(
+    r'^\s*(?:[A-Z](?=[A-Z0-9]*\d)[A-Z0-9]{3,9}\s*)+$'
+)
+
+# Shape 1: known real upholstery-category tier labels, confirmed present
+# verbatim in Ada (Sofa)'s own extracted text (data/Ditre Italia/text/
+# ada_sofa.txt) -- NOT the full vocabulary for the whole shape (see module
+# comment above for the confirmed-elsewhere variants deliberately left out
+# for now). The "Mix by Leather..." ladder WAS added here despite that --
+# it's not deferred, unlike the outdoor/bed/Cut-armchair variants -- because
+# it's confirmed on Ada's OWN pages (Ada back cushions MIX, printed pages
+# 15-16: "Mix by Leather Soft and cust.fabric/Cat.A/E-L/M/P/T/U", then
+# "Mix by Leather Maxi - Top/Luxor/Premium/Vip"), i.e. real text from the
+# one product this pass is scoped to verify, not borrowed from Cut
+# armchair's screenshot (that was only the earlier hint this ladder
+# existed at all, confirmed independently here against Ada's real page).
+DITRE_UPHOLSTERY_TIERS = {
+    "Customer's fabric", "Category A", "Category E-L", "Category M",
+    "Category P", "Category T", "Category U",
+    "Leather Soft", "Leather Maxi - Top", "Leather Luxor",
+    "Leather Premium", "Leather Vip",
+    "Mix by Leather Soft and cust.fabric", "Mix by Leather Soft and Cat.A",
+    "Mix by Leather Soft and Cat.E-L", "Mix by Leather Soft and Cat.M",
+    "Mix by Leather Soft and Cat.P", "Mix by Leather Soft and Cat.T",
+    "Mix by Leather Soft and Cat.U", "Mix by Leather Maxi - Top",
+    "Mix by Leather Luxor", "Mix by Leather Premium", "Mix by Leather Vip",
+}
+
+# Shape 1 row: "TierName.......Value €" or "TierName   Value €" (both
+# confirmed real -- Ada/Cali use a dotted leader, the one Night bed sample
+# checked during structural review uses a plain 2+-space gap instead, same
+# logical row). Label capture is non-greedy so it stops at the FIRST
+# qualifying gap, not swallowing the single internal spaces/hyphen in
+# labels like "Category E-L" or "Leather Maxi - Top".
+_DITRE_UPHOLSTERY_ROW_RE = re.compile(
+    r'^(.+?)(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
+)
+
+# Shape 2 row: "Finish Name (CODE).......Value €" -- confirmed on Claire
+# (Tables). Self-validating via the required "(CODE)" group rather than a
+# literal whitelist, since named finishes vary per product (unlike Shape
+# 1's fixed Category/Leather vocabulary). "Name (CODE)" is captured as ONE
+# group (not name/code split into two) so the shared _ditre_scan_price_rows
+# helper's generic space-join of all-but-last groups doesn't drop the
+# parentheses (confirmed: splitting them produced fabric_tier="Natural
+# CR01" instead of the intended "Natural (CR01)").
+_DITRE_CASEGOODS_ROW_RE = re.compile(
+    r'^(.+?\([A-Z0-9]+\))\s*(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
+)
+
+# The dims line ("W 140cm  D 140cm  H 73cm") is the one unambiguous,
+# always-present marker between a SKU's descriptive text and its price
+# rows -- used as the stop condition when scanning forward for
+# model_variant text, and as the source for the compact "WxD" size string
+# (pulled from real W/D values here rather than depending on an
+# inconsistently-present short-form label line -- confirmed NOT always
+# present, e.g. Ada's "back cushions" sub-pages have no "NNxNN"-labelled
+# line at all near the code, only this dims line).
+_DITRE_DIMS_LINE_RE = re.compile(r'^W\s*([\d.,]+)\s*cm')
+_DITRE_DIMS_WD_RE = re.compile(r'W\s*([\d.,]+)\s*cm.*?D\s*([\d.,]+)\s*cm')
+
+
+def _ditre_scan_sku_block(lines, i, bounds, n_cols):
+    """Shared forward-scan from a Shape 1/Shape 2 code-header line at index
+    i: finds the first non-blank descriptive line per column (model_variant
+    candidate) and the dims line ("W..cm D..cm H..cm"), stopping the
+    description search there. Returns (model_chunks, size_chunks,
+    price_scan_start_index) -- size_chunks is all-blank if no dims line
+    was found within the lookahead window (degrades to size=None per SKU
+    rather than blocking price extraction on missing metadata)."""
+    model_variant_line = None
+    dims_line = None
+    t = i + 1
+    steps = 0
+    while t < len(lines) and steps < 20:
+        raw = lines[t]
+        if raw.strip():
+            steps += 1
+            first_chunk = slice_chunk(raw, bounds, 0).strip()
+            if _DITRE_DIMS_LINE_RE.match(first_chunk):
+                dims_line = raw
+                t += 1
+                break
+            if model_variant_line is None and not _DITRE_CODE_HEADER_LINE_RE.match(raw):
+                model_variant_line = raw
+        t += 1
+
+    model_chunks = [slice_chunk(model_variant_line, bounds, c) for c in range(n_cols)] \
+        if model_variant_line else [''] * n_cols
+    size_chunks = [slice_chunk(dims_line, bounds, c) for c in range(n_cols)] \
+        if dims_line else [''] * n_cols
+    return model_chunks, size_chunks, t
+
+
+def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filter=None):
+    """Shared forward-scan for "Label[...](.......|\\s\\s+)Value €" rows
+    across N side-by-side columns, starting at scan_start, stopping at the
+    next code-header line or 3 consecutive blank lines (verified against
+    Ada: real price rows are never separated by more than 1 blank line;
+    3 consecutive blanks reliably means the block is over, confirmed
+    against every SKU on Ada's own price pages -- an intervening
+    '<<<PDFPAGE:N>>>' marker or page-footer line between blocks is real,
+    non-blank text, but the 3-consecutive-blank threshold is always hit
+    BEFORE reaching one of those, so they're never mistaken for block
+    content). row_re must have its price value as the LAST capture group.
+    label_filter(label) -> bool decides whether a matched label is kept
+    (the Shape 1 whitelist) or None to accept any (Shape 2, since the
+    "(CODE)" requirement in row_re is already self-validating).
+    Returns {col_index: [(label, price), ...]}."""
+    collected = {c: [] for c in range(n_cols)}
+    t = scan_start
+    blank_run = 0
+    while t < len(lines) and blank_run < 3:
+        raw = lines[t]
+        if raw.strip() == '':
+            blank_run += 1
+            t += 1
+            continue
+        if _DITRE_CODE_HEADER_LINE_RE.match(raw):
+            break
+        blank_run = 0
+        for c in range(n_cols):
+            ch = slice_chunk(raw, bounds, c).strip()
+            if ch in ('', '.', '-'):
+                continue  # blank / separator / "not available" filler
+            m = row_re.match(ch)
+            if not m:
+                continue
+            *label_groups, price = m.groups()
+            label = ' '.join(g.strip() for g in label_groups if g).strip()
+            label = re.sub(r'\.$', '', label).strip()
+            if label_filter is not None and not label_filter(label):
+                continue
+            collected[c].append((label, price.strip()))
+        t += 1
+    return collected
+
+
+def parse_file_ditre_upholstery(path, product_name, brand, all_headings=None, heading_text=None):
+    """Shape 1: graduated upholstery-category tier grid. See this
+    section's module comment for scope (verified against Ada (Sofa) only
+    so far)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    for i, line in enumerate(lines):
+        if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
+            continue
+        codes = [(m.start(), m.group(0)) for m in _DITRE_SKU_CODE_RE.finditer(line)]
+        if not codes:
+            continue
+        bounds = [pos for pos, _ in codes] + [len(line)]
+        n_cols = len(codes)
+
+        model_chunks, size_chunks, scan_start = _ditre_scan_sku_block(lines, i, bounds, n_cols)
+        collected = _ditre_scan_price_rows(
+            lines, scan_start, bounds, n_cols, _DITRE_UPHOLSTERY_ROW_RE,
+            label_filter=lambda label: label in DITRE_UPHOLSTERY_TIERS,
+        )
+
+        for c, (_, code) in enumerate(codes):
+            size = None
+            dm = _DITRE_DIMS_WD_RE.search(size_chunks[c])
+            if dm:
+                size = f"{dm.group(1)}x{dm.group(2)}"
+            model_variant = model_chunks[c].strip() or None
+            if not collected[c]:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+                continue
+            for tier_label, price in collected[c]:
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": model_variant,
+                    "variant_context": None,
+                    "size": size,
+                    "fabric_tier": tier_label,
+                    # Ada's own spec page literally titles this whole
+                    # choice "UPHOLSTERING / REVETEMENT" -- reusing that
+                    # real printed word rather than inventing one (same
+                    # discipline as Bonaldo's "Piano"), so the chat UI's
+                    # column header is accurate for this product type
+                    # instead of falling back to the hardcoded "FABRIC"
+                    # default.
+                    "tier_label": "Upholstering",
+                    "code": code,
+                    "price_eur": price,
+                    "source_pdf_page": page_of_line[i],
+                })
+    return rows, flags
+
+
+def parse_file_ditre_casegoods(path, product_name, brand, all_headings=None, heading_text=None):
+    """Shape 2: named material-finish-code grid. See this section's module
+    comment for scope (verified against Claire (Tables) only so far)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    for i, line in enumerate(lines):
+        if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
+            continue
+        codes = [(m.start(), m.group(0)) for m in _DITRE_SKU_CODE_RE.finditer(line)]
+        if not codes:
+            continue
+        bounds = [pos for pos, _ in codes] + [len(line)]
+        n_cols = len(codes)
+
+        model_chunks, size_chunks, scan_start = _ditre_scan_sku_block(lines, i, bounds, n_cols)
+        collected = _ditre_scan_price_rows(
+            lines, scan_start, bounds, n_cols, _DITRE_CASEGOODS_ROW_RE,
+        )
+
+        for c, (_, code) in enumerate(codes):
+            size = None
+            dm = _DITRE_DIMS_WD_RE.search(size_chunks[c])
+            if dm:
+                size = f"{dm.group(1)}x{dm.group(2)}"
+            model_variant = model_chunks[c].strip() or None
+            if not collected[c]:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+                continue
+            for finish_label, price in collected[c]:
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": model_variant,
+                    "variant_context": None,
+                    "size": size,
+                    "fabric_tier": finish_label,
+                    # Claire's own spec page literally titles this section
+                    # "FINISHES / FINITIONS" -- reusing that real printed
+                    # word, same discipline as Shape 1's "Upholstering"
+                    # above and Bonaldo's "Piano".
+                    "tier_label": "Finishes",
+                    "code": code,
+                    "price_eur": price,
+                    "source_pdf_page": page_of_line[i],
+                })
+    return rows, flags
+
+
+def parse_file_ditre(path, product_name, brand, all_headings=None, heading_text=None):
+    """Dispatch to Shape 1 or Shape 2 by trying Shape 1 first and falling
+    back to Shape 2 if it finds nothing. Safe because the two shapes'
+    price-row patterns don't cross-match: Shape 1 requires an exact label
+    match against DITRE_UPHOLSTERY_TIERS, Shape 2 requires a "(CODE)"
+    group Shape 1's whitelist labels never contain. This is a narrow,
+    product-count-of-2-verified dispatch, not a general per-category
+    router yet (catalog_index.json doesn't carry a shape/category field to
+    route on) -- fine for now since it was scoped to exactly Ada (Sofa)
+    and Claire (Tables); revisit once generalizing to the rest of either
+    shape, since trying Shape 1 first on every product means Shape 2
+    products pay a wasted first pass.
+    """
+    rows, flags = parse_file_ditre_upholstery(path, product_name, brand, all_headings, heading_text)
+    if rows:
+        return rows, flags
+    return parse_file_ditre_casegoods(path, product_name, brand, all_headings, heading_text)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -3523,7 +3843,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -3534,7 +3854,14 @@ def main():
                           "'varaschini' = Shape A only ('cat. B - COM/C/D/E/"
                           "Luxury' fabric-tier tables); Shapes B/C/D/E are "
                           "not yet handled and every entry tagged with a "
-                          "shape other than 'A' is flagged, not parsed.")
+                          "shape other than 'A' is flagged, not parsed. "
+                          "'ditre' = bare-SKU-code header lines (no "
+                          "'Codice:' prefix), two shapes auto-tried per "
+                          "product (upholstery-category tier grid, "
+                          "material-finish-code grid) -- verified against "
+                          "exactly 2 products (Ada Sofa, Claire Tables) so "
+                          "far, not yet generalized to the rest of either "
+                          "shape.")
     args = ap.parse_args()
 
     index_path = Path(args.catalog_index)
@@ -3779,6 +4106,10 @@ def main():
             elif args.format == "bonaldo":
                 heading_text = p.get("index_heading", p["product_name"])
                 rows, flags = parse_file_bonaldo(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "ditre":
+                heading_text = p.get("index_heading", p["product_name"])
+                rows, flags = parse_file_ditre(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)
