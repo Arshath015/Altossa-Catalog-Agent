@@ -123,6 +123,21 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # own real content (heading "ROLL walk-in closet" / "ROLL" on all 3),
     # page 579 is unambiguously the ACCESSORI LETTO section divider.
     "Roll walk-in closet": (576, 578),
+    # Ditre Italia: same "last entry in the index -> no next-entry to
+    # bound it -> auto-extend to end of document" failure, hit 5 times
+    # across the 5 source PDFs (each file's own last TOC entry is always
+    # an accessory group, immediately followed by that file's back-matter
+    # "MATERIALS, FINISHINGS AND WARNING" / "Technical ... section" /
+    # "Model comparison by price bracket" reference pages -- confirmed by
+    # rendering every page in each auto-computed range, not assumed from
+    # the pattern alone). All 5 found during the post-extraction sanity
+    # pass, not before -- worth checking for on any future last-entry-in-
+    # a-Ditre-file case too.
+    "The breath": (302, 303),  # auto-computed 302-305; 304-305 = "Model comparison by price bracket"
+    "Cushions - Fabrics and Leathers (Armchairs)": (78, 83),  # auto-computed 78-85; 84-85 = "MATERIALS, FINISHINGS AND WARNING"
+    "Bed-base cover for sofa bed": (120, 121),  # auto-computed 120-123; 122-123 = "Technical bed/sofa-bed section"
+    "Cushions - Headrests - Fabrics and Leathers (Living & Dining)": (142, 151),  # auto-computed 142-153; 152-153 = "Marble finishes" / "Wood, glass and bonded leather finishes"
+    "Outdoor cushions": (60, 63),  # auto-computed 60-65; 64-65 = "Materials | Matériels"
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
@@ -568,6 +583,122 @@ DITRE_LEGAL_FOOTER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Ditre Italia is the FIRST brand in this project built from multiple
+# separate PDFs merged into one brand folder (Bolzan/Cattelan/Bonaldo are
+# each a single PDF; Varaschini is self-contained). That surfaced a new
+# failure mode none of the other brands' data ever exercised: Ditre
+# deliberately reuses model/design names across furniture categories (a
+# "Cali" sofa and a "Cali" armchair are two real, different products that
+# share a design-family name) -- but --merge's "same product_name = same
+# real product, newer run wins" logic silently treated the second file's
+# entry as an UPDATE of the first's, both in catalog_index.json AND on
+# disk (confirmed by hand: only one cali.pdf existed after merging
+# armchairs2026 into an already-extracted sofa2026 catalog -- the sofa
+# version's mini_pdf/images/text were physically overwritten, not just
+# dropped from the index, since slug uniqueness is only tracked within a
+# single run's used_slugs dict, not across merged runs).
+#
+# Checked every pairwise combination of the 5 target files (not just the
+# one pair that already caused data loss): 20 distinct names collide,
+# several across 3 files at once (e.g. "Cali": sofa+armchairs+living).
+# outdoor2025 has zero collisions with anything (its names are already
+# suffixed "outdoor").
+#
+# Fix: disambiguate every colliding name with its own REAL printed
+# category label, verified per name by reading the actual page (not
+# guessed) -- sofa2026/armchairs2026 print a category badge top-right on
+# every page ("Cali ... SOFA", "Cali ... ARMCHAIRS"); living2026's badge
+# varies BY PRODUCT within the one file ("Cali ... CHAIRS", "Avalon ...
+# SMALL TABLES", "Claire ... TABLES" -- confirmed each individually, not
+# assumed uniform); night2026's bed/sofa-bed pages print no per-page
+# category badge at all (confirmed by direct check), so those use the
+# file's own real cover title ("DITRE ITALIA -- NIGHT") instead of an
+# invented "(Bed)" label, since the file's collisions span both beds and
+# sofa-bed-adjacent accessory entries.
+DITRE_NAME_DISAMBIGUATION: dict[str, dict[str, str]] = {
+    "sofa": {
+        "Ada": "Ada (Sofa)", "Avalon": "Avalon (Sofa)", "Cali": "Cali (Sofa)",
+        "Clip": "Clip (Sofa)", "Deck": "Deck (Sofa)", "Isla": "Isla (Sofa)",
+        "Krisby": "Krisby (Sofa)", "Loman 2.0": "Loman 2.0 (Sofa)",
+        "Melville": "Melville (Sofa)", "Pacific": "Pacific (Sofa)",
+        "St. Germain": "St. Germain (Sofa)", "Urban 2.0": "Urban 2.0 (Sofa)",
+        "Vento": "Vento (Sofa)",
+        "Cushions - Headrests - Fabrics and Leathers":
+            "Cushions - Headrests - Fabrics and Leathers (Sofa)",
+    },
+    "armchairs": {
+        "Cali": "Cali (Armchairs)", "Clip": "Clip (Armchairs)",
+        "Isla": "Isla (Armchairs)", "Krisby": "Krisby (Armchairs)",
+        "Melville": "Melville (Armchairs)", "Pacific": "Pacific (Armchairs)",
+        "St. Germain": "St. Germain (Armchairs)", "Vento": "Vento (Armchairs)",
+        "Bend": "Bend (Armchairs)", "Puppet": "Puppet (Armchairs)",
+        "Cushions - Fabrics and Leathers": "Cushions - Fabrics and Leathers (Armchairs)",
+    },
+    "living": {
+        "Cali": "Cali (Chairs)",
+        "Avalon": "Avalon (Small Tables)", "Deck": "Deck (Small Tables)",
+        "Loman 2.0": "Loman 2.0 (Small Tables)", "Kailua": "Kailua (Small Tables)",
+        "Skin": "Skin (Small Tables)", "Urban 2.0": "Urban 2.0 (Small Tables)",
+        "Claire": "Claire (Tables)",
+        "Cushions - Headrests - Fabrics and Leathers":
+            "Cushions - Headrests - Fabrics and Leathers (Living & Dining)",
+    },
+    "night": {
+        "Ada": "Ada (Night)", "Avalon": "Avalon (Night)", "Bend": "Bend (Night)",
+        "Clip": "Clip (Night)", "Claire": "Claire (Night)", "Kailua": "Kailua (Night)",
+        "Pacific": "Pacific (Night)", "Puppet": "Puppet (Night)", "Skin": "Skin (Night)",
+        "Cushions - Fabrics and Leathers": "Cushions - Fabrics and Leathers (Night)",
+    },
+}
+
+# A SECOND, separate class of the same problem, found during the post-
+# extraction sanity pass: 6 names repeat WITHIN a single file (a different
+# product on a different page happens to share the bare name), which
+# DITRE_NAME_DISAMBIGUATION above doesn't touch at all (it's keyed by name
+# only, since every cross-file collision had exactly one occurrence per
+# file). These don't cause file-overwrite data loss the way the cross-file
+# case did (main()'s own used_slugs collision handling already keeps their
+# mini_pdf/images/text on disk under distinct slugs, e.g. "arcade" /
+# "arcade_2") but they DO leave two really-different catalog_index entries
+# with the exact same product_name, which is the same ambiguity risk for
+# downstream matching. Same fix, same verification discipline (every label
+# below read off the real page, not guessed) -- keyed by (name,
+# printed_page) since the SAME raw name needs a DIFFERENT suffix per
+# occurrence, unlike the cross-file table where one override per name was
+# enough.
+DITRE_WITHIN_FILE_DISAMBIGUATION: dict[str, dict[tuple[str, int], str]] = {
+    "living": {
+        ("Arcade", 6): "Arcade (Tables)", ("Arcade", 46): "Arcade (Small Tables)",
+        ("Biarritz", 10): "Biarritz (Tables)", ("Biarritz", 32): "Biarritz (Chairs)",
+        ("Nell", 22): "Nell (Tables)", ("Nell", 70): "Nell (Small Tables)",
+        ("Petra", 72): "Petra (Small Tables)", ("Petra", 116): "Petra (Sideboards)",
+        ("Unit", 90): "Unit (Small Tables)", ("Unit", 120): "Unit (Sideboards)",
+        ("Unit", 126): "Unit (Bookcase)",
+    },
+    "outdoor": {
+        ("Isamu outdoor", 10): "Isamu outdoor (Sofa)",
+        ("Isamu outdoor", 36): "Isamu outdoor (Tables)",
+    },
+}
+
+
+def _ditre_file_key(pdf_path: str) -> str:
+    """Map a Ditre source PDF path to the short key DITRE_NAME_DISAMBIGUATION
+    is keyed by. Matched on distinctive filename substrings (each source
+    filename is unique enough that this can't cross-match another file)."""
+    base = Path(pdf_path).name.lower()
+    if "sofacollection" in base:
+        return "sofa"
+    if "armchairs" in base:
+        return "armchairs"
+    if "living" in base or "dining" in base:
+        return "living"
+    if "night" in base:
+        return "night"
+    if "outdoor" in base:
+        return "outdoor"
+    return ""
+
 
 def parse_index_ditre(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Ditre Italia's "Products Index" page(s): a flat two-column
@@ -611,6 +742,8 @@ def parse_index_ditre(pdf_path: str, index_pages: range) -> list[tuple[str, int]
     # so there's no risk of merging two genuine entries at this tolerance.
     ROW_TOP_TOLERANCE = 3.0
     COLUMN_GUTTER_MIN_GAP = 80.0
+    name_overrides = DITRE_NAME_DISAMBIGUATION.get(_ditre_file_key(pdf_path), {})
+    within_file_overrides = DITRE_WITHIN_FILE_DISAMBIGUATION.get(_ditre_file_key(pdf_path), {})
 
     entries: list[tuple[str, int]] = []
     for pg in index_pages:
@@ -724,7 +857,10 @@ def parse_index_ditre(pdf_path: str, index_pages: range) -> list[tuple[str, int]
                 if is_real_page_number:
                     name = " ".join(t for _, t in row_words[1:]).strip()
                     if name and name not in KNOWN_DITRE_TOC_LABELS:
-                        entries.append((name, int(first_text)))
+                        page_num = int(first_text)
+                        name = within_file_overrides.get((name, page_num), name)
+                        name = name_overrides.get(name, name)
+                        entries.append((name, page_num))
                         last_entry_idx = len(entries) - 1
                     else:
                         last_entry_idx = None
