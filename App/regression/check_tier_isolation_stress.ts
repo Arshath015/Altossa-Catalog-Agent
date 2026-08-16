@@ -270,6 +270,18 @@ addCase('2prod', 'avant-garde chair metallo special capri and casablanca 300 x 4
   { product: 'Casablanca', tier: 'Essential Taupe', price: '4.006' },
 ], undefined, 'Bonaldo'); // also exercises the model-variant/tier collision fix (Metallo Special vs Special) inside a multi-product query
 
+// ===== Ditre Italia name-collision isolation (1) =====
+// "Cali" is a bare name shared by 3 distinct real products (Sofa/
+// Armchairs/Chairs, disambiguated during the cross-file/within-file
+// collision fix earlier this session). Naming two disambiguated forms
+// together must resolve and isolate both independently through the
+// deterministic AND both simulated-LLM code paths, not just live HTTP
+// (already covered separately in check_multi_product_isolation.ts).
+addCase('2prod', 'Cali (Sofa) 2-er sofa category a and Cali (Armchairs) armchair category a', ['Cali (Sofa)', 'Cali (Armchairs)'], [
+  { product: 'Cali (Sofa)', tier: 'Category A', price: '2.706,00' },
+  { product: 'Cali (Armchairs)', tier: 'Category A', price: '1.837,00' },
+], undefined, 'Ditre Italia');
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----
