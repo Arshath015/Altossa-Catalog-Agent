@@ -140,6 +140,24 @@ const CASES: Case[] = [
     expectedHeader: 'COLORE',
     note: 'Deliberate DIVERGENCE from Cattelan\'s MADRAS rug case above -- unlike Cattelan\'s rugs (no tier dimension at all), Bonaldo\'s rug/colore shape DOES have a real tier dimension (which color), from the point-2 rug/colore survey earlier this session.',
   },
+  {
+    id: 'ada-shape1-upholstery',
+    category: 'upholstery Shape 1 grid (Ditre Italia)',
+    brand: 'Ditre Italia',
+    query: 'Ada (Sofa) 82x82 base category a price',
+    productName: 'Ada (Sofa)',
+    expectedHeader: 'UPHOLSTERING',
+    note: 'Ditre\'s Shape 1 (graduated Category A-U/Leather tier grid) real source label -- confirmed via tier_label on the parsed row, not a guess. Query names the disambiguated "(Sofa)" form explicitly -- bare "ada" alone is genuinely ambiguous against "Ada (Night)" and only resolves deterministically with the disambiguation suffix included.',
+  },
+  {
+    id: 'claire-tables-shape2-finishes',
+    category: 'named material-finish Shape 2 grid (Ditre Italia)',
+    brand: 'Ditre Italia',
+    query: 'Claire (Tables) diameter 140 natural price',
+    productName: 'Claire (Tables)',
+    expectedHeader: 'FINISHES',
+    note: 'Ditre\'s Shape 2 (named material-finish-code grid) real source label -- deliberately DIFFERENT from Shape 1\'s "UPHOLSTERING" above, proves the tier_label column isn\'t hardcoded per-brand but genuinely varies with the source page\'s own printed word. Also disambiguated against "Claire (Night)"/"Claire mix" the same way as Ada above.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
