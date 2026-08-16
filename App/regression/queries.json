@@ -659,5 +659,69 @@
     "query": "cuff bench and pouf price",
     "note": "A real BONALDO product name asked of the wrong brand (Bolzan) -- must not cross-match into a different brand's catalog.",
     "expect_status": "no_product_match"
+  },
+  {
+    "id": 71,
+    "cat": "tricky_structure",
+    "brand": "Ditre Italia",
+    "query": "Ada (Sofa) 82x82 base category a price",
+    "note": "Ditre Shape 1 (graduated Category A-U/Leather tier grid), disambiguated against Ada (Night)",
+    "expect_price": "1.464,00"
+  },
+  {
+    "id": 72,
+    "cat": "tricky_structure",
+    "brand": "Ditre Italia",
+    "query": "Claire (Tables) diameter 140 natural price",
+    "note": "Ditre Shape 2 (named material-finish-code grid), disambiguated against Claire (Night)/Claire mix -- all 4 finish colors at this size share the same price, so this returns multiple_options rather than narrowing to 1 row",
+    "expect_prices": ["4.319,00"]
+  },
+  {
+    "id": 73,
+    "cat": "multi_product",
+    "brand": "Ditre Italia",
+    "query": "Cali (Sofa) 2-er sofa category a and Cali (Armchairs) armchair category a",
+    "note": "3 distinct real products (Sofa/Armchairs/Chairs) share the bare name Cali -- naming two disambiguated forms together must resolve and isolate both",
+    "expect_prices": ["2.706,00", "1.837,00"]
+  },
+  {
+    "id": 74,
+    "cat": "ambiguous_prefix",
+    "brand": "Ditre Italia",
+    "query": "cali price",
+    "note": "bare Cali alone is genuinely ambiguous across 3 real products -- must ask for clarification, not silently guess one",
+    "expect_status": "clarify_product"
+  },
+  {
+    "id": 75,
+    "cat": "full_catalog",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for sommier",
+    "note": "full price grid for a 156-row Shape 1 product, unaffected by (and re-verifying after) this session's Night-catalog page-range fix",
+    "expect_status": "full_price_grid"
+  },
+  {
+    "id": 76,
+    "cat": "tricky_structure",
+    "brand": "Ditre Italia",
+    "query": "tao outdoor 1-er central element customer fabric price",
+    "note": "reversible dual-SKU pair (code OC1000) -- every row in this scope is ambiguous, so the app must show the raw conflicting options rather than guessing one",
+    "expect_status": "ambiguous_price"
+  },
+  {
+    "id": 77,
+    "cat": "cross_brand",
+    "brand": "Bolzan",
+    "query": "Ada (Sofa) 82x82 base category a price",
+    "note": "a real Ditre Italia product name asked of the wrong brand (Bolzan) -- must not cross-match into a different brand's catalog",
+    "expect_status": "no_product_match"
+  },
+  {
+    "id": 78,
+    "cat": "nonexistent",
+    "brand": "Ditre Italia",
+    "query": "xyznonexistentproduct123 price",
+    "note": "garbage product name, must not fabricate a match",
+    "expect_status": "no_product_match"
   }
 ]
