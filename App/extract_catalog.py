@@ -907,26 +907,48 @@ def build_ditre_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
     assumed: a page with neither pattern simply has no entry in the
     returned map, same as build_bonaldo_page_map, so a genuinely unreadable
     footer is visible as a gap rather than silently mismapped.
+
+    The footer is not always the page's literal LAST non-blank line: on
+    pages ending in a bilingual note (an English legend line immediately
+    followed by its wrapped French translation), the translation line
+    prints below the footer, pushing it up by one or two lines. Checking
+    only lines[-1] silently dropped that page's printed-page number from
+    the map -- confirmed on Night-catalog PDF page 91 ("Freedom 2.0
+    sofa-bed armrests S | 89" followed by a wrapped French note line). A
+    missing entry isn't just a gap: compute_ranges' min/max swap (see
+    caller) can shift that PRODUCT's entire page range back by one page,
+    silently absorbing the previous product's last page into this one's
+    range and vice versa -- confirmed to have corrupted "Freedom 2.0
+    sofa-bed armrests S"'s own price rows with 36 of neighbor "Sommier"'s
+    SKUs. Fix: scan the last few non-blank lines (footers are always near
+    the bottom, never mid-page) from the bottom up and take the first
+    match -- verified via a direct old-vs-new diff across all 5 current
+    Ditre PDFs to recover exactly the missing entries (16, all in the
+    Night catalog) with zero changes to any of the 579 already-correct
+    mappings, so this is strictly additive, not a behavior change for
+    pages that were already being read correctly.
     """
     page_map: dict[int, int] = {}
     name_pipe_re = re.compile(r"^\s*(\d{1,4})\s*\||\|\s*(\d{1,4})\s*$")
     wordmark_re = re.compile(r"^\s*(\d{1,4})\s+.*ditre italia|ditre italia.*?(\d{1,4})\s*$", re.IGNORECASE)
+    FOOTER_LOOKBACK = 6
     for pg in range(1, total_pages + 1):
         text = pdftotext_page(pdf_path, pg)
         lines = [ln.rstrip("\r") for ln in text.split("\n") if ln.strip()]
         if not lines:
             continue
-        last = lines[-1]
-        m = name_pipe_re.search(last)
-        if m:
-            printed = m.group(1) or m.group(2)
-            page_map[int(printed)] = pg
-            continue
-        m = wordmark_re.search(last)
-        if m:
-            printed = m.group(1) or m.group(2)
-            if printed:
+        for last in reversed(lines[-FOOTER_LOOKBACK:]):
+            m = name_pipe_re.search(last)
+            if m:
+                printed = m.group(1) or m.group(2)
                 page_map[int(printed)] = pg
+                break
+            m = wordmark_re.search(last)
+            if m:
+                printed = m.group(1) or m.group(2)
+                if printed:
+                    page_map[int(printed)] = pg
+                    break
     return page_map
 
 
