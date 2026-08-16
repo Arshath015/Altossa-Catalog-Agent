@@ -3536,19 +3536,113 @@ def parse_file(path, product_name, brand, all_product_names=None):
 # the whole row like Claire -- both still fit this same row-matching rule
 # since it's per-cell, not per-row, but this hasn't been verified yet).
 
-# A bare Ditre SKU code as printed on its own header line (e.g.
-# "ADAXU1RQ0", "CLAIJTA01", "CALIP1000") -- confirmed via real pages:
-# uppercase letters/digits only, always contains at least one digit (a
-# pure-letter token this length would be real English/French text, not a
-# code), length 4-10 confirmed across every sampled code.
-_DITRE_SKU_CODE_RE = re.compile(r'\b(?=[A-Z0-9]*\d)[A-Z][A-Z0-9]{3,9}\b')
+# A Ditre SKU code as printed on its own header line -- two confirmed
+# forms: bare (e.g. "ADAXU1RQ0", "CLAIJTA01", "CALIP1000" -- sofas,
+# armchairs, tables) and "Cod. XXXXX"-prefixed (e.g. "Cod. MD0G3" --
+# beds). Length 4-10 confirmed across every sampled code.
+#
+# Digit requirement: a real code USUALLY contains a digit, but confirmed
+# NOT always -- sideboard finish codes like "ANGLJMAGW"/"ANGLJMAGB" are
+# pure letters (found on Angle, a Shape 2 sideboard; requiring a digit
+# produced 0 codes found / 0 flags there, total silence). Simply
+# dropping the digit requirement is ALSO confirmed wrong on its own: a
+# lone all-letter word is indistinguishable from a genuine English/
+# French section-header word that happens to land alone on its own
+# line in this catalog's multi-column spec-page layout (confirmed real
+# false positives: "REVETEMENT" on Ada's spec page, "FINITIONS" on
+# Claire's -- the second one silently attached real nearby price rows
+# to a phantom SKU, not just an empty flag). A maintainable-length
+# denylist of category-badge words doesn't fully solve this either --
+# there's no reason to believe REVETEMENT/FINITIONS are the only such
+# words across 197 products' spec pages.
+#
+# The rule that actually holds: a digit is required UNLESS the line has
+# 2+ code-shaped tokens. Every confirmed genuine multi-column SKU header
+# (2-4 codes side by side, e.g. Angle's 4 finish codes) has multiple
+# tokens; every confirmed false positive found so far is exactly ONE
+# isolated word. See _ditre_header_codes, which applies this rule --
+# the two regexes below only handle token SHAPE, not this line-level
+# multi-token exception.
+_DITRE_SKU_CODE_RE = re.compile(r'\b(?:Cod\.\s*)?([A-Z][A-Z0-9]{3,9})\b')
 
 # A code-header line has ONLY code tokens on it (nothing else) -- this is
 # what distinguishes a genuine SKU-code header row from a line that merely
-# contains a code-shaped substring elsewhere.
+# contains a code-shaped substring elsewhere. The \b after the code
+# pattern is required, not decorative: without it, the repeated group
+# (whitespace between repetitions is \s*, i.e. OPTIONAL) can silently
+# subdivide one long all-caps word into multiple fake back-to-back
+# "codes" with no gap at all -- confirmed real: "INFORMATION" (11
+# chars, one char over the 10-char cap) let the whole line "TECHNICAL
+# INFORMATION ... INFORMATIONS TECHNIQUES" match by splitting it into
+# arbitrary 4-10-char chunks, since nothing required a genuine word
+# boundary between one matched chunk and the next.
 _DITRE_CODE_HEADER_LINE_RE = re.compile(
-    r'^\s*(?:[A-Z](?=[A-Z0-9]*\d)[A-Z0-9]{3,9}\s*)+$'
+    r'^\s*(?:(?:Cod\.\s*)?\b[A-Z][A-Z0-9]{3,9}\b\s*)+$'
 )
+
+
+def _ditre_header_codes(lines, i):
+    """Return [(pos, code), ...] if lines[i] is a genuine Ditre SKU-code
+    header line, else []. See the module comment above _DITRE_SKU_CODE_RE
+    for the digit-unless-multi-token rule this applies -- a single,
+    digit-less token (e.g. a real accessory code like "ANGLJMARP",
+    confirmed on Angle) is ambiguous against a stray spec-page section-
+    header word (e.g. "REVETEMENT"/"FINITIONS", also confirmed real
+    false positives), and the token's own letters alone can't tell them
+    apart. Resolved empirically instead: a genuine header, even a
+    single-code one, is always followed within a few lines by a real
+    dims line ("W..cm.." or bare "Ncm.."); an isolated section-header
+    word never is. Needs `lines`/`i` (not just the one line string) to
+    do that lookahead, which is why this takes the whole list + index
+    rather than a bare line like earlier callers assumed."""
+    line = lines[i]
+    if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
+        return []
+
+    # "Composition N" bundle-listing guard. Confirmed real, silently-
+    # WRONG-data case on Tao outdoor: a composition's component codes
+    # (each a real code, genuinely priced elsewhere on its OWN page)
+    # get listed again, several per row, directly under a "Composition
+    # N" label -- code-shaped, multi-token, digits present, passing
+    # every other check -- and this function then (wrongly) scans
+    # forward from there, finds the COMPOSITION's own overall dims/
+    # price block, and misattributes it to whichever component code
+    # happened to be sitting nearest, including truncated/duplicated
+    # rows from column-bounds computed against the wrong line. The
+    # discriminator: Ada's OWN (legitimate) numbered compositions print
+    # "Composition n°N" AFTER their own real bare-code header
+    # (ADAXK0001 first, "Composition n°1" second) -- Tao's spurious
+    # case has the order reversed, "Composition N" BEFORE the listing.
+    # Rejecting any candidate immediately preceded by a "Composition"
+    # line (skipping blanks) catches Tao's case without touching Ada's.
+    # Checks the WHOLE lookback window, not just the nearest non-blank
+    # line -- Tao's composition component listing stacks several rows
+    # of codes (each itself passing every other check) before reaching
+    # the actual "Composition N" label further back, so stopping at the
+    # first non-blank line here would only catch the row closest to the
+    # label, not the ones further down the list (confirmed real: this
+    # missed line 448's "OC1000 OC1000 OT10B0D OA1Q00" row on the first
+    # version of this guard, which only checked line 447 immediately
+    # above it -- also a component row, not the label itself).
+    for k in range(i - 1, max(i - 16, -1), -1):
+        if re.match(r'^\s*Composition\b', lines[k], re.IGNORECASE):
+            return []
+
+    matches = list(_DITRE_SKU_CODE_RE.finditer(line))
+    if len(matches) == 1 and not re.search(r'\d', matches[0].group(1)):
+        found_dims = False
+        for k in range(i + 1, min(i + 12, len(lines))):
+            cand = lines[k]
+            if not cand.strip():
+                continue
+            if _DITRE_DIMS_LINE_RE.match(cand.strip()):
+                found_dims = True
+                break
+            if _ditre_header_codes(lines, k):
+                break  # hit the next header first -- give up
+        if not found_dims:
+            return []
+    return [(m.start(), m.group(1)) for m in matches]
 
 # Shape 1: known real upholstery-category tier labels, confirmed present
 # verbatim in Ada (Sofa)'s own extracted text (data/Ditre Italia/text/
@@ -3572,6 +3666,18 @@ DITRE_UPHOLSTERY_TIERS = {
     "Mix by Leather Soft and Cat.P", "Mix by Leather Soft and Cat.T",
     "Mix by Leather Soft and Cat.U", "Mix by Leather Maxi - Top",
     "Mix by Leather Luxor", "Mix by Leather Premium", "Mix by Leather Vip",
+    # Outdoor tier vocabulary (no Leather tiers) -- confirmed verbatim on
+    # Tao outdoor's real text (data/Ditre Italia/text/tao_outdoor.txt):
+    # "Category P/T/U/V outdoor", same "Customer's fabric" leading row.
+    "Category P outdoor", "Category T outdoor", "Category U outdoor",
+    "Category V outdoor",
+    # Beds use "Leather Top" instead of sofa/armchair's "Leather Maxi -
+    # Top" -- confirmed verbatim on Bend (Night)'s real text
+    # (data/Ditre Italia/text/bend_night.txt line 104: "Leather Top
+    # 4.251,00 €"). Flagged as a confirmed-elsewhere variant during
+    # structural review; added now with real text from the product it
+    # actually appears on, not the earlier screenshot alone.
+    "Leather Top",
 }
 
 # Shape 1 row: "TierName.......Value €" or "TierName   Value €" (both
@@ -3584,38 +3690,77 @@ _DITRE_UPHOLSTERY_ROW_RE = re.compile(
     r'^(.+?)(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
 )
 
-# Shape 2 row: "Finish Name (CODE).......Value €" -- confirmed on Claire
-# (Tables). Self-validating via the required "(CODE)" group rather than a
-# literal whitelist, since named finishes vary per product (unlike Shape
-# 1's fixed Category/Leather vocabulary). "Name (CODE)" is captured as ONE
-# group (not name/code split into two) so the shared _ditre_scan_price_rows
-# helper's generic space-join of all-but-last groups doesn't drop the
-# parentheses (confirmed: splitting them produced fabric_tier="Natural
-# CR01" instead of the intended "Natural (CR01)").
+# Shape 2 row: "Finish Name.......Value €" -- confirmed on Claire
+# (Tables): "Natural (CR01)......... 4.319,00 €" (name + parenthetical
+# code). Originally REQUIRED a "(CODE)" group as a self-validating
+# anchor (named finishes vary per product, unlike Shape 1's fixed
+# Category/Leather whitelist) -- confirmed WRONG on a carpet product
+# (Buckle/Glint/Hertz/.../Reed): its rows are "150 Beige..... 3.716,00
+# €", a leading numeric shade code with NO parentheses at all, which
+# the "(CODE)" requirement rejected outright (0 rows, review-flagged
+# for every SKU). Relaxed to the same generic "label, then dots-or-
+# spaces, then price" shape as Shape 1's row regex -- block-scoping
+# (this only ever runs between a detected code-header line and the
+# next one/a blank-run cutoff) is the real safety net here, same as it
+# already is for Shape 1's per-column matching; whatever text precedes
+# the price on a matched line becomes fabric_tier verbatim, parens or
+# not.
 _DITRE_CASEGOODS_ROW_RE = re.compile(
-    r'^(.+?\([A-Z0-9]+\))\s*(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
+    r'^(.+?)(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
 )
 
-# The dims line ("W 140cm  D 140cm  H 73cm") is the one unambiguous,
+# The dims line ("W 140cm D 140cm H 73cm" on sofas/armchairs/tables, or
+# bare "189cm 230cm 103cm" with no W/D/H letters at all on beds -- both
+# confirmed real, positional W-then-D on both) is the one unambiguous,
 # always-present marker between a SKU's descriptive text and its price
 # rows -- used as the stop condition when scanning forward for
 # model_variant text, and as the source for the compact "WxD" size string
 # (pulled from real W/D values here rather than depending on an
 # inconsistently-present short-form label line -- confirmed NOT always
 # present, e.g. Ada's "back cushions" sub-pages have no "NNxNN"-labelled
-# line at all near the code, only this dims line).
-_DITRE_DIMS_LINE_RE = re.compile(r'^W\s*([\d.,]+)\s*cm')
-_DITRE_DIMS_WD_RE = re.compile(r'W\s*([\d.,]+)\s*cm.*?D\s*([\d.,]+)\s*cm')
+# line at all near the code, only this dims line). The "W " prefix is
+# optional specifically to cover the bed case; capturing every bare
+# "Ncm" token positionally (first two = W, D) works for both forms
+# without needing to special-case which one a given page uses.
+_DITRE_DIMS_LINE_RE = re.compile(r'^\s*(?:W\s*)?[\d.,]+\s*cm')
+_DITRE_DIMS_WD_VALUES_RE = re.compile(r'([\d.,]+)\s*cm')
+
+# Category badge words confirmed printed top-right on Ditre pages (SOFA,
+# ARMCHAIRS, TABLES, ...) -- used only to reject a page TITLE line during
+# the backward description search below, never to accept/skip anything
+# else. Deliberately a substring-anywhere-in-the-line check, not an exact
+# match, since the badge sits far right on the same physical line as the
+# product name (e.g. "Avalon | Avalon ... " has no badge on ITS own line,
+# but a line like "Ada base | Piètement Ada ... SOFA" does).
+_DITRE_CATEGORY_BADGE_WORDS = (
+    'SOFA', 'ARMCHAIRS', 'CHAIRS', 'TABLES', 'SIDEBOARDS', 'BOOKCASE',
+    'MIRRORS', 'CARPETS', 'ACCESSORIES',
+)
 
 
 def _ditre_scan_sku_block(lines, i, bounds, n_cols):
-    """Shared forward-scan from a Shape 1/Shape 2 code-header line at index
-    i: finds the first non-blank descriptive line per column (model_variant
-    candidate) and the dims line ("W..cm D..cm H..cm"), stopping the
-    description search there. Returns (model_chunks, size_chunks,
-    price_scan_start_index) -- size_chunks is all-blank if no dims line
-    was found within the lookahead window (degrades to size=None per SKU
-    rather than blocking price extraction on missing metadata)."""
+    """Shared scan around a Shape 1/Shape 2 code-header line at index i:
+    finds the descriptive line (model_variant candidate) and the dims
+    line ("W..cm D..cm H..cm", or the bed form with no W/D letters),
+    returning (model_chunks, size_chunks, price_scan_start_index).
+
+    Two confirmed, DIFFERENT description positions: sofas/armchairs/
+    tables print it AFTER the code line (forward scan, e.g. Ada's "100
+    ADAXU1RQ0..." then "103  82x82 base..."); beds print it BEFORE the
+    code line instead (e.g. Avalon's "66  Double size bed..." then "70
+    Cod. MD0G3..."). Forward scan runs first (unchanged from the
+    verified Ada/Claire behavior); if it lands on content that's empty
+    or purely numeric per column (confirmed real case: beds' diagram-
+    callout-number line, e.g. a lone "189", sitting between the code
+    line and the real dims line), that candidate is discarded and a
+    backward scan from the code line is tried instead, skipping the
+    page's own title line (identified by a category badge word
+    elsewhere on that line, e.g. "... SOFA") since that's shared across
+    the WHOLE page, not specific to this one SKU block.
+
+    size_chunks is all-blank if no dims line was found within the
+    lookahead window (degrades to size=None per SKU rather than
+    blocking price extraction on missing metadata)."""
     model_variant_line = None
     dims_line = None
     t = i + 1
@@ -3629,9 +3774,35 @@ def _ditre_scan_sku_block(lines, i, bounds, n_cols):
                 dims_line = raw
                 t += 1
                 break
-            if model_variant_line is None and not _DITRE_CODE_HEADER_LINE_RE.match(raw):
+            if model_variant_line is None and not _ditre_header_codes(lines, t):
                 model_variant_line = raw
         t += 1
+
+    def _chunks_look_real(line):
+        if not line:
+            return False
+        for c in range(n_cols):
+            ch = slice_chunk(line, bounds, c).strip()
+            if ch and not re.fullmatch(r'[\d.,]+', ch):
+                return True
+        return False
+
+    if not _chunks_look_real(model_variant_line):
+        k = i - 1
+        back_steps = 0
+        while k >= 0 and back_steps < 6:
+            cand = lines[k]
+            if cand.strip():
+                back_steps += 1
+                if _ditre_header_codes(lines, k):
+                    break  # previous SKU block's own header -- stop
+                if any(w in cand.upper() for w in _DITRE_CATEGORY_BADGE_WORDS):
+                    k -= 1
+                    continue  # page title line, not this block's own description
+                if _chunks_look_real(cand):
+                    model_variant_line = cand
+                    break
+            k -= 1
 
     model_chunks = [slice_chunk(model_variant_line, bounds, c) for c in range(n_cols)] \
         if model_variant_line else [''] * n_cols
@@ -3642,29 +3813,34 @@ def _ditre_scan_sku_block(lines, i, bounds, n_cols):
 
 def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filter=None):
     """Shared forward-scan for "Label[...](.......|\\s\\s+)Value €" rows
-    across N side-by-side columns, starting at scan_start, stopping at the
-    next code-header line or 3 consecutive blank lines (verified against
-    Ada: real price rows are never separated by more than 1 blank line;
-    3 consecutive blanks reliably means the block is over, confirmed
-    against every SKU on Ada's own price pages -- an intervening
-    '<<<PDFPAGE:N>>>' marker or page-footer line between blocks is real,
-    non-blank text, but the 3-consecutive-blank threshold is always hit
-    BEFORE reaching one of those, so they're never mistaken for block
-    content). row_re must have its price value as the LAST capture group.
-    label_filter(label) -> bool decides whether a matched label is kept
-    (the Shape 1 whitelist) or None to accept any (Shape 2, since the
-    "(CODE)" requirement in row_re is already self-validating).
+    across N side-by-side columns, starting at scan_start, stopping at
+    the next code-header line or 6 consecutive blank lines. 3 was tried
+    first (verified against Ada, whose real price rows are never
+    separated by more than 1 blank line) but confirmed too tight on
+    beds: Bend (Night) prints a "Price / Prix €" column-header row
+    separated from the Vol. line by 5 consecutive blanks before the
+    real price rows start, which a 3-blank cutoff exits before ever
+    reaching. Raising the threshold doesn't risk bleeding into the
+    NEXT SKU block's own price rows even when its own preceding gap is
+    shorter (confirmed 4 blanks between Bend's blocks) -- the
+    next-code-header-line check above already stops the scan
+    unconditionally as soon as it's reached, regardless of blank_run,
+    so that block boundary is enforced either way. row_re must have its
+    price value as the LAST capture group. label_filter(label) -> bool
+    decides whether a matched label is kept (the Shape 1 whitelist) or
+    None to accept any (Shape 2, which has no whitelist -- named
+    finishes vary per product; block-scoping is its safety net instead).
     Returns {col_index: [(label, price), ...]}."""
     collected = {c: [] for c in range(n_cols)}
     t = scan_start
     blank_run = 0
-    while t < len(lines) and blank_run < 3:
+    while t < len(lines) and blank_run < 6:
         raw = lines[t]
         if raw.strip() == '':
             blank_run += 1
             t += 1
             continue
-        if _DITRE_CODE_HEADER_LINE_RE.match(raw):
+        if _ditre_header_codes(lines, t):
             break
         blank_run = 0
         for c in range(n_cols):
@@ -3702,9 +3878,7 @@ def parse_file_ditre_upholstery(path, product_name, brand, all_headings=None, he
     rows = []
     flags = []
     for i, line in enumerate(lines):
-        if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
-            continue
-        codes = [(m.start(), m.group(0)) for m in _DITRE_SKU_CODE_RE.finditer(line)]
+        codes = _ditre_header_codes(lines, i)
         if not codes:
             continue
         bounds = [pos for pos, _ in codes] + [len(line)]
@@ -3718,9 +3892,9 @@ def parse_file_ditre_upholstery(path, product_name, brand, all_headings=None, he
 
         for c, (_, code) in enumerate(codes):
             size = None
-            dm = _DITRE_DIMS_WD_RE.search(size_chunks[c])
-            if dm:
-                size = f"{dm.group(1)}x{dm.group(2)}"
+            wd_values = _DITRE_DIMS_WD_VALUES_RE.findall(size_chunks[c])
+            if len(wd_values) >= 2:
+                size = f"{wd_values[0]}x{wd_values[1]}"
             model_variant = model_chunks[c].strip() or None
             if not collected[c]:
                 flags.append((page_of_line[i], product_name,
@@ -3766,9 +3940,7 @@ def parse_file_ditre_casegoods(path, product_name, brand, all_headings=None, hea
     rows = []
     flags = []
     for i, line in enumerate(lines):
-        if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
-            continue
-        codes = [(m.start(), m.group(0)) for m in _DITRE_SKU_CODE_RE.finditer(line)]
+        codes = _ditre_header_codes(lines, i)
         if not codes:
             continue
         bounds = [pos for pos, _ in codes] + [len(line)]
@@ -3781,9 +3953,9 @@ def parse_file_ditre_casegoods(path, product_name, brand, all_headings=None, hea
 
         for c, (_, code) in enumerate(codes):
             size = None
-            dm = _DITRE_DIMS_WD_RE.search(size_chunks[c])
-            if dm:
-                size = f"{dm.group(1)}x{dm.group(2)}"
+            wd_values = _DITRE_DIMS_WD_VALUES_RE.findall(size_chunks[c])
+            if len(wd_values) >= 2:
+                size = f"{wd_values[0]}x{wd_values[1]}"
             model_variant = model_chunks[c].strip() or None
             if not collected[c]:
                 flags.append((page_of_line[i], product_name,
@@ -3809,23 +3981,56 @@ def parse_file_ditre_casegoods(path, product_name, brand, all_headings=None, hea
     return rows, flags
 
 
+_DITRE_FLAG_CODE_RE = re.compile(r'code (\S+)$')
+
+
 def parse_file_ditre(path, product_name, brand, all_headings=None, heading_text=None):
-    """Dispatch to Shape 1 or Shape 2 by trying Shape 1 first and falling
-    back to Shape 2 if it finds nothing. Safe because the two shapes'
-    price-row patterns don't cross-match: Shape 1 requires an exact label
-    match against DITRE_UPHOLSTERY_TIERS, Shape 2 requires a "(CODE)"
-    group Shape 1's whitelist labels never contain. This is a narrow,
-    product-count-of-2-verified dispatch, not a general per-category
-    router yet (catalog_index.json doesn't carry a shape/category field to
-    route on) -- fine for now since it was scoped to exactly Ada (Sofa)
-    and Claire (Tables); revisit once generalizing to the rest of either
-    shape, since trying Shape 1 first on every product means Shape 2
-    products pay a wasted first pass.
+    """Run BOTH Shape 1 and Shape 2 over the same text and merge per-CODE,
+    preferring Shape 1. NOT a simple either/or fallback (an earlier
+    version tried Shape 1 first, only falling back to Shape 2 if it
+    found literally nothing) -- confirmed wrong on Tao outdoor, which
+    has BOTH shapes' blocks in the same product's page range (Category-
+    tier sofa/chair pages, "Cod. XXXXX" + "Name (CODE)" coffee-table
+    pages) since Ditre prints matching indoor/outdoor furniture SETS
+    together. Once Shape 1 finds real rows for a product it never even
+    gets to Shape 2's blocks with an either/or dispatch, silently
+    dropping the table pages.
+
+    A naive concatenation of both shapes' full output is ALSO wrong:
+    Shape 2 has no tier whitelist (relaxed deliberately, see its own
+    definition), so it re-matches every Shape 1 row too under a
+    different tier_label -- confirmed real: running Shape 2 alone
+    against Ada (Sofa) reproduces its full 551 rows verbatim. The fix
+    is a per-CODE merge: for each code, Shape 1's rows win if it found
+    any; Shape 2's rows for that code are only kept when Shape 1 found
+    NONE for it. Flags follow the same rule -- a "no price rows found"
+    flag only survives if NEITHER shape resolved that code.
     """
-    rows, flags = parse_file_ditre_upholstery(path, product_name, brand, all_headings, heading_text)
-    if rows:
-        return rows, flags
-    return parse_file_ditre_casegoods(path, product_name, brand, all_headings, heading_text)
+    rows1, flags1 = parse_file_ditre_upholstery(path, product_name, brand, all_headings, heading_text)
+    rows2, flags2 = parse_file_ditre_casegoods(path, product_name, brand, all_headings, heading_text)
+
+    codes_from_shape1 = set(r['code'] for r in rows1)
+    rows2_unique = [r for r in rows2 if r['code'] not in codes_from_shape1]
+    rows = rows1 + rows2_unique
+
+    codes_resolved = codes_from_shape1 | set(r['code'] for r in rows2_unique)
+
+    def _flag_code(flag):
+        m = _DITRE_FLAG_CODE_RE.search(flag[2])
+        return m.group(1) if m else None
+
+    seen_flags = set()
+    flags = []
+    for f in flags1 + flags2:
+        code = _flag_code(f)
+        if code is not None and code in codes_resolved:
+            continue  # resolved by the OTHER shape -- not a real gap
+        if f in seen_flags:
+            continue  # both shapes independently flagged the same code
+        seen_flags.add(f)
+        flags.append(f)
+
+    return rows, flags
 
 
 def main():
