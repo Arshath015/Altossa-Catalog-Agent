@@ -3563,7 +3563,20 @@ def parse_file(path, product_name, brand, all_product_names=None):
 # isolated word. See _ditre_header_codes, which applies this rule --
 # the two regexes below only handle token SHAPE, not this line-level
 # multi-token exception.
-_DITRE_SKU_CODE_RE = re.compile(r'\b(?:Cod\.\s*)?([A-Z][A-Z0-9]{3,9})\b')
+#
+# First character: also confirmed NOT always a letter -- "356" (an
+# Armchairs-family base product, no descriptive suffix, distinct from
+# its own "356 - Archie"/"356 woven outdoor"/etc. siblings which all use
+# normal letter-first codes) prints digit-first codes "356XP1000"/
+# "356XP1N00", which the letter-first-only pattern silently matched
+# zero times -- 0 rows, 0 flags, no error, found only by noticing this
+# was the catalog's one purely-numeric product name and checking its
+# real page directly (it has a full Category A-U/Leather price grid,
+# not a legitimately-empty page like The breath/Bed-base cover). Same
+# mitigation as the pure-letter case applies symmetrically: see
+# _ditre_header_codes' dims-lookahead check, now triggered for a
+# single-token candidate that's ALL digits too, not just all letters.
+_DITRE_SKU_CODE_RE = re.compile(r'\b(?:Cod\.\s*)?([A-Z0-9]{4,10})\b')
 
 # A code-header line has ONLY code tokens on it (nothing else) -- this is
 # what distinguishes a genuine SKU-code header row from a line that merely
@@ -3577,7 +3590,7 @@ _DITRE_SKU_CODE_RE = re.compile(r'\b(?:Cod\.\s*)?([A-Z][A-Z0-9]{3,9})\b')
 # arbitrary 4-10-char chunks, since nothing required a genuine word
 # boundary between one matched chunk and the next.
 _DITRE_CODE_HEADER_LINE_RE = re.compile(
-    r'^\s*(?:(?:Cod\.\s*)?\b[A-Z][A-Z0-9]{3,9}\b\s*)+$'
+    r'^\s*(?:(?:Cod\.\s*)?\b[A-Z0-9]{4,10}\b\s*)+$'
 )
 
 
@@ -3594,7 +3607,11 @@ def _ditre_header_codes(lines, i):
     dims line ("W..cm.." or bare "Ncm.."); an isolated section-header
     word never is. Needs `lines`/`i` (not just the one line string) to
     do that lookahead, which is why this takes the whole list + index
-    rather than a bare line like earlier callers assumed."""
+    rather than a bare line like earlier callers assumed. The same
+    lookahead now also gates a single ALL-DIGIT token (e.g. a stray
+    page/footnote number) -- symmetric risk to the all-letter case,
+    since digit-first codes like "356XP1000" are now valid too (see
+    _DITRE_SKU_CODE_RE's comment)."""
     line = lines[i]
     if not line.strip() or not _DITRE_CODE_HEADER_LINE_RE.match(line):
         return []
@@ -3629,7 +3646,7 @@ def _ditre_header_codes(lines, i):
             return []
 
     matches = list(_DITRE_SKU_CODE_RE.finditer(line))
-    if len(matches) == 1 and not re.search(r'\d', matches[0].group(1)):
+    if len(matches) == 1 and (not re.search(r'\d', matches[0].group(1)) or not re.search(r'[A-Z]', matches[0].group(1))):
         found_dims = False
         for k in range(i + 1, min(i + 12, len(lines))):
             cand = lines[k]
