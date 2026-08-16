@@ -3678,11 +3678,6 @@ DITRE_UPHOLSTERY_TIERS = {
     "Category P", "Category T", "Category U",
     "Leather Soft", "Leather Maxi - Top", "Leather Luxor",
     "Leather Premium", "Leather Vip",
-    "Mix by Leather Soft and cust.fabric", "Mix by Leather Soft and Cat.A",
-    "Mix by Leather Soft and Cat.E-L", "Mix by Leather Soft and Cat.M",
-    "Mix by Leather Soft and Cat.P", "Mix by Leather Soft and Cat.T",
-    "Mix by Leather Soft and Cat.U", "Mix by Leather Maxi - Top",
-    "Mix by Leather Luxor", "Mix by Leather Premium", "Mix by Leather Vip",
     # Outdoor tier vocabulary (no Leather tiers) -- confirmed verbatim on
     # Tao outdoor's real text (data/Ditre Italia/text/tao_outdoor.txt):
     # "Category P/T/U/V outdoor", same "Customer's fabric" leading row.
@@ -3696,6 +3691,58 @@ DITRE_UPHOLSTERY_TIERS = {
     # actually appears on, not the earlier screenshot alone.
     "Leather Top",
 }
+
+# "Mix by Leather <base> and/of <fill>" tier labels are handled as a PREFIX
+# rule ("Mix by Leather") rather than exact whitelist entries. Originally
+# enumerated as exact strings from Ada's own page ("Mix by Leather Soft and
+# cust.fabric/Cat.A/.../Cat.U", "Mix by Leather Maxi - Top/Luxor/Premium/
+# Vip") -- confirmed too narrow via a random 18-product spot-check sample
+# this session (Ada/Claire's own deep verification never exercised any OTHER
+# product's Mix ladder). At least 3 more real wording variants exist across
+# other products, none matching Ada's exact strings: "Mix by Leather
+# Premium/Cat.A" (slash, abbreviated -- Alta mix, Alta - Alta mix), "Mix by
+# Leather Soft and Category A" (full "Category", not "Cat." -- Bend mix,
+# Bliss - Viga, Claire mix, Kailua mix, Kanaha Mix, Kanaha mix 2.0 sofa bed,
+# Kim mix, Papilo mix), "Mix by Leather Premium and Category A" (Pacific
+# mix, Skin mix), and "Mix by Leather Luxor and Category A" (Blazer, this
+# one ALSO wrapped across 2-3 lines -- see _ditre_scan_price_rows' pending-
+# label buffer). All silently 0-rowed with no flag: the code itself still
+# matched (whitelist only gates ROWS, not the header/code), so no "no price
+# rows found for code X" flag ever fired -- these looked complete. A
+# maintainable exact-string list can't keep up with base-leather-type (Soft/
+# Premium/Luxor) x separator (and/of//) x abbreviation (Cat./Category)
+# combinations that keep appearing per-product; "Mix by Leather" itself is
+# specific enough that a false-positive prefix match is not a real risk
+# (confirmed: grepped every file mentioning the phrase catalog-wide, the
+# only non-price-line occurrences are Blazer's own wrapped label text, not
+# unrelated content).
+_DITRE_MIX_LABEL_PREFIX = "Mix by Leather"
+
+
+def _ditre_is_whitelisted_upholstery_tier(label: str) -> bool:
+    return label in DITRE_UPHOLSTERY_TIERS or label.startswith(_DITRE_MIX_LABEL_PREFIX)
+
+
+def _ditre_label_looks_clean(label: str) -> bool:
+    """Reject a tier/finish label whose first character isn't an uppercase
+    letter or a digit -- a genuine Ditre label always starts with one of
+    those (confirmed across every product checked this session: "Category
+    A", "Customer's fabric", "Mix by Leather...", "150 Beige..." on the one
+    digit-led carpet-shade product). A lowercase first character is the
+    signature of a column-bounds-off-by-one slice eating the label's own
+    first character(s) -- confirmed real and NOT cosmetic-only in every
+    case: 88 such rows already existed in the shipped catalog before this
+    fix (found via a random-sample re-verification, not proactively), ~40
+    of them a genuine cross-CODE price misattribution (e.g. Monolith's
+    MONOU1000 -- an unrelated, correct code -- picking up a mangled
+    "ategory A" row whose price actually belongs to a totally different
+    code, MONOL300MD, several pages later). A handful of the rejected rows
+    turn out to be a correct value on the correct code with just a
+    truncated label (e.g. Kevin's "piètement Étain (ME13)" surcharge) --
+    accepted as collateral loss rather than building unverified logic to
+    save a few rows, consistent with this project's standing rule that
+    silently wrong data outranks missing data."""
+    return bool(label) and (label[0].isupper() or label[0].isdigit())
 
 # Shape 1 row: "TierName.......Value €" or "TierName   Value €" (both
 # confirmed real -- Ada/Cali use a dotted leader, the one Night bed sample
@@ -3847,8 +3894,23 @@ def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filt
     decides whether a matched label is kept (the Shape 1 whitelist) or
     None to accept any (Shape 2, which has no whitelist -- named
     finishes vary per product; block-scoping is its safety net instead).
+
+    Wrapped labels: a long "Mix by Leather <base> and Category <X>" label
+    can run out of column width and wrap onto 1-2 continuation lines
+    before the price appears alone on its own line further down --
+    confirmed real on Blazer ("Mix by Leather Luxor and customer's" /
+    "fabric..." / "3.029,00 €" across 3 separate lines, same column).
+    row_re only ever matches a single line, so these were silently 0-
+    rowed. pending_label buffers an in-progress wrapped label PER COLUMN,
+    started only when a chunk looks like the start of a real "Mix by
+    Leather" label with no price yet -- narrowly scoped to this one
+    confirmed pattern rather than treating any unmatched text as a label
+    fragment (which would risk gluing unrelated spec-page text onto a
+    later, unrelated price).
     Returns {col_index: [(label, price), ...]}."""
     collected = {c: [] for c in range(n_cols)}
+    pending_label = {c: None for c in range(n_cols)}
+    price_only_re = re.compile(r'^([\d.,]+)\s*€\s*$')
     t = scan_start
     blank_run = 0
     while t < len(lines) and blank_run < 6:
@@ -3864,12 +3926,27 @@ def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filt
             ch = slice_chunk(raw, bounds, c).strip()
             if ch in ('', '.', '-'):
                 continue  # blank / separator / "not available" filler
+            if pending_label[c] is not None:
+                pm = price_only_re.match(ch)
+                if pm:
+                    label = pending_label[c]
+                    pending_label[c] = None
+                    if _ditre_label_looks_clean(label) and (label_filter is None or label_filter(label)):
+                        collected[c].append((label, pm.group(1).strip()))
+                else:
+                    frag = re.sub(r'\.+$', '', ch).strip()
+                    pending_label[c] = f"{pending_label[c]} {frag}".strip()
+                continue
             m = row_re.match(ch)
             if not m:
+                if ch.startswith(_DITRE_MIX_LABEL_PREFIX) and '€' not in ch:
+                    pending_label[c] = re.sub(r'\.+$', '', ch).strip()
                 continue
             *label_groups, price = m.groups()
             label = ' '.join(g.strip() for g in label_groups if g).strip()
             label = re.sub(r'\.$', '', label).strip()
+            if not _ditre_label_looks_clean(label):
+                continue
             if label_filter is not None and not label_filter(label):
                 continue
             collected[c].append((label, price.strip()))
@@ -3904,7 +3981,7 @@ def parse_file_ditre_upholstery(path, product_name, brand, all_headings=None, he
         model_chunks, size_chunks, scan_start = _ditre_scan_sku_block(lines, i, bounds, n_cols)
         collected = _ditre_scan_price_rows(
             lines, scan_start, bounds, n_cols, _DITRE_UPHOLSTERY_ROW_RE,
-            label_filter=lambda label: label in DITRE_UPHOLSTERY_TIERS,
+            label_filter=_ditre_is_whitelisted_upholstery_tier,
         )
 
         for c, (_, code) in enumerate(codes):
@@ -4018,19 +4095,55 @@ def parse_file_ditre(path, product_name, brand, all_headings=None, heading_text=
     definition), so it re-matches every Shape 1 row too under a
     different tier_label -- confirmed real: running Shape 2 alone
     against Ada (Sofa) reproduces its full 551 rows verbatim. The fix
-    is a per-CODE merge: for each code, Shape 1's rows win if it found
-    any; Shape 2's rows for that code are only kept when Shape 1 found
-    NONE for it. Flags follow the same rule -- a "no price rows found"
-    flag only survives if NEITHER shape resolved that code.
+    is a merge keyed on (code, fabric_tier) -- the same granularity
+    main()'s own ambiguous-row detection already uses for Ditre (code
+    always implies a specific size/variant here, unlike Bolzan) --
+    preferring Shape 1's row for any (code, fabric_tier) it found;
+    Shape 2's row for that same pair is only kept when Shape 1 found
+    NONE. Flags follow the same code-level rule -- a "no price rows
+    found" flag only survives if NEITHER shape resolved that code.
+
+    Originally a per-CODE (not per-tier) decision: if Shape 1 found ANY
+    row for a code, Shape 2's contribution for the WHOLE code was
+    discarded. Confirmed wrong on Avalon mix once the Mix-ladder
+    whitelist was widened to a "Mix by Leather" prefix rule (see
+    DITRE_UPHOLSTERY_TIERS' own comment): Shape 1 now captures that
+    code's Mix-ladder rows (previously 0, so Shape 2 used to win and
+    correctly supply everything), but Shape 1 never captures its
+    trailing "Majoration de prix pour sommiers dédoublés" surcharge row
+    (not a Category/Leather/Mix label at all) -- the coarse per-code
+    rule let Shape 1 "win" the code and silently drop a row only Shape
+    2 had ever found, a regression a random-sample re-verification
+    caught directly (Avalon mix went from 15/15 correct to 14/15,
+    missing exactly that surcharge row).
     """
     rows1, flags1 = parse_file_ditre_upholstery(path, product_name, brand, all_headings, heading_text)
     rows2, flags2 = parse_file_ditre_casegoods(path, product_name, brand, all_headings, heading_text)
 
-    codes_from_shape1 = set(r['code'] for r in rows1)
-    rows2_unique = [r for r in rows2 if r['code'] not in codes_from_shape1]
+    covered_by_shape1 = {(r['code'], r['fabric_tier']) for r in rows1}
+    rows2_unique = [r for r in rows2 if (r['code'], r['fabric_tier']) not in covered_by_shape1]
     rows = rows1 + rows2_unique
 
-    codes_resolved = codes_from_shape1 | set(r['code'] for r in rows2_unique)
+    # Exact-duplicate rows (same code/tier/price/variant/size) confirmed
+    # real on Tao outdoor: a shared accessory line (e.g. "Backrests in
+    # Iroko (LE20)") gets re-printed once per "Composition N" bundle
+    # listing that includes the same component code, so Shape 2's scan
+    # independently re-finds the identical row several times over. Safe
+    # to collapse to one instance -- this can only remove BYTE-IDENTICAL
+    # repeats, never a genuine conflicting value (those differ in price
+    # and are correctly caught by the ambiguous-row detection below,
+    # which works off a set of DISTINCT prices per key regardless).
+    seen_row_keys = set()
+    deduped_rows = []
+    for r in rows:
+        key = (r['code'], r['fabric_tier'], r['price_eur'], r['model_variant'], r['size'])
+        if key in seen_row_keys:
+            continue
+        seen_row_keys.add(key)
+        deduped_rows.append(r)
+    rows = deduped_rows
+
+    codes_resolved = {r['code'] for r in rows1} | {r['code'] for r in rows2_unique}
 
     def _flag_code(flag):
         m = _DITRE_FLAG_CODE_RE.search(flag[2])

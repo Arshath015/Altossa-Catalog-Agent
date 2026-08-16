@@ -153,10 +153,10 @@ const CASES: Case[] = [
   {
     id: 'ditre-tao-reversible-dual-sku',
     brand: 'Ditre Italia',
-    query: 'tao outdoor 1-er central element customer fabric price',
-    note: 'Ditre reversible dual-SKU pair: code OC1000 packs multiple conflicting price sets onto one printed row (confirmed source-catalog structure, not a parsing error) and is correctly marked ambiguous -- scoping to a variant where every row is ambiguous returns them all raw (status ambiguous_price) rather than picking one. This asserts BOTH conflicting "Customer\'s fabric" prices are present, proving neither was silently dropped as if it were a duplicate of the other.',
+    query: 'tao outdoor 1-er central element category p outdoor price',
+    note: 'Ditre reversible dual-SKU pair: code OC1000 packs multiple conflicting price sets onto one printed row (confirmed source-catalog structure, not a parsing error) and is correctly marked ambiguous -- scoping to a variant where every row is ambiguous returns them all raw (status ambiguous_price) rather than picking one. This asserts all 4 conflicting "Category P outdoor" prices are present, proving none was silently dropped as if it were a duplicate of the others. (Re-scoped off "Customer\'s fabric" after the Mix-ladder/merge-granularity fix legitimately recovered a real clean row -- "Backrests in Iroko" -- for this same code, so that tier alone no longer isolates to an all-ambiguous scope.)',
     required: [
-      { product: 'Tao outdoor', tier: "Customer's fabric", expectedPrices: ['3.172,00', '4.050,00'] },
+      { product: 'Tao outdoor', tier: 'Category P outdoor', expectedPrices: ['3.488,00', '4.361,00', '5.309,00', '5.380,00'] },
     ],
   },
 ];

@@ -704,8 +704,8 @@
     "id": 76,
     "cat": "tricky_structure",
     "brand": "Ditre Italia",
-    "query": "tao outdoor 1-er central element customer fabric price",
-    "note": "reversible dual-SKU pair (code OC1000) -- every row in this scope is ambiguous, so the app must show the raw conflicting options rather than guessing one",
+    "query": "tao outdoor 1-er central element category p outdoor price",
+    "note": "reversible dual-SKU pair (code OC1000) -- every row in this scope is ambiguous, so the app must show the raw conflicting options rather than guessing one. Query re-scoped off \"customer fabric\" after the Mix-ladder/merge-granularity fix legitimately recovered a real clean row (Backrests in Iroko) for this code -- that tier alone no longer isolates to an all-ambiguous scope, but Category P outdoor still does",
     "expect_status": "ambiguous_price"
   },
   {

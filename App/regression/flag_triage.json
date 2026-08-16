@@ -2653,6 +2653,10 @@
     "Buckle - Glint - Hertz - Mellow - Nolan - Overlap - Plain air - Reed": {
       "status": "known_gap",
       "note": "Batch-categorized 2026-08-16 during the Shape 1/Shape 2 generalization pass across all 197 products (not individually page-verified per-product, same discipline as Bonaldo's initial seeding) -- every one of these is the parser correctly declining to guess (code detected, but no price row matched its block), not a silently-wrong row. Common pattern: a single stray accessory/sub-component code (bed-base cover panel codes ZL00X/ZT01X, carpet shade codes TAPPJTPXX, chair-leg-finish codes EXCLUSIVE/TERRA, cushion codes MIDI/CLOUD) sitting on a page whose price-table shape this pass did not verify in depth. A future dedicated pass should convert these to real_gap/partial/false_alarm per product, same as the existing Bonaldo/Cattelan buckets. Codes flagged on this product: TAPPJTP33, TAPPJTP43, TAPPJTP44."
+    },
+    "Aany - Eric - Erys - Pop - Puppet - Skin drawers": {
+      "status": "known_gap",
+      "note": "Code SKIBJCM06 (Skin bedside-table with shelf) prints one price row with no real finish name at all -- the source text literally shows a bare \".\" placeholder directly followed by a real price (1.030,00 EUR), unlike its sibling column (SKIBJCM01, Natural/Dark brown/Hemp/Grey, all clean labels). The new label-sanity check (rejects any tier/finish label not starting with an uppercase letter or digit, added to catch a confirmed cross-code price misattribution bug elsewhere -- see _ditre_label_looks_clean's own comment) correctly rejects this row rather than keeping a nonsensical \".\" label or guessing a real one. Logged as known_gap, not hand-fixed -- a real fix needs to trace what finish/model this row actually represents against the rendered page, not a guess. Codes flagged on this product: SKIBJCM06."
     }
   }
 }
