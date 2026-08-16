@@ -60,5 +60,11 @@
   {"id": 59, "cat": "cross_brand", "brand": "Cattelan Italia", "query": "cuff price", "note": "CUFF is a real Bonaldo product, must not leak into Cattelan Italia results"},
   {"id": 60, "cat": "multi_product", "brand": "Bonaldo", "query": "give me cuff hi plus and casablanca 300 x 400 essential taupe", "note": "2-product combo, both must independently narrow to their own variant/color image set with no cross-contamination"},
   {"id": 61, "cat": "ambiguous_prefix", "brand": "Bonaldo", "query": "chair", "note": "genuine ambiguity, 5 unrelated real chairs share only the generic word \"chair\""},
-  {"id": 62, "cat": "tricky_structure", "brand": "Bonaldo", "query": "innesti", "note": "maximal tie-break token-set fix regression guard, must auto-resolve to Innesti coffee table"}
+  {"id": 62, "cat": "tricky_structure", "brand": "Bonaldo", "query": "innesti", "note": "maximal tie-break token-set fix regression guard, must auto-resolve to Innesti coffee table"},
+  {"id": 63, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sommier", "note": "Night-catalog page-range off-by-one fix regression guard: must show its OWN 156-row price grid and page images, not bleed into the next product (Freedom 2.0 sofa-bed armrests S)"},
+  {"id": 64, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for freedom 2.0 sofa-bed armrests s", "note": "checksum-neighbor of Sommier pre-fix (was carrying 36 of Sommier's own SKU rows), must have its OWN correct page images and price data now"},
+  {"id": 65, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for lulu' 2.0 sofa bed", "note": "Night-catalog page-range fix, other half of the Sanders sofa bed pair"},
+  {"id": 66, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sanders sofa bed", "note": "checksum-neighbor of Lulu' 2.0 sofa bed pre-fix (was carrying 21 of its rows), must have its OWN correct page images and price data now"},
+  {"id": 67, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for skin mix", "note": "Night-catalog page-range fix, other half of the Sound pair"},
+  {"id": 68, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sound", "note": "checksum-neighbor of Skin mix pre-fix, must have its OWN correct page images and price data now"}
 ]
