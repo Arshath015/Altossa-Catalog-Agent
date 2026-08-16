@@ -4152,6 +4152,21 @@ def main():
     n_ambiguous = sum(1 for r in all_rows if r["ambiguous"])
     print(f"Parsed {len(all_rows)} price rows across {len(products)} products.")
     print(f"Wrote: {out_path}")
+
+    # A brand with hand-transcribed rows (manual_additions.json, sibling to
+    # this brand's prices.json) needs merge_manual_additions.py run
+    # immediately after this -- this file just OVERWROTE prices.json with
+    # auto-parser-only output, silently dropping every manually-verified
+    # row for any product manual_additions.json covers. Found the hard way
+    # 2026-08-16: regenerating Bolzan/Cattelan's prices.json without this
+    # second step dropped 92+39 products' worth of verified data (Wilma,
+    # Hystrix, YODA Marble, Sierra pouf, and 127 others), surfacing as a
+    # wave of seemingly-unrelated chat/regression failures days later.
+    manual_path = out_path.parent / "manual_additions.json"
+    if manual_path.exists():
+        print(f"\n*** REMINDER: {manual_path} exists for this brand. ***")
+        print(f"    Run this now, or every hand-transcribed row above just got silently dropped:")
+        print(f"    python App/merge_manual_additions.py \"{out_path}\" \"{manual_path}\"")
     if n_ambiguous:
         affected = sorted(set(r['product_name'] for r in all_rows if r['ambiguous']))
         print(f"\n{n_ambiguous} rows flagged ambiguous (same code + fabric tier, "
