@@ -47,6 +47,19 @@ interface RequiredField {
    * returned row for this product must share this tier (never a mix
    * with a sibling's wrong tier), rather than asserting one exact price. */
   price?: string;
+  /** Prices that must NOT appear anywhere among this product's returned
+   * rows -- for column/neighbor isolation rather than sibling-PRODUCT
+   * isolation (e.g. Ditre's Ada (Sofa) prints 4 SKU columns per page;
+   * asking for one column's price must never leak in a neighboring
+   * column's price). Checked independently of `price`/no-price above. */
+  excludePrices?: string[];
+  /** Prices that must ALL appear among this product's rows for the given
+   * tier -- for a reversible dual-SKU pair (two structural variants
+   * genuinely sharing one printed row, e.g. Ditre's Tao outdoor OC1000)
+   * where more than one conflicting price is correct and expected, so a
+   * single `price` assertion doesn't fit. Proves neither side of the
+   * pair was silently dropped/deduped as if it were a duplicate. */
+  expectedPrices?: string[];
 }
 interface Case {
   id: string;
@@ -109,6 +122,43 @@ const CASES: Case[] = [
       { product: 'Casablanca', tier: 'Essential Taupe', price: '4.006' },
     ],
   },
+  {
+    id: 'ditre-ada-4column-back80',
+    brand: 'Ditre Italia',
+    query: 'Ada (Sofa) padded back 80 category a price',
+    note: 'Ditre 4-SKU-per-page column isolation: page 13 prints 4 "Set padded back N and low backrest" columns (N=80/90/100/110) side by side, each with its own 2 codes/prices. Scoping to "back 80" must return only its own column (716,00/733,00), never a neighbor column\'s price (853,00/864,00 belongs to "back 110").',
+    required: [
+      { product: 'Ada (Sofa)', tier: 'Category A', excludePrices: ['853,00', '864,00'] },
+    ],
+  },
+  {
+    id: 'ditre-ada-4column-back110',
+    brand: 'Ditre Italia',
+    query: 'Ada (Sofa) padded back 110 category a price',
+    note: 'Reverse direction of the case above -- confirms the isolation isn\'t direction-dependent (the "back 80" column\'s prices must not leak into "back 110" either).',
+    required: [
+      { product: 'Ada (Sofa)', tier: 'Category A', excludePrices: ['716,00', '733,00'] },
+    ],
+  },
+  {
+    id: 'ditre-cali-disambiguation-isolation',
+    brand: 'Ditre Italia',
+    query: 'Cali (Sofa) 2-er sofa category a and Cali (Armchairs) armchair category a',
+    note: 'Ditre name-collision disambiguation: "Cali (Sofa)", "Cali (Armchairs)", and "Cali (Chairs)" are 3 distinct real products that all share the bare name "Cali" (from the cross-file/within-file collision fix earlier this session). Naming two of the disambiguated forms together in one query must resolve both independently, never merge or leak one\'s price into the other.',
+    required: [
+      { product: 'Cali (Sofa)', tier: 'Category A', price: '2.706,00' },
+      { product: 'Cali (Armchairs)', tier: 'Category A', price: '1.837,00' },
+    ],
+  },
+  {
+    id: 'ditre-tao-reversible-dual-sku',
+    brand: 'Ditre Italia',
+    query: 'tao outdoor 1-er central element customer fabric price',
+    note: 'Ditre reversible dual-SKU pair: code OC1000 packs multiple conflicting price sets onto one printed row (confirmed source-catalog structure, not a parsing error) and is correctly marked ambiguous -- scoping to a variant where every row is ambiguous returns them all raw (status ambiguous_price) rather than picking one. This asserts BOTH conflicting "Customer\'s fabric" prices are present, proving neither was silently dropped as if it were a duplicate of the other.',
+    required: [
+      { product: 'Tao outdoor', tier: "Customer's fabric", expectedPrices: ['3.172,00', '4.050,00'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
@@ -150,6 +200,23 @@ async function main() {
       if (rows.length === 0) {
         failures.push(`[${c.id}] "${c.query}" -- expected "${req.product}" to appear in matches at all, found nothing (status=${resp.status || resp.error})`);
         caseFailed = true;
+        continue;
+      }
+      if (req.excludePrices) {
+        const leaked = rows.filter(r => req.excludePrices!.includes(r.price_eur));
+        if (leaked.length > 0) {
+          failures.push(`[${c.id}] "${c.query}" -- ${req.product} unexpectedly includes leaked neighbor price(s): ${leaked.map(r => `${r.price_eur}@${r.model_variant}`).join(', ')}`);
+          caseFailed = true;
+        }
+      }
+      if (req.expectedPrices) {
+        const tierRows = rows.filter(r => r.fabric_tier === req.tier);
+        const gotPrices = new Set(tierRows.map(r => r.price_eur));
+        const missing = req.expectedPrices.filter(p => !gotPrices.has(p));
+        if (missing.length > 0) {
+          failures.push(`[${c.id}] "${c.query}" -- ${req.product} tier="${req.tier}" missing expected price(s) (silently dropped as if duplicate?): ${missing.join(', ')}, got: ${[...gotPrices].join(', ')}`);
+          caseFailed = true;
+        }
         continue;
       }
       if (req.price !== undefined) {
