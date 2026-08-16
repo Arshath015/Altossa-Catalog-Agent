@@ -44,6 +44,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Cattelan Italia': 'cattelan',
   'Bonaldo': 'bonaldo',
   'Varaschini': 'varaschini',
+  'Ditre Italia': 'ditre',
 };
 
 interface Flag {
