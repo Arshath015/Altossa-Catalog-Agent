@@ -3718,6 +3718,16 @@ DITRE_UPHOLSTERY_TIERS = {
 # unrelated content).
 _DITRE_MIX_LABEL_PREFIX = "Mix by Leather"
 
+# A second, differently-shaped wrapped-label trigger: "Surcharge for
+# Move mechanism" (Freedom S/M/L/XL, Isabel sofa bed, Kanaha 2.0 sofa
+# bed, Kanaha mix 2.0 sofa bed, Lulu' 2.0 sofa bed) wraps across 3
+# label-only lines before its price appears alone on a 4th ("Only
+# suitable for sofa." then ".                € 211,00") -- confirmed
+# real, silently 0-rowed with no flag on all 8 products (same value,
+# 211,00, on every one). Reuses the exact same pending_label mechanism
+# as _DITRE_MIX_LABEL_PREFIX, just a different starting phrase.
+_DITRE_SURCHARGE_LABEL_PREFIX = "Surcharge for"
+
 
 def _ditre_is_whitelisted_upholstery_tier(label: str) -> bool:
     return label in DITRE_UPHOLSTERY_TIERS or label.startswith(_DITRE_MIX_LABEL_PREFIX)
@@ -3750,8 +3760,18 @@ def _ditre_label_looks_clean(label: str) -> bool:
 # logical row). Label capture is non-greedy so it stops at the FIRST
 # qualifying gap, not swallowing the single internal spaces/hyphen in
 # labels like "Category E-L" or "Leather Maxi - Top".
+#
+# Currency-symbol position: normally trailing ("Value €"), but confirmed
+# real as LEADING too ("€ Value") on beds' foot/leg accessory rows --
+# e.g. Sommier "with black chrome tip      € 348,00" -- silently 0-rowed
+# with no flag on 15 products (19 rows) since the trailing-only pattern
+# never matched at all. `€?` before AND after the amount (both optional)
+# covers either order in one capture group; the `(?=.*€)` lookahead
+# requires "€" to appear SOMEWHERE in the remainder regardless of which
+# side, so making both sides optional can't start silently matching a
+# bare number with no currency symbol at all (a dimension, a weight).
 _DITRE_UPHOLSTERY_ROW_RE = re.compile(
-    r'^(.+?)(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
+    r'^(.+?)(?:\.{2,}|\s{2,})\s*(?=.*€)€?\s*([\d.,]+)\s*€?\s*$'
 )
 
 # Shape 2 row: "Finish Name.......Value €" -- confirmed on Claire
@@ -3770,7 +3790,7 @@ _DITRE_UPHOLSTERY_ROW_RE = re.compile(
 # the price on a matched line becomes fabric_tier verbatim, parens or
 # not.
 _DITRE_CASEGOODS_ROW_RE = re.compile(
-    r'^(.+?)(?:\.{2,}|\s{2,})\s*([\d.,]+)\s*€\s*$'
+    r'^(.+?)(?:\.{2,}|\s{2,})\s*(?=.*€)€?\s*([\d.,]+)\s*€?\s*$'
 )
 
 # The dims line ("W 140cm D 140cm H 73cm" on sofas/armchairs/tables, or
@@ -3910,7 +3930,12 @@ def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filt
     Returns {col_index: [(label, price), ...]}."""
     collected = {c: [] for c in range(n_cols)}
     pending_label = {c: None for c in range(n_cols)}
-    price_only_re = re.compile(r'^([\d.,]+)\s*€\s*$')
+    # Optional leading "." (a stray separator/placeholder character
+    # sometimes precedes the price on its own final wrapped line -- e.g.
+    # Sommier's "Surcharge for Move mechanism" row prints its price as
+    # ".                € 211,00", not just "€ 211,00") and either
+    # currency-symbol order, same reasoning as _DITRE_UPHOLSTERY_ROW_RE.
+    price_only_re = re.compile(r'^\.?\s*(?=.*€)€?\s*([\d.,]+)\s*€?\s*$')
     t = scan_start
     blank_run = 0
     while t < len(lines) and blank_run < 6:
@@ -3926,7 +3951,17 @@ def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filt
             ch = slice_chunk(raw, bounds, c).strip()
             if ch in ('', '.', '-'):
                 continue  # blank / separator / "not available" filler
-            if pending_label[c] is not None:
+            if pending_label[c] is not None and row_re.match(ch) is None:
+                # Only treat this line as part of the wrap if it can't
+                # independently stand as its own complete row. Confirmed
+                # necessary on Petra (Sideboards): "Surcharge for TV
+                # cable port" (no price, triggers the buffer) is
+                # immediately followed by its OWN separate, complete,
+                # already-working row "TV...............230,00 €" --
+                # without this check, that real row's price/label get
+                # silently swallowed as "more wrapped-label text" that
+                # never resolves (pending_label just dangles and is
+                # dropped at the end of the scan).
                 pm = price_only_re.match(ch)
                 if pm:
                     label = pending_label[c]
@@ -3937,9 +3972,10 @@ def _ditre_scan_price_rows(lines, scan_start, bounds, n_cols, row_re, label_filt
                     frag = re.sub(r'\.+$', '', ch).strip()
                     pending_label[c] = f"{pending_label[c]} {frag}".strip()
                 continue
+            pending_label[c] = None
             m = row_re.match(ch)
             if not m:
-                if ch.startswith(_DITRE_MIX_LABEL_PREFIX) and '€' not in ch:
+                if '€' not in ch and (ch.startswith(_DITRE_MIX_LABEL_PREFIX) or ch.startswith(_DITRE_SURCHARGE_LABEL_PREFIX)):
                     pending_label[c] = re.sub(r'\.+$', '', ch).strip()
                 continue
             *label_groups, price = m.groups()
