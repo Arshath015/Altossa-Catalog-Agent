@@ -244,6 +244,20 @@ export function similarity(query: string, candidate: string): number {
   // hands resolution to the existing "maximal" tie-break in answer().
   if (qTokens.length > 0 && qTokens.every(t => cTokens.includes(t))) return 80;
   if (cTokens.length > 0 && cTokens.every(t => qTokens.includes(t))) return 80;
+  // Concatenation match: a multi-word candidate name might get typed as
+  // ONE run-together word missing the space (or vice versa) -- "online"
+  // never token-matches "On Line" (tokens ["on","line"]) under the checks
+  // above, since neither side's whitespace-split tokens ever equal the
+  // other's. Joins the MULTI-token side into one compact string and looks
+  // for it as a whole bounded token in the other (containsWholeWord, not
+  // a raw substring test) -- gated to cTokens/qTokens.length > 1 so a
+  // SHORT single-word candidate (e.g. "Cop") never risks matching as a
+  // coincidental substring inside an unrelated longer word; a multi-word
+  // phrase's joined form is long/specific enough that an accidental whole-
+  // token collision elsewhere in the catalog is far less likely, same
+  // confidence tier as the token-SET containment checks just above.
+  if (cTokens.length > 1 && containsWholeWord(q, cTokens.join(''))) return 80;
+  if (qTokens.length > 1 && containsWholeWord(c, qTokens.join(''))) return 80;
   const overlap = qTokens.filter(t => cTokens.includes(t));
   if (overlap.length === 0) return 0;
   // If every shared word is a generic category word, AND the query has
