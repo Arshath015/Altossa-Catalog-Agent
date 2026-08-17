@@ -2342,8 +2342,24 @@ export class CatalogChat {
       // brittle for how people actually type.
       const strip = (s: string) => s.replace(/[^a-z0-9]/g, '');
       const qStripped = strip(qNorm);
+      // A word counts as real distinguishing signal if it's long enough
+      // (>=4 chars -- short PURE-alphabetic tokens are disproportionately
+      // stopwords/fragments, not real signal) OR it contains a digit --
+      // digit-bearing tokens are never stopwords/filler, and this
+      // catalog's own numbered-variant naming convention (Ditre's
+      // "2-er"/"3-er"/"3-er maxi" family) puts its ENTIRE distinguishing
+      // signal in exactly this shape: split on punctuation, "2-er" becomes
+      // ["2","er"], and the bare length>=4 filter discarded BOTH (neither
+      // reaches 4 chars), leaving only the shared, non-distinguishing
+      // "sofa" behind -- confirmed live: "On Line 2-er price", typed
+      // exactly as printed, matched all 10 of On Line's variants instead
+      // of narrowing to "2-er sofa"/"2-er central element". Deliberately
+      // NOT lowering the bare length threshold itself (tried and
+      // rejected as too broad -- see the full before/after diff run
+      // across all 5 brands' variant data before this landed).
+      const isDistinguishingWord = (w: string) => w.length >= 4 || /\d/.test(w);
       const qWords = new Set(
-        qNorm.replace(normalize(productName), '').split(/[^a-z0-9]+/).filter(w => w.length >= 4)
+        qNorm.replace(normalize(productName), '').split(/[^a-z0-9]+/).filter(isDistinguishingWord)
       );
       // "h.NN" (a height/model number like "h.7", "h.21", "h27") is the
       // single most common distinguishing signal across this whole
@@ -2416,7 +2432,7 @@ export class CatalogChat {
           // narrow within the height-matched set instead of guessing.
           const narrowed = heightHits.filter(v => {
             const suffix = variantSuffix(v);
-            const suffixWords = suffix.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+            const suffixWords = suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord);
             return suffixWords.some(w => qWords.has(w));
           });
           if (narrowed.length === 1) {
@@ -2455,7 +2471,7 @@ export class CatalogChat {
             compactMatches.push(v);
             continue;
           }
-          const suffixWords = suffix.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+          const suffixWords = suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord);
           const shared = suffixWords.filter(w => qWords.has(w)).length;
           if (shared > 0 && shared === bestWordMatches) {
             bestCountAtBest += 1;
