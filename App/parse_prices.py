@@ -3806,8 +3806,27 @@ _DITRE_CASEGOODS_ROW_RE = re.compile(
 # optional specifically to cover the bed case; capturing every bare
 # "Ncm" token positionally (first two = W, D) works for both forms
 # without needing to special-case which one a given page uses.
-_DITRE_DIMS_LINE_RE = re.compile(r'^\s*(?:W\s*)?[\d.,]+\s*cm')
-_DITRE_DIMS_WD_VALUES_RE = re.compile(r'([\d.,]+)\s*cm')
+#
+# A value can ALSO be a hyphenated low-high RANGE ("W 200-230cm", a
+# modular/reclining piece whose width varies by configuration) instead
+# of one number -- confirmed real and previously unhandled: the
+# original pattern required "cm" immediately after the digits, which a
+# range never satisfies ("200-230cm" has a "-230" in between), so
+# _ditre_scan_sku_block's forward search for a dims-line stopping point
+# never matched at all and silently walked straight through the SKU's
+# own price grid into the NEXT SKU's content -- confirmed exact repro:
+# Blum's BLUMD2000 ("W 200-230cmD 90-113cm...") picked up BLUMU1000's
+# ("Footstool", an unrelated later SKU) price values. The optional
+# "(?:-[\d.,]+)?" after the first number covers the range form without
+# disturbing the plain single-value form (still matches with nothing
+# consumed by the new group). The captured value for a range keeps the
+# WHOLE "low-high" string (not just one bound) -- confirmed the more
+# useful choice: it's still a legitimate, informative size string
+# ("200-230x90-113"), and choosing to keep only one bound would
+# silently discard real information with no clear right answer for
+# which bound "is" the size.
+_DITRE_DIMS_LINE_RE = re.compile(r'^\s*(?:W\s*)?[\d.,]+(?:-[\d.,]+)?\s*cm')
+_DITRE_DIMS_WD_VALUES_RE = re.compile(r'([\d.,]+(?:-[\d.,]+)?)\s*cm')
 
 # Category badge words confirmed printed top-right on Ditre pages (SOFA,
 # ARMCHAIRS, TABLES, ...) -- used only to reject a page TITLE line during
