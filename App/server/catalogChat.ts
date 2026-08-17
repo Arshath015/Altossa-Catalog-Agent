@@ -1938,7 +1938,16 @@ export class CatalogChat {
       // subset-match logic as above; if nothing matches, leaves rows
       // unfiltered rather than zeroing out (the numbers might be
       // something else entirely, e.g. a typo -- safer to fall through).
-      const bareNums = (rawQueryHint.match(/\b\d{2,3}\b/g) || []).map(Number).sort((a, b) => a - b);
+      // Strip the product's own name out first -- same root cause as the
+      // tier-matching strip further below: a number that's only present
+      // because it's PART OF the product's own name (e.g. "Geometric
+      // Table 400") isn't a real user-specified filter. Confirmed real:
+      // "give me all prices for geometric table 400" read bareNums=[400]
+      // and wrongly dropped the product's own null-size Supplemento row
+      // (400 doesn't appear in a size of `null`), reporting 2 rows for a
+      // product with 3 genuine price rows (same bug hit Mellow 400).
+      const queryForBareNums = stripNameFromQuery(normalize(rawQueryHint), normalize(productName));
+      const bareNums = (queryForBareNums.match(/\b\d{2,3}\b/g) || []).map(Number).sort((a, b) => a - b);
       if (bareNums.length > 0) {
         const sizeFiltered = rows.filter(r => {
           const realNums = ((r.size || '').match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
