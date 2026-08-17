@@ -11,9 +11,10 @@
  * for any reason, the system falls back to the tested deterministic
  * matcher -- it never silently trusts the model's output.
  *
- * KEY ROTATION: tries up to 3 Groq API keys (GROQ_API_KEY_1/2/3) in fixed
- * priority order via groqKeyPool.ts -- key 1 first, always, falling over
- * to key 2 then key 3 only when the one before it is rate-limited or
+ * KEY ROTATION: tries up to 20 Groq API keys (GROQ_API_KEY_1, _2, ... --
+ * see groqKeyPool.ts's MAX_KEY_SLOTS) in fixed priority order via
+ * groqKeyPool.ts -- key 1 first, always, falling over to the next
+ * configured key only when the one before it is rate-limited or
  * erroring. Each key's own exhaustion state is tracked independently and
  * remembered between calls, so a key already known to be exhausted is
  * skipped with NO network call (a rejected 429 still counts against that
@@ -26,11 +27,11 @@
  * SETUP:
  *   1. npm install dotenv   (if not already installed)
  *   2. Create a file named ".env" in the project root (same folder as
- *      package.json) containing up to 3 lines:
+ *      package.json) containing as many keys as you have (at least 1):
  *        GROQ_API_KEY_1=your_first_key
  *        GROQ_API_KEY_2=your_second_key
  *        GROQ_API_KEY_3=your_third_key
- *      (1 key is enough to run; 2-3 add rate-limit failover.)
+ *      (1 key is enough to run; more add rate-limit failover headroom.)
  *   3. Add ".env" to your .gitignore so no key ever gets committed.
  *   4. In your server entry point (App/server/index.ts), add this as the
  *      very first line: `import 'dotenv/config';`

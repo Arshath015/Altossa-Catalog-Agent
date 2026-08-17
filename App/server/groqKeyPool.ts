@@ -1,15 +1,17 @@
 /**
  * groqKeyPool.ts
  * ---------------
- * Manages failover across multiple Groq API keys (GROQ_API_KEY_1..4) so
- * one key's daily rate limit doesn't take the LLM-assisted matching path
- * down for the rest of the day. Tries keys in a FIXED priority order
- * (key 1 first, always -- not round-robin) and remembers each key's own
- * exhaustion state independently, using Groq's own "please try again in
- * Xs" retry hint so a key already known to be exhausted is skipped with
- * NO network call at all (confirmed important this session: even a
- * rejected 429 request still counts against that key's quota, so
- * skipping known-bad keys outright matters, not just for speed).
+ * Manages failover across multiple Groq API keys (GROQ_API_KEY_1, _2, ...
+ * -- any contiguous or gapped range up to MAX_KEY_SLOTS, not hardcoded to
+ * a fixed count) so one key's daily rate limit doesn't take the
+ * LLM-assisted matching path down for the rest of the day. Tries keys in
+ * a FIXED priority order (key 1 first, always -- not round-robin) and
+ * remembers each key's own exhaustion state independently, using Groq's
+ * own "please try again in Xs" retry hint so a key already known to be
+ * exhausted is skipped with NO network call at all (confirmed important
+ * this session: even a rejected 429 request still counts against that
+ * key's quota, so skipping known-bad keys outright matters, not just for
+ * speed).
  *
  * SAFETY: no key value is ever logged, printed, returned to a client, or
  * written anywhere besides being read from process.env -- every log line
@@ -25,9 +27,17 @@ export interface GroqKeySlot {
 const DEFAULT_COOLDOWN_MS = 60_000; // non-429 errors (network blip, bad response): retry fairly soon
 const FALLBACK_429_COOLDOWN_MS = 5 * 60_000; // 429 with no parseable retry hint
 
+// Generous headroom above any count actually configured today -- avoids
+// this file needing another edit every time a key is added (confirmed
+// real: GROQ_API_KEY_5/6/7 sat unused in .env for a while before this
+// fix, because the old hardcoded `i <= 4` loop never looked past 4). Not
+// contiguity-dependent -- checks every index up to this bound so a gap
+// (a removed/renumbered key) doesn't silently truncate everything after it.
+const MAX_KEY_SLOTS = 20;
+
 function loadKeySlots(): GroqKeySlot[] {
   const slots: GroqKeySlot[] = [];
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= MAX_KEY_SLOTS; i++) {
     const key = process.env[`GROQ_API_KEY_${i}`];
     if (key) slots.push({ index: i, apiKey: key, exhaustedUntil: null });
   }
