@@ -3589,8 +3589,42 @@ _DITRE_SKU_CODE_RE = re.compile(r'\b(?:Cod\.\s*)?([A-Z0-9]{4,10})\b')
 # INFORMATION ... INFORMATIONS TECHNIQUES" match by splitting it into
 # arbitrary 4-10-char chunks, since nothing required a genuine word
 # boundary between one matched chunk and the next.
+# A reversible dual-SKU pair token, e.g. "<- MONOL2000S - MONOL2000D ->"
+# (still explicitly deferred -- not parsed into its own block, see
+# parse_file_ditre's docstring). Real headers mix these WITH plain bare
+# codes on one line -- confirmed on 33 products (140 codes): Monolith's
+# own "<- MONOL1000S - MONOL1000D -> <- MONOL100MS - MONOL100MD ->
+# MONOC1000 MONOC100M" has 2 perfectly ordinary bare codes (MONOC1000/
+# MONOC100M) sharing a line with 2 reversible pairs. Before this, the
+# bracket syntax made the WHOLE line fail _DITRE_CODE_HEADER_LINE_RE
+# (nothing in it looks like a bare code-shaped token), so _ditre_header_
+# codes returned [] for the entire line -- silently 0-rowing MONOC1000/
+# MONOC100M (no bare-code header ever recognized there) AND, separately,
+# letting an in-progress scan for an EARLIER, unrelated code silently
+# bleed straight through it and misattribute the reversible pair's own
+# price rows to that earlier code (confirmed: Monolith's MONOU1000, a
+# legitimate code on an earlier page, picked up a genuine MONOL300MD
+# price under a garbled label -- fixed as a side effect of THIS change,
+# since the line now correctly registers as a header and stops the
+# scan, rather than needing a separate stop-condition rule; an earlier
+# attempt at that broke Pacific (Sofa)'s ambiguous-safety-net scan-
+# through on PURE reversible-pair-only pages, which have no bare code
+# on the same line at all -- this fix only changes recognition for
+# lines that DO mix in a bare code, so that safety net is untouched).
+# Deliberately re-scoped and re-verified against the range-format-dims
+# fix landing first (see that commit) -- 5 of the 33 affected products
+# also hit that separate bug, and a same-session attempt at this exact
+# fix, before the dims fix existed, was found (via a random-sample
+# re-verification) to collapse one of them (Blum) from a safely
+# ambiguous 3-value conflict down to a single, confidently WRONG value
+# -- reverted at the time specifically because of that interaction, not
+# because this fix was wrong on its own.
+_DITRE_REVERSIBLE_PAIR_RE = re.compile(
+    r'<-\s*[A-Z0-9]{4,10}\s*-\s*[A-Z0-9]{4,10}\s*->'
+)
 _DITRE_CODE_HEADER_LINE_RE = re.compile(
-    r'^\s*(?:(?:Cod\.\s*)?\b[A-Z0-9]{4,10}\b\s*)+$'
+    r'^\s*(?:(?:(?:Cod\.\s*)?\b[A-Z0-9]{4,10}\b)|(?:<-\s*[A-Z0-9]{4,10}\s*-\s*[A-Z0-9]{4,10}\s*->))'
+    r'(?:\s+(?:(?:(?:Cod\.\s*)?\b[A-Z0-9]{4,10}\b)|(?:<-\s*[A-Z0-9]{4,10}\s*-\s*[A-Z0-9]{4,10}\s*->)))*\s*$'
 )
 
 
@@ -3646,6 +3680,16 @@ def _ditre_header_codes(lines, i):
             return []
 
     matches = list(_DITRE_SKU_CODE_RE.finditer(line))
+    # Drop any match that falls inside a reversible-pair bracket -- those
+    # are the (still deferred) pair's own two codes, not standalone bare
+    # codes to scan a price block for. See _DITRE_REVERSIBLE_PAIR_RE's
+    # own comment for why the line as a whole is still allowed to match
+    # as a header despite containing one.
+    reversible_spans = [m.span() for m in _DITRE_REVERSIBLE_PAIR_RE.finditer(line)]
+    if reversible_spans:
+        matches = [m for m in matches if not any(s <= m.start() < e for s, e in reversible_spans)]
+        if not matches:
+            return []
     if len(matches) == 1 and (not re.search(r'\d', matches[0].group(1)) or not re.search(r'[A-Z]', matches[0].group(1))):
         found_dims = False
         for k in range(i + 1, min(i + 12, len(lines))):
