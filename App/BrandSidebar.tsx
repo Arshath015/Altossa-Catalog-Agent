@@ -9,7 +9,7 @@ const BRANDS: Brand[] = [
   { name: 'Cattelan Italia', status: 'ready', productCount: 533 },
   { name: 'Bonaldo', status: 'ready', productCount: 300 },
   { name: 'Varaschini', status: 'ready', productCount: 1294 },
-  { name: 'Ditre Italia', status: 'soon', productCount: 0 },
+  { name: 'Ditre Italia', status: 'ready', productCount: 197 },
   { name: 'Pianca', status: 'soon', productCount: 0 },
 ];
 
