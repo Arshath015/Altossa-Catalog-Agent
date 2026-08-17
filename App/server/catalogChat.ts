@@ -1535,6 +1535,12 @@ export class CatalogChat {
    * leaves MAGDA/MAGDA ML/PLANER/Innesti alone, correctly flags both
    * reported Big/Big Light phrasings, correctly leaves a specific SKU or
    * descriptive-suffix query (e.g. "Big / Big Light A B White") alone.
+   *
+   * EXTENDED to also cover a 1-token-prefix shape (e.g. Ditre's "Puppet
+   * (Armchairs)"/"Puppet (Night)"), gated by a reciprocal-best-match
+   * check inside the function itself -- see the maxLen===1 branch below
+   * for the full reasoning and re-verification against this same fixture
+   * set.
    */
   private checkFamilyAmbiguity(rawQuery: string, chosenName: string): string[] | null {
     const chosenTokens = tokenizeLoose(chosenName);
@@ -1548,12 +1554,55 @@ export class CatalogChat {
       prefixLens.set(n, len);
       if (len > maxLen) maxLen = len;
     }
-    // A shared prefix of just 1 token is too weak a signal to treat as a
-    // real SKU-suffix family -- see the coincidental-single-word cases
-    // (Big In&Out / Innesti) discussed above.
-    if (maxLen < 2) return null;
+    if (maxLen === 0) return null;
+    // A shared prefix of just 1 token is too weak a signal ON ITS OWN --
+    // see the coincidental-single-word cases (Big In&Out / Innesti)
+    // discussed above -- UNLESS every such 1-token sibling RECIPROCATES:
+    // its own best prefix match anywhere in the WHOLE catalog is also
+    // just this same pair, nothing deeper on either side. That's what
+    // distinguishes Ditre's "Puppet (Armchairs)"/"Puppet (Night)" (or
+    // Cali/Arcade/Vento-style pairs) -- two names whose ONLY real
+    // relationship in the entire catalog is this shared first word, with
+    // nothing better anywhere -- from "Big In&Out" (whose best match with
+    // "Big / Big Light" is also just 1 token, but "Big / Big Light"
+    // itself has a much deeper REAL family of 32 siblings sharing 3
+    // tokens, so the relationship isn't mutual/best-for-both). Confirmed
+    // real and necessary, not theoretical: once the Groq model fix
+    // restored the LLM path this session, "give puppet all price" (zero
+    // distinguishing signal) had the LLM confidently name just ONE of
+    // these two real, unrelated Ditre products. Reusing the EXISTING
+    // deterministic tie-check directly (matches/topMatches/maximal, i.e.
+    // answer()'s own scoring) was tried here too and rejected for the
+    // exact same reason the original Big/Big Light fix above rejected it:
+    // the Puppet tie itself only scores 15 (low diluted-overlap), the
+    // identical false-positive-prone score band -- confirmed via direct
+    // testing, not assumed. This reciprocal check is a NEW, narrower gate
+    // on top of the SAME ordered-prefix relation already used below (not
+    // a separate mechanism) -- once a maxLen===1 family passes it, it
+    // flows through the exact same satisfied/maximal logic as any other
+    // family, which is what still correctly auto-resolves Innesti table/
+    // Innesti coffee table without asking (the query naming either one
+    // satisfies it, and the shared satisfied/maximal step below already
+    // prefers the more complete match).
+    let familyMembers: string[];
+    if (maxLen === 1) {
+      const candidates = this.productNames.filter(n => prefixLens.get(n) === 1);
+      familyMembers = candidates.filter(n => {
+        const nTokens = tokenizeLoose(n);
+        let nMax = 0;
+        for (const n2 of this.productNames) {
+          if (n2 === n) continue;
+          const len2 = commonPrefixLen(nTokens, tokenizeLoose(n2));
+          if (len2 > nMax) nMax = len2;
+        }
+        return nMax === 1;
+      });
+    } else {
+      familyMembers = this.productNames.filter(n => prefixLens.get(n) === maxLen);
+    }
+    if (familyMembers.length === 0) return null;
 
-    const family = [chosenName, ...this.productNames.filter(n => prefixLens.get(n) === maxLen)];
+    const family = [chosenName, ...familyMembers];
     if (family.length <= 1) return null;
 
     const qTokens = new Set(
