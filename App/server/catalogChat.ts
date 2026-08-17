@@ -186,7 +186,7 @@ const CONVERSATIONAL_FILLER_WORDS = new Set([
   'what', 'whats', 'are', 'is', 'the', 'a', 'an', 'for', 'of', 'me', 'give',
   'show', 'tell', 'please', 'how', 'much', 'do', 'you', 'have', 'can', 'i',
   'get', 'price', 'prices', 'pricing', 'cost', 'costs', 'all', 'full',
-  'complete', 'every', 'list', 'in',
+  'complete', 'every', 'list', 'in', 'about', 'and', 'then',
 ]);
 
 /** Splits into tokens on any non-alphanumeric character (not just
@@ -1642,6 +1642,33 @@ export class CatalogChat {
     return maximal;
   }
 
+  /** True if `rawQuery`, after removing this product's own name and
+   * ordinary filler/size/tier vocabulary, still has real leftover content
+   * -- signaling an attempt to independently name something specific,
+   * rather than a genuine short/vague continuation of the SAME product
+   * (a bare size fragment, a tier follow-up, a model-code snippet -- the
+   * shape buildSystemPrompt's anchorNote is actually meant for). Reuses
+   * the SAME already-audited word lists as similarity()'s own generic-
+   * word suppression, plus this catalog's own real tier vocabulary
+   * (`realTierPhrases`), rather than a new list -- same precedent as
+   * every other word-list reuse in this file. Used only as the anchor-
+   * trust backstop just above; has no effect on any query that doesn't
+   * exactly repeat lastProduct. */
+  private queryLooksLikeUnrecognizedProductAttempt(rawQuery: string, productName: string): boolean {
+    const stripped = stripNameFromQuery(normalize(rawQuery), normalize(productName));
+    const tokens = tokenizeLoose(stripped);
+    const tierWords = new Set(this.realTierPhrases.flatMap(t => tokenizeLoose(t)));
+    const leftover = tokens.filter(t =>
+      !CONVERSATIONAL_FILLER_WORDS.has(t) &&
+      !RISKY_SIZE_CODE_WORDS.has(t) &&
+      !GENERIC_CATEGORY_WORDS.has(t) &&
+      !tierWords.has(t) &&
+      !/^\d+x\d+/.test(t) &&
+      !/^\d+$/.test(t)
+    );
+    return leftover.length > 0;
+  }
+
   answerFromIntent(
     productNameGuess: string | null,
     size: string | null,
@@ -1705,9 +1732,50 @@ export class CatalogChat {
     // SINGLE family member and re-flagged the WHOLE family as ambiguous
     // again, for every one of the already-chosen candidates, turning a
     // multi-product price answer into N nested "which one?" messages.
-    const familyCandidates = skipFamilyAmbiguityCheck ? null : this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
+    // Anchor-trust check, computed BEFORE checkFamilyAmbiguity (not after)
+    // because it affects both what follows: the LLM's confident single
+    // guess might just be REUSING lastProduct because the system prompt
+    // explicitly tells it to for a short/vague continuation
+    // (buildSystemPrompt's anchorNote in llmIntent.ts) -- even when the
+    // CURRENT message is actually attempting to name a DIFFERENT, specific
+    // product it doesn't recognize, not a genuine continuation. Confirmed
+    // real and non-deterministic, not theoretical: with a real prior turn
+    // resolving "Ada (Sofa)" as lastProduct, "give online 2er sofa price"
+    // (attempting to name Ditre's "On Line", unreachable by the
+    // deterministic matcher -- see the separately-tracked "online"/"On
+    // Line" tokenization gap) confidently returned "Ada (Sofa)" in 4 of 5
+    // identical trials with the real HTTP request shape. The anchor note's
+    // own given examples ("and in 180x200?", "what about extra fabric",
+    // "h.29") are all bare size/tier fragments with nothing resembling an
+    // attempted product name, unlike this case.
+    //
+    // isTrustedAnchorContinuation is ALSO used to skip checkFamilyAmbiguity
+    // just below -- found necessary via the SAME real multi-turn testing
+    // that caught the bug above: once checkFamilyAmbiguity was extended
+    // (this session) to also cover 1-shared-token families like Ditre's
+    // "Ada (Sofa)"/"Ada (Night)", a genuine, already-resolved continuation
+    // ("82x82" after a prior turn established "Ada (Sofa)" specifically)
+    // wrongly re-triggered a fresh "which one?" every time, because
+    // checkFamilyAmbiguity only ever looks at the CURRENT turn's bare text
+    // with no awareness that the ambiguity was already settled last turn.
+    // A trusted anchor continuation means the ambiguity is, by definition,
+    // already resolved (lastProduct IS the answer from a previous turn),
+    // so re-running a context-blind check here is redundant and actively
+    // harmful -- skipFamilyAmbiguityCheck reused as the same "already a
+    // confirmed choice, not a fresh guess" opt-out shape as this.
+    const isAnchoredGuess = effectiveProductName === lastProduct;
+    const looksLikeFreshAttempt = isAnchoredGuess && this.queryLooksLikeUnrecognizedProductAttempt(rawQuery, effectiveProductName);
+    const isTrustedAnchorContinuation = isAnchoredGuess && !looksLikeFreshAttempt;
+
+    const familyCandidates = (skipFamilyAmbiguityCheck || isTrustedAnchorContinuation)
+      ? null
+      : this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
     if (familyCandidates) {
       return this.buildClarifyProductResult(familyCandidates);
+    }
+
+    if (!skipFamilyAmbiguityCheck && looksLikeFreshAttempt) {
+      return this.answer(rawQuery, brand, lastModelVariant, lastProduct, lastCandidates);
     }
 
     // Tier(s) from the LLM might not exactly match our normalized whitelist
