@@ -1923,7 +1923,21 @@ export class CatalogChat {
         // query directly and will resolve it correctly on its own.
         const rawCode = extractShortCode(rawQueryHint);
         const codeMatchesSomething = rawCode && rows.some(r => r.model_variant && extractShortCode(r.model_variant) === rawCode);
-        if (sizeFiltered.length === 0 && codeMatchesSomething) {
+        // Safety net #2: the extracted `size` itself might not be a real
+        // user-specified filter at all -- it can come from a metric size
+        // baked directly into the product's own NAME (e.g. Varaschini's
+        // "Babylon Coffee table 71x71"), while this product's actual row
+        // `size` field is stored in a completely different format
+        // (imperial, W/H/D-labeled: 'W 28 " - H 12 5/8 " - D 28 "'),
+        // sharing no digits with the name at all. Applying the filter in
+        // that case wipes out every row and produces a false
+        // no_matching_variant instead of the full price list. Detected by
+        // checking whether the extracted size string appears literally in
+        // the product's own (normalized) name -- confirmed real for all 5
+        // Varaschini coffee tables affected (Babylon 71x71/99x99, Cricket
+        // 62x52, Summer Set 70x70/80x80).
+        const sizeIsFromProductName = normalize(productName).includes(normalize(size));
+        if (sizeFiltered.length === 0 && (codeMatchesSomething || sizeIsFromProductName)) {
           // leave `rows` as the unfiltered set; don't apply this size filter
         } else {
           rows = sizeFiltered;
