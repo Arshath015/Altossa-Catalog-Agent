@@ -174,7 +174,7 @@ function containsWholeWord(haystack: string, needle: string): boolean {
 // same as every other curated word list in this file.
 const GENERIC_CATEGORY_WORDS = new Set([
   'table', 'chair', 'armchair', 'console', 'office', 'bench', 'pouf',
-  'stand', 'mirror', 'lounge', 'coffee', 'wood', 'tv',
+  'stand', 'mirror', 'lounge', 'coffee', 'wood', 'tv', 'sofa', 'bed',
 ]);
 
 // Ordinary conversational request/question words -- stripped before
@@ -215,8 +215,27 @@ export function similarity(query: string, candidate: string): number {
   const q = normalize(query);
   const c = normalize(candidate);
   if (q === c) return 100;
-  const qTokens = q.split(/\s+/).filter(Boolean);
-  const cTokens = c.split(/\s+/).filter(Boolean);
+  // Strip PARENTHESES specifically (not a full tokenizeLoose split) before
+  // the whitespace split, so a tight "(Category)" disambiguation suffix
+  // (e.g. Ditre's "Ada (Sofa)", 28% of its catalog) doesn't hide "sofa" as
+  // a different token than a bare "sofa" query word -- every real "(Sofa)"-
+  // suffixed product was invisible to a bare-category-word query, while
+  // the only candidates that COULD match were unrelated products using
+  // "sofa"/"bed" unparenthesized in their own name (Isabel/Kanaha 2.0/
+  // Kanaha mix 2.0/Lulu' 2.0/Sanders "sofa bed"), which then won by
+  // default. Deliberately NOT reusing tokenizeLoose's full non-alnum split
+  // here (tried first, reverted): it also splits HYPHENATED compound
+  // words that are semantically atomic for product-name matching --
+  // "Ker-Wood" -> "ker"+"wood" (silently exposing "wood", already a
+  // GENERIC_CATEGORY_WORD, as separate signal and creating new false
+  // ambiguity across all 7 "*Ker-Wood*" Cattelan siblings) and "Jack-e"
+  // -> "jack"+"e" (reintroducing the exact single-letter-tier collision
+  // class already fixed elsewhere in this file for "Bend-e Fabric"/tier
+  // "E") -- confirmed by a full regression:full run that surfaced 36 new
+  // row-count mismatches across 4 brands before this was narrowed down to
+  // parens only.
+  const qTokens = q.replace(/[()]/g, '').split(/\s+/).filter(Boolean);
+  const cTokens = c.replace(/[()]/g, '').split(/\s+/).filter(Boolean);
   // Token-SET containment (every token on one side appears on the other,
   // any order) -- not a contiguous-phrase check. That distinction matters:
   // "cuff pouf" isn't a substring of "Cuff bench and pouf" (words in
@@ -1346,7 +1365,17 @@ export class CatalogChat {
       // contiguous phrase (the word "coffee" sits in between), so the
       // exact, verbatim product name still asked to clarify against its
       // own shorter sibling instead of resolving directly.
-      const nameTokens = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
+      // Parens stripped for the same reason as similarity()'s own
+      // tokenization above -- without it, a tight "(Category)" suffix
+      // (e.g. Ditre's "Arcade (Tables)" vs "Arcade (Small Tables)") never
+      // registers as a real subset/superset pair here: "(tables)" and
+      // "tables)"/"(small" are three different broken tokens instead of
+      // the same shared "tables" plus an extra "small", so this maximal
+      // check couldn't see that the longer name is strictly the more
+      // complete match -- it fell through to a false tie/clarify instead
+      // of resolving directly, confirmed via check_coverage's own exact-
+      // name self-test for both products.
+      const nameTokens = (s: string) => normalize(s).replace(/[()]/g, '').split(/\s+/).filter(Boolean);
       const maximal = topMatches.filter(m => {
         const mTokens = nameTokens(m.name);
         return topMatches.every(other => {
