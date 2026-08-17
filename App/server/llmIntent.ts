@@ -57,7 +57,17 @@ export interface LlmIntent {
 }
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+// Groq removed the entire Llama-3.x chat-completion family from this
+// account (confirmed via GET /v1/models -- 'llama-3.3-70b-versatile' no
+// longer exists at all, on any configured key, a 404 model_not_found on
+// every single call, not a rate limit). openai/gpt-oss-120b is its
+// verified replacement: confirmed correct output across single-product,
+// multi-product+typo, size/tier extraction, and genuine-ambiguity (null)
+// cases -- gpt-oss-20b and qwen/qwen3.6-27b were also tried and
+// disqualified (20b fails outright on even a simple single-product+size
+// query at this same token budget; qwen fails JSON-mode validation
+// immediately on every request).
+const MODEL = 'openai/gpt-oss-120b';
 const TIMEOUT_MS = 8000;
 
 function buildSystemPrompt(productNames: string[], lastProduct: string | null): string {
@@ -165,6 +175,19 @@ async function callGroqOnce(apiKey: string, messages: unknown[]): Promise<GroqCa
         response_format: { type: 'json_object' },
         temperature: 0,
         max_tokens: 200,
+        // gpt-oss-120b is a reasoning model -- it spends tokens on internal
+        // chain-of-thought BEFORE emitting the JSON, and at this max_tokens
+        // budget that reasoning alone can exhaust it, truncating the
+        // response before valid JSON is ever produced (confirmed: Groq's
+        // API rejects the truncated output with a 400 json_validate_failed,
+        // and it reproduced specifically on multi-product/typo queries --
+        // exactly the case class the LLM path exists to handle). 'low'
+        // keeps the reasoning overhead small enough to leave room for the
+        // actual JSON output at the existing token budget, verified across
+        // the full test matrix (single-product, multi-product+typo,
+        // size/tier extraction, genuine-ambiguity nulls) with clean 200s
+        // throughout.
+        reasoning_effort: 'low',
       }),
       signal: controller.signal,
     });
