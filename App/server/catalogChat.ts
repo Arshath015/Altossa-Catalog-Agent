@@ -2535,9 +2535,32 @@ export class CatalogChat {
       const explicitProductRebroaden = wantsFullList && productFirstWord
         && new RegExp(`\\b${productFirstWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(qNorm);
 
+      // A tie among THIS turn's own word-matched candidates (tiedFamily,
+      // populated by the qWords loop above) is real, contradicting signal
+      // -- same status as freshHeightSignal for the purpose of the anchor-
+      // reuse fallback just below, even though it isn't the h.NN/sp.NN
+      // mechanism that flag was built for. Confirmed real and NOT
+      // theoretical: with lastModelVariant="2-er sofa" anchored from an
+      // earlier turn, "give online 3-er category U" -- typed correctly,
+      // hyphenated, no typo -- genuinely ties all 4 of On Line's "3-er..."
+      // siblings (matched stays false, by design, since none of them wins
+      // outright), but freshHeightSignal only ever covers the unrelated
+      // h.NN/sp.NN code path, so the anchor-reuse fallback below couldn't
+      // tell "no signal at all" apart from "real signal that just didn't
+      // uniquely resolve" -- it silently reused the STALE "2-er sofa"
+      // anchor and returned a single confident (wrong) price, the exact
+      // same "LLM/anchor confidently wrong" severity class as the
+      // lastProduct-level Ada bug fixed earlier this session, just one
+      // level down (variant selection, not product selection). This gate
+      // is safety-only: it never auto-picks a different variant, it only
+      // blocks blind reuse of a stale anchor when this turn's own text
+      // contradicts it -- falls through to the same broad "show every
+      // variant" result as if there were no anchor at all.
+      const hasContradictingTurnSignal = freshHeightSignal || tiedFamily.length > 1;
+
       if (matched && matchingVariant) {
         rows = rows.filter(r => r.model_variant === matchingVariant);
-      } else if (!freshHeightSignal && !explicitProductRebroaden && lastModelVariant) {
+      } else if (!hasContradictingTurnSignal && !explicitProductRebroaden && lastModelVariant) {
         // Nothing in THIS message names a specific variant, but we were
         // already narrowed to something in a previous turn. If that
         // anchor has a height number, prefer expanding to ALL current
