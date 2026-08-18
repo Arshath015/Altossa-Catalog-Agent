@@ -2646,6 +2646,39 @@ export class CatalogChat {
           // height-based at all, like Jack's wood vs iron frame).
           rows = rows.filter(r => r.model_variant === lastModelVariant);
         }
+      } else if (tiedFamily.length > 1) {
+        // A genuine tie among THIS turn's own word-matched candidates
+        // (the same tiedFamily used above to block stale-anchor reuse)
+        // still tells us something real: narrow to those candidates
+        // instead of falling all the way through to "no info, show
+        // every variant of the whole product." Confirmed real and
+        // needed, not cosmetic: "give online 3er leaather vip and
+        // category U" (no anchor, or a contradicted one) previously fell
+        // through to all 9 of On Line's variants, including "2-er sofa"/
+        // "Square corner"/"Island" -- names that share ZERO text with
+        // "3er" at all -- when the real, honest answer is "one of these
+        // 4 3-er... variants," not "one of these 9 completely unrelated
+        // things."
+        //
+        // ALWAYS additionally includes any variant whose OWN suffix is
+        // EMPTY (a strict substring/prefix of the product's own name,
+        // e.g. bare "Armchair" on product "Krisby (Armchairs)") --
+        // tiedFamily can never contain these (the compactMatches/qWords
+        // loop above skips a variant with `if (!suffix) continue`
+        // entirely, so it's structurally invisible to the tie itself),
+        // but that's exactly the shape of the ONE regression a first,
+        // reverted attempt at this same narrowing caused earlier this
+        // session: "give me Krisby (Armchairs) Armchair price" tied
+        // "Armchair mix"/"Armchair low"/"Armchair mix low" on the shared
+        // word "armchair" and, without this line, would have narrowed to
+        // ONLY those three -- excluding the bare "Armchair" variant that
+        // was the literal, exact, correct answer to what was actually
+        // asked. Purely additive (never removes a tiedFamily member), so
+        // it has zero effect on any product without this shape (like On
+        // Line, which has no base/empty-suffix variant at all).
+        const baseVariants = distinctVariants.filter(v => !variantSuffix(v));
+        const narrowSet = new Set([...tiedFamily, ...baseVariants]);
+        rows = rows.filter(r => r.model_variant && narrowSet.has(r.model_variant));
       } else {
         // No specific variant named and no prior anchor. If exactly one
         // of the distinct variants is the real "main structure" and the
