@@ -2574,7 +2574,7 @@ export class CatalogChat {
 
       let matchingVariant: string | undefined;
       let matched = false;
-      let bestWordMatches = 0;
+      let bestCoverage = 0;
       let freshHeightSignal = false;
 
       if (qHeight) {
@@ -2634,11 +2634,28 @@ export class CatalogChat {
           }
           const suffixWords = suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord);
           const shared = suffixWords.filter(w => qWords.has(w)).length;
-          if (shared > 0 && shared === bestWordMatches) {
+          // Coverage RATIO (matched words / this variant's own total
+          // significant words), not raw shared-word COUNT -- a raw count
+          // treats "2 of 3" and "2 of 7" as equally confident, which let a
+          // long, unrelated variant tie with -- and get shown alongside --
+          // a short, near-completely-matched variant that happened to
+          // share the same word COUNT purely coincidentally. Confirmed
+          // live and real, not theoretical: On Line's "3-er maxi sofa"
+          // (suffix "3 maxi sofa", shares "3"+"maxi" = 2 of its own 3
+          // words) was tying with a corrupted merged-column data row
+          // whose model_variant is "3-er maxi central element ... Mini
+          // terminal element" (suffix has 7 significant words, but
+          // coincidentally ALSO shares just "3"+"maxi" = 2 of 7) -- same
+          // raw count, wildly different confidence, and the raw-count tie
+          // then surfaced the corrupted row into a real user-facing
+          // answer while silently dropping "3-er sofa" (which only shared
+          // 1 word and lost the tie outright).
+          const coverage = suffixWords.length > 0 ? shared / suffixWords.length : 0;
+          if (shared > 0 && coverage === bestCoverage) {
             bestCountAtBest += 1;
             tiedFamily.push(v);
-          } else if (shared > bestWordMatches) {
-            bestWordMatches = shared;
+          } else if (coverage > bestCoverage) {
+            bestCoverage = coverage;
             bestCountAtBest = 1;
             matchingVariant = v;
             tiedFamily = [v];
