@@ -1145,10 +1145,31 @@ export class CatalogChat {
     // how the variant is actually PRINTED ("3-er") and how the original
     // live repro typed it (no hyphen at all, "3er") -- same "typed vs
     // printed" gap this session's qWords glued-digit fix closed elsewhere.
-    const m = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)\s+and\s+(\d+-?[a-zA-Z]*)\b/i);
+    //
+    // Each digit-word gets an OPTIONAL single trailing modifier word
+    // captured as part of the SAME matched span -- needed for the
+    // "repeated digit-word" shape ("3er and 3er maxi", meaning "3-er sofa"
+    // AND "3-er maxi sofa"). Confirmed live: without capturing "maxi" as
+    // part of the match, it sits OUTSIDE the matched span entirely, so
+    // replacing the span leaves "maxi" in place UNCHANGED on both
+    // reconstructed clauses -- clauseA and clauseB came out byte-identical
+    // ("3er maxi..." twice), the combining guard correctly refused to fire
+    // on two identical clauses, and the query silently fell through to a
+    // single-variant answer, dropping "3-er sofa" (the first, un-modified
+    // variant) entirely. Capturing the modifier explicitly lets it be
+    // OMITTED from clauseA (the bare digit-word's own clause) and RE-
+    // ADDED only to clauseB -- the two clauses can now actually differ.
+    // Symmetric (modifier optionally captured on EITHER side) so the
+    // reversed order ("3er maxi and 3er sofa") and the fully-spelled-out
+    // case ("2er sofa and 3er sofa", no elision needed at all) both
+    // reconstruct correctly through the same one pattern, not a second
+    // special case.
+    const m = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\b/i);
     if (m) {
-      const clauseA = rawQueryHint.replace(m[0], m[1]);
-      const clauseB = rawQueryHint.replace(m[0], m[2]);
+      const part1 = m[2] ? `${m[1]} ${m[2]}` : m[1];
+      const part2 = m[4] ? `${m[3]} ${m[4]}` : m[3];
+      const clauseA = rawQueryHint.replace(m[0], part1);
+      const clauseB = rawQueryHint.replace(m[0], part2);
       const resultA = this.lookupForProduct(productName, size, tiers, brand, clauseA, lastModelVariant, wantsFullList);
       const resultB = this.lookupForProduct(productName, size, tiers, brand, clauseB, lastModelVariant, wantsFullList);
       const soleVariant = (r: ChatResult): string | null => {
