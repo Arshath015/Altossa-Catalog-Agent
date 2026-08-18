@@ -1145,37 +1145,24 @@ export class CatalogChat {
     // how the variant is actually PRINTED ("3-er") and how the original
     // live repro typed it (no hyphen at all, "3er") -- same "typed vs
     // printed" gap this session's qWords glued-digit fix closed elsewhere.
-    //
-    // Each digit-word gets an OPTIONAL single trailing modifier word
-    // captured as part of the SAME matched span -- needed for the
-    // "repeated digit-word" shape ("3er and 3er maxi", meaning "3-er sofa"
-    // AND "3-er maxi sofa"). Confirmed live: without capturing "maxi" as
-    // part of the match, it sits OUTSIDE the matched span entirely, so
-    // replacing the span leaves "maxi" in place UNCHANGED on both
-    // reconstructed clauses -- clauseA and clauseB came out byte-identical
-    // ("3er maxi..." twice), the combining guard correctly refused to fire
-    // on two identical clauses, and the query silently fell through to a
-    // single-variant answer, dropping "3-er sofa" (the first, un-modified
-    // variant) entirely. Capturing the modifier explicitly lets it be
-    // OMITTED from clauseA (the bare digit-word's own clause) and RE-
-    // ADDED only to clauseB -- the two clauses can now actually differ.
-    // Symmetric (modifier optionally captured on EITHER side) so the
-    // reversed order ("3er maxi and 3er sofa") and the fully-spelled-out
-    // case ("2er sofa and 3er sofa", no elision needed at all) both
-    // reconstruct correctly through the same one pattern, not a second
-    // special case.
-    const m = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\b/i);
-    if (m) {
-      const part1 = m[2] ? `${m[1]} ${m[2]}` : m[1];
-      const part2 = m[4] ? `${m[3]} ${m[4]}` : m[3];
-      const clauseA = rawQueryHint.replace(m[0], part1);
-      const clauseB = rawQueryHint.replace(m[0], part2);
-      const resultA = this.lookupForProduct(productName, size, tiers, brand, clauseA, lastModelVariant, wantsFullList);
-      const resultB = this.lookupForProduct(productName, size, tiers, brand, clauseB, lastModelVariant, wantsFullList);
-      const soleVariant = (r: ChatResult): string | null => {
-        const variants = new Set((r.matches || []).map(row => row.model_variant).filter((v): v is string => !!v));
-        return variants.size === 1 ? [...variants][0] : null;
-      };
+    const soleVariant = (r: ChatResult): string | null => {
+      const variants = new Set((r.matches || []).map(row => row.model_variant).filter((v): v is string => !!v));
+      return variants.size === 1 ? [...variants][0] : null;
+    };
+    const lookup = (q: string) => this.lookupForProduct(productName, size, tiers, brand, q, lastModelVariant, wantsFullList);
+
+    // Attempt 1: the ordinary shape -- two DIFFERENT digit-words, nothing
+    // captured beyond each one, so any shared trailing word ("2er and 3er
+    // sofa") sits OUTSIDE the matched span and stays in place, unchanged,
+    // on BOTH reconstructed clauses automatically ("2er sofa" / "3er
+    // sofa"). Tried first because it's the more precise reconstruction
+    // when it applies: both clauses keep the real trailing context, so
+    // each one resolves against its FULL distinguishing text (digit +
+    // shared word), not just the bare digit alone.
+    const mSimple = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)\s+and\s+(\d+-?[a-zA-Z]*)\b/i);
+    if (mSimple) {
+      const resultA = lookup(rawQueryHint.replace(mSimple[0], mSimple[1]));
+      const resultB = lookup(rawQueryHint.replace(mSimple[0], mSimple[2]));
       const variantA = soleVariant(resultA);
       const variantB = soleVariant(resultB);
       if (variantA && variantB && variantA !== variantB) {
@@ -1186,6 +1173,82 @@ export class CatalogChat {
         );
       }
     }
+
+    // Attempt 2: the digit-word REPEATS identically on both sides of
+    // "and", with a distinguishing MODIFIER word on one or both sides
+    // instead ("3er and 3er maxi", "3er maxi and 3er sofa"). Attempt 1
+    // can't handle this shape at all -- when the two digit-words are
+    // identical, replacing the same matched span with the same group1/
+    // group2 text produces two byte-IDENTICAL clauses (nothing to
+    // distinguish them), so both `soleVariant` calls above always fail
+    // to combine for this shape, falling through to here. Confirmed live: without this
+    // second attempt, "give online 3er and 3er maxi all price" silently
+    // dropped "3-er sofa" entirely (only "3-er maxi sofa" was ever
+    // considered). Each digit-word optionally captures ONE trailing
+    // modifier word as part of the SAME matched span here (unlike
+    // attempt 1) specifically so it CAN be included on one clause and
+    // omitted from the other -- this only runs as a fallback, after
+    // attempt 1 already had first claim on the ordinary case, so it no
+    // longer swallows a genuinely SHARED trailing word that attempt 1
+    // would have handled correctly (that regression, found live during
+    // this session's own verification, is why this is two attempts
+    // instead of one combined regex).
+    const mModifier = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\b/i);
+    if (mModifier) {
+      const part1 = mModifier[2] ? `${mModifier[1]} ${mModifier[2]}` : mModifier[1];
+      const part2 = mModifier[4] ? `${mModifier[3]} ${mModifier[4]}` : mModifier[3];
+      const clauseA = rawQueryHint.replace(mModifier[0], part1);
+      const clauseB = rawQueryHint.replace(mModifier[0], part2);
+      const resultA = lookup(clauseA);
+      const resultB = lookup(clauseB);
+      const variantB = soleVariant(resultB);
+      const variantA = soleVariant(resultA);
+      if (variantA && variantB && variantA !== variantB) {
+        return this.combineResults(
+          [{ name: variantA, result: resultA }, { name: variantB, result: resultB }],
+          [],
+          productName
+        );
+      }
+
+      // clauseA (the bare digit-word side, e.g. "3er" alone) may not
+      // resolve to a SOLE variant on its own -- bare "3er" legitimately
+      // ties several real "3-er ..." variants together (the same
+      // broadening this session's tie-break redesign correctly restores
+      // for cases like "give online sofa price"'s 6-way tie, see the
+      // two-stage candidate scoring above). clauseB (WITH the modifier,
+      // e.g. "3er maxi") is real, distinguishing signal though, and
+      // reliably resolves alone -- use it to narrow clauseA's own tied
+      // set: if excluding whatever clauseB claimed leaves candidates,
+      // the SHORTEST remaining name (fewest characters, a simple proxy
+      // for "fewest of its own extra distinguishing words" -- same
+      // "shortest/emptiest suffix wins" precedent as the Krisby
+      // baseVariants union in commit 5977220) is the most defensible
+      // guess at "the bare, unmodified member of the family" rather than
+      // giving up and silently dropping this side entirely.
+      if (variantB && !variantA) {
+        const variantsInA = [...new Set(
+          (resultA.matches || []).map(r => r.model_variant).filter((v): v is string => !!v)
+        )];
+        const remaining = variantsInA.filter(v => v !== variantB);
+        if (remaining.length > 0) {
+          const guessedVariantA = [...remaining].sort((a, b) => a.length - b.length)[0];
+          // Re-resolve cleanly via its own name (a variant's own name is
+          // always enough to compact-match itself uniquely) rather than
+          // reusing clauseA's own multi-variant result, which still has
+          // every tied variant's rows mixed together.
+          const resultAClean = lookup(guessedVariantA);
+          if (soleVariant(resultAClean) === guessedVariantA) {
+            return this.combineResults(
+              [{ name: guessedVariantA, result: resultAClean }, { name: variantB, result: resultB }],
+              [],
+              productName
+            );
+          }
+        }
+      }
+    }
+
     return this.lookupForProduct(productName, size, tiers, brand, rawQueryHint, lastModelVariant, wantsFullList);
   }
 
@@ -2648,7 +2711,6 @@ export class CatalogChat {
 
       let tiedFamily: string[] = [];
       if (!matched) {
-        let bestCountAtBest = 0;
         // Every variant whose compact (whitespace/punctuation-stripped)
         // suffix appears in the compact query -- collected rather than
         // taking the first hit, since stripping whitespace erases real
@@ -2661,6 +2723,45 @@ export class CatalogChat {
         // Aliante/Liam/Superhiro's "Terminale dx/sx" vs "Terminale
         // angolare dx/sx", etc.).
         const compactMatches: string[] = [];
+        // Two-stage candidate scoring, replacing two earlier single-
+        // number attempts that each broke a DIFFERENT real case:
+        //   1. Raw shared-word COUNT alone (commit 5977220) treated "2 of
+        //      3" and "2 of 7" as equally confident, letting a corrupted
+        //      merged-column data row (see flag_triage.json, Ditre
+        //      Italia: On Line) -- model_variant "3-er maxi central
+        //      element ... Mini terminal element", 7 significant words --
+        //      tie with "3-er maxi sofa" (3 words) purely because both
+        //      coincidentally share "3"+"maxi", surfacing the corrupted
+        //      row as a real answer.
+        //   2. Coverage RATIO alone (commit dd8f053) fixed that, but
+        //      pushed the problem the other way: it penalizes a
+        //      LEGITIMATE longer variant name for having its own real,
+        //      unstated extra words, not just a coincidentally-bloated
+        //      one. Confirmed live: "give online sofa price" should tie
+        //      all 6 of On Line's genuine "...sofa" variants (2-er sofa,
+        //      3-er sofa, 3-er maxi sofa, 3-er extra sofa, and both
+        //      "...with footstool..." variants) -- ratio instead kept
+        //      only "2-er sofa"/"3-er sofa" (fewest total words), since
+        //      "3-er maxi sofa" etc. score a lower ratio for the exact
+        //      same reason a REAL variant has a real second word, not
+        //      because "maxi"/"extra"/"with footstool" are unrelated
+        //      noise the way the corrupted row's leftover text is.
+        // Neither a pure count nor a pure ratio can tell "shares real
+        // signal, has more OF ITS OWN real content too" apart from
+        // "shares real signal purely by coincidence, in an unrelated
+        // pile of text" using only a single number. This scores in two
+        // passes instead: raw COUNT first decides how many of the
+        // query's real words a variant matches (its actual signal
+        // strength -- "3"+"maxi" is a stronger match than "3" alone,
+        // full stop); only WITHIN the tier of candidates already tied on
+        // that count does a bounded excess-word check apply, to catch a
+        // candidate whose UNMATCHED leftover is wildly larger than its
+        // same-count peers (5+ extra words vs the corrupted row, never
+        // seen on any real variant name in this catalog) without
+        // penalizing one that simply has a couple of its own genuine
+        // extra words (up to 4, covering the "...with footstool..."
+        // variants -- the largest legitimate case found).
+        const candidates: { v: string; shared: number; unmatched: number }[] = [];
         for (const v of distinctVariants) {
           const suffix = variantSuffix(v);
           if (!suffix) continue;
@@ -2670,31 +2771,8 @@ export class CatalogChat {
           }
           const suffixWords = suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord);
           const shared = suffixWords.filter(w => qWords.has(w)).length;
-          // Coverage RATIO (matched words / this variant's own total
-          // significant words), not raw shared-word COUNT -- a raw count
-          // treats "2 of 3" and "2 of 7" as equally confident, which let a
-          // long, unrelated variant tie with -- and get shown alongside --
-          // a short, near-completely-matched variant that happened to
-          // share the same word COUNT purely coincidentally. Confirmed
-          // live and real, not theoretical: On Line's "3-er maxi sofa"
-          // (suffix "3 maxi sofa", shares "3"+"maxi" = 2 of its own 3
-          // words) was tying with a corrupted merged-column data row
-          // whose model_variant is "3-er maxi central element ... Mini
-          // terminal element" (suffix has 7 significant words, but
-          // coincidentally ALSO shares just "3"+"maxi" = 2 of 7) -- same
-          // raw count, wildly different confidence, and the raw-count tie
-          // then surfaced the corrupted row into a real user-facing
-          // answer while silently dropping "3-er sofa" (which only shared
-          // 1 word and lost the tie outright).
-          const coverage = suffixWords.length > 0 ? shared / suffixWords.length : 0;
-          if (shared > 0 && coverage === bestCoverage) {
-            bestCountAtBest += 1;
-            tiedFamily.push(v);
-          } else if (coverage > bestCoverage) {
-            bestCoverage = coverage;
-            bestCountAtBest = 1;
-            matchingVariant = v;
-            tiedFamily = [v];
+          if (shared > 0) {
+            candidates.push({ v, shared, unmatched: suffixWords.length - shared });
           }
         }
         if (compactMatches.length > 0) {
@@ -2709,8 +2787,25 @@ export class CatalogChat {
           });
           matchingVariant = compactMatches[0];
           matched = true;
-        } else {
-          matched = bestCountAtBest === 1 && !!matchingVariant;
+        } else if (candidates.length > 0) {
+          const maxShared = Math.max(...candidates.map(c => c.shared));
+          const topTier = candidates.filter(c => c.shared === maxShared);
+          const minUnmatched = Math.min(...topTier.map(c => c.unmatched));
+          // Bound found from the real cases above: within its own tied
+          // tier, the largest genuine excess is 3 (On Line's "...with
+          // footstool and arm rest" pair, unmatched=4 vs their tier's own
+          // minimum unmatched=1); the corrupted row's excess is 4 (within
+          // ITS tied tier -- unmatched=5 vs minimum=1). 3 is the highest
+          // value that still includes every confirmed-real case while
+          // excluding the confirmed-corrupted one.
+          const UNMATCHED_EXCESS_ALLOWANCE = 3;
+          tiedFamily = topTier
+            .filter(c => c.unmatched - minUnmatched <= UNMATCHED_EXCESS_ALLOWANCE)
+            .map(c => c.v);
+          if (tiedFamily.length === 1) {
+            matchingVariant = tiedFamily[0];
+            matched = true;
+          }
         }
       }
 
