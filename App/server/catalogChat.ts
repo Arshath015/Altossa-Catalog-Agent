@@ -2051,8 +2051,21 @@ export class CatalogChat {
         // the tier "C" apart from "c" just being the first letter of some
         // unrelated token (e.g. "com", another tier's own significant
         // token) or the stripped filler word itself.
+        // The `reqNorm.startsWith(tok)` direction is only safe when `tok`
+        // is itself long enough to be a real word/code -- Category tier
+        // schemes (Bolzan, Ditre, ...) reduce to single-letter tokens
+        // ("e", "l", "u", ...) after the generic "cat"/"category" filler
+        // is stripped, so without this guard ANY longer requested word
+        // that happens to start with the same letter spuriously prefix-
+        // matches ("extra".startsWith("e") -> true). Confirmed live: "give
+        // all online 3er extra sofa price" -- "extra" is actually part of
+        // the VARIANT name "3-er extra sofa", not a real tier -- resolved
+        // to On Line's "Category E-L" this way and turned an intended
+        // full-price-list request into one confidently-wrong single row.
+        // The `tok.startsWith(reqNorm)` direction doesn't need this guard:
+        // it can't fire unless tok.length >= reqNorm.length >= 3 already.
         return reqNorm.length >= 3 &&
-          (tTokens.some(tok => tok.startsWith(reqNorm) || reqNorm.startsWith(tok)) || t.includes(reqNorm));
+          (tTokens.some(tok => tok.startsWith(reqNorm) || (tok.length >= 3 && reqNorm.startsWith(tok))) || t.includes(reqNorm));
       });
       if (partial) resolved.add(partial);
     }
