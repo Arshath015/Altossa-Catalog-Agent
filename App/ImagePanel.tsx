@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { ImageOff } from 'lucide-react';
+import ImageLightbox from './ImageLightbox';
 
 export interface ImagePanelData {
   urls: string[];
@@ -18,6 +20,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function ImagePanel({ data }: { data: ImagePanelData | null }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   return (
     <div className="w-[380px] shrink-0 h-full border-l-2 border-[var(--riso-line)] bg-[var(--riso-surface)] flex flex-col">
       <div className="px-5 py-6 border-b-2 border-[var(--riso-line)]">
@@ -49,12 +53,21 @@ export default function ImagePanel({ data }: { data: ImagePanelData | null }) {
                 {STATUS_LABEL[data.status]}
               </div>
             )}
-            {data.urls.map((url) => (
-              <RisoFramedImage key={url} url={url} />
+            {data.urls.map((url, i) => (
+              <RisoFramedImage key={url} url={url} onClick={() => setLightboxIndex(i)} />
             ))}
           </>
         )}
       </div>
+
+      {data && lightboxIndex !== null && (
+        <ImageLightbox
+          urls={data.urls}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
+      )}
     </div>
   );
 }
@@ -62,10 +75,12 @@ export default function ImagePanel({ data }: { data: ImagePanelData | null }) {
 /** The signature visual moment: the real catalog screenshot rendered with
  * a Risograph "double-hit" duotone overlay (pink + yellow, multiply
  * blended) and a deliberately offset double border, mimicking ink
- * slightly out of registration on a real riso print. */
-function RisoFramedImage({ url }: { url: string }) {
+ * slightly out of registration on a real riso print. Opens the same-tab
+ * ImageLightbox on click instead of the old `target="_blank"` new-tab
+ * behavior. */
+function RisoFramedImage({ url, onClick }: { url: string; onClick: () => void }) {
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="block relative group">
+    <button type="button" onClick={onClick} className="block w-full text-left relative group">
       <div className="absolute -inset-0 translate-x-[3px] translate-y-[3px] border-2 border-[var(--riso-pink)] pointer-events-none" />
       <div className="absolute -inset-0 -translate-x-[3px] -translate-y-[3px] border-2 border-[var(--riso-yellow)] pointer-events-none" />
       <div className="relative border-2 border-[var(--riso-text)] bg-white overflow-hidden">
@@ -80,6 +95,6 @@ function RisoFramedImage({ url }: { url: string }) {
           style={{ background: 'linear-gradient(135deg, var(--riso-pink), var(--riso-yellow))' }}
         />
       </div>
-    </a>
+    </button>
   );
 }
