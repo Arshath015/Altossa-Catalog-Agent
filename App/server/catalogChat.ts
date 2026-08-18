@@ -803,15 +803,53 @@ export class CatalogChat {
     const realTierValues = [...new Set(
       this.prices.filter(r => r.product_name === productName).map(r => r.fabric_tier).filter((t): t is string => !!t)
     )];
+    // Real MODEL VARIANT names for this product -- e.g. Ditre's "2-er
+    // sofa"/"3-er sofa"/"3-er maxi sofa". Needed for the leading-digit
+    // check just below: this function previously only recognized a
+    // segment as "belonging" to the product via its NAME or a TIER value,
+    // with no concept of a variant-distinguishing phrase at all. Confirmed
+    // real and live: "give online 3er leaather vip and category U" splits
+    // (on the literal "and") into ["give online 3er leaather vip",
+    // "category U"] -- the first segment matches neither the product name
+    // nor any tier, so it was silently excluded, discarding the genuine
+    // "3er" variant signal along with the (separately, correctly) unmatched
+    // typo. That fed a scopedQuery of just "category U" into
+    // lookupForProduct, with zero variant signal left for the session's
+    // own tiedFamily/anchor-reuse-guard fix to work with.
+    const realVariantValues = [...new Set(
+      this.prices.filter(r => r.product_name === productName).map(r => r.model_variant).filter((v): v is string => !!v)
+    )];
     const segTokens = (s: string) => normalize(s).split(/\s+/).filter(Boolean);
+    // Leading digit run of a whitespace-split word, e.g. "3-er" -> "3",
+    // "3er" -> "3", "82x82" -> "82". Deliberately NOT a full tokenization
+    // reconciliation (tokenizeLoose vs plain split, hyphen vs none) --
+    // just enough to unify a hyphenated variant name ("3-er") with the
+    // same thing typed without the hyphen ("3er"), since that's the
+    // PROVEN bug shape, not a general "recognize any variant word" rule
+    // (deliberately narrower in scope -- see this function's own risk
+    // discussion for why: excluding real signal is the demonstrated harm,
+    // so this only needs to catch the exact shape that caused it).
+    const leadingDigits = (word: string): string | null => {
+      const m = word.match(/^(\d+)/);
+      return m ? m[1] : null;
+    };
     const belongsToProduct = (seg: string) => {
       if (containsWholeWord(normalize(seg), normalize(productName))) return true;
       const tokens = segTokens(seg);
       if (tokens.length === 0) return false;
-      return realTierValues.some(t => {
+      const tierMatch = realTierValues.some(t => {
         const tierTokens = segTokens(t);
         return tokens.every(tok => tierTokens.includes(tok));
       });
+      if (tierMatch) return true;
+      const segDigits = new Set(tokens.map(leadingDigits).filter((d): d is string => d !== null));
+      if (segDigits.size === 0) return false;
+      return realVariantValues.some(v =>
+        segTokens(v).some(vTok => {
+          const d = leadingDigits(vTok);
+          return d !== null && segDigits.has(d);
+        })
+      );
     };
     const own = segments.filter(belongsToProduct);
     if (own.length > 0 && own.length < segments.length) {
@@ -2358,9 +2396,34 @@ export class CatalogChat {
       // rejected as too broad -- see the full before/after diff run
       // across all 5 brands' variant data before this landed).
       const isDistinguishingWord = (w: string) => w.length >= 4 || /\d/.test(w);
-      const qWords = new Set(
-        qNorm.replace(normalize(productName), '').split(/[^a-z0-9]+/).filter(isDistinguishingWord)
-      );
+      // Leading digit run of a raw word, e.g. "3-er" -> "3" (after the
+      // split above already separated it), "3er" -> "3" (typed with no
+      // hyphen at all -- how someone actually types it, not how it's
+      // printed). The split on /[^a-z0-9]+/ only separates "3" from "er"
+      // when there's a REAL punctuation character between them -- a
+      // glued "3er" never splits, stays one token, and never string-
+      // equals a variant's own separately-split "3". Confirmed live and
+      // NOT covered by the isDistinguishingWord fix above alone: "give
+      // online 3-er category U" (hyphenated, matching the printed
+      // variant name) correctly broadens against a contradicting anchor,
+      // but "give online 3er category U" (the same thing typed without
+      // the hyphen) still silently returned the wrong, stale anchored
+      // variant -- isDistinguishingWord("3er") passes (it has a digit),
+      // so the token survives into qWords, but as "3er", never as "3" on
+      // its own, so it never matches the variant's own token. Adding the
+      // extracted digit itself alongside the full token closes that
+      // gap without needing to change every qWords/suffixWords
+      // comparison site.
+      const leadingDigits = (w: string): string | null => {
+        const m = w.match(/^(\d+)/);
+        return m ? m[1] : null;
+      };
+      const qRawWords = qNorm.replace(normalize(productName), '').split(/[^a-z0-9]+/).filter(isDistinguishingWord);
+      const qWords = new Set(qRawWords);
+      for (const w of qRawWords) {
+        const d = leadingDigits(w);
+        if (d) qWords.add(d);
+      }
       // "h.NN" (a height/model number like "h.7", "h.21", "h27") is the
       // single most common distinguishing signal across this whole
       // catalog's multi-variant products -- extract it from the query up
