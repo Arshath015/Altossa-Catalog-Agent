@@ -1035,8 +1035,28 @@ export class CatalogChat {
         result: this.answerFromIntent(name, scopedSize, scopedTierArray.length > 0 ? scopedTierArray : null, scopedQuery, brand, null, wantsFullList, null, null, true),
       };
     });
-    const combinedMatches = perProduct.flatMap(p => p.result.matches || []);
-    const combinedImages = [...new Set(perProduct.flatMap(p => p.result.image_urls || []))];
+    return this.combineResults(perProduct, unresolvedMentions);
+  }
+
+  /** Combines N already-resolved sub-results (one per distinct product NAME
+   * for buildMultiProductResult's caller, or one per distinct model_variant
+   * for resolveProductQuery's same-product-multi-variant caller) into a
+   * single ChatResult -- extracted from buildMultiProductResult's own tail
+   * so resolveProductQuery can reuse the exact same combining/rendering
+   * shape instead of building a second one. Pure extraction: behavior for
+   * buildMultiProductResult's own callers is unchanged (entries.map(p =>
+   * p.name).join(', ') is the same value validNames.join(', ') was).
+   * `productNameOverride` lets a same-product caller pass the one real
+   * product name instead of joining per-entry labels (which, for that
+   * caller, are variant names, not product names -- joining THOSE into
+   * product_name would break the lastProduct anchor on the next turn). */
+  private combineResults(
+    entries: { name: string; result: ChatResult }[],
+    unresolvedMentions: string[],
+    productNameOverride?: string
+  ): ChatResult {
+    const combinedMatches = entries.flatMap(p => p.result.matches || []);
+    const combinedImages = [...new Set(entries.flatMap(p => p.result.image_urls || []))];
     const notFoundLines = unresolvedMentions.map(n => `${n}: couldn't find a matching product in the catalog.`);
     // Above a certain count, concatenating every sub-lookup's own message
     // (each one already a full sentence, sometimes a full price grid's
@@ -1054,33 +1074,98 @@ export class CatalogChat {
     // enough to read, and callers/tests may depend on its exact shape.
     const LARGE_RESULT_THRESHOLD = 20;
     let message: string;
-    if (validNames.length > LARGE_RESULT_THRESHOLD) {
-      const pricedCount = perProduct.filter(p => (p.result.matches?.length ?? 0) > 0).length;
-      const unpricedCount = perProduct.length - pricedCount;
+    if (entries.length > LARGE_RESULT_THRESHOLD) {
+      const pricedCount = entries.filter(p => (p.result.matches?.length ?? 0) > 0).length;
+      const unpricedCount = entries.length - pricedCount;
       // Use the real collection name in the summary when every candidate
       // shares one (ground truth, same mechanism as the wantsFullList
       // majority-group fix above) -- falls back to a generic phrasing
       // when they don't (e.g. a mixed-name multi-product request), never
       // guessing a collection that isn't actually true for the whole set.
-      const collections = new Set(validNames.map(n => this.productNameToCollection.get(n)));
+      const collections = new Set(entries.map(p => this.productNameToCollection.get(p.name)));
       const subject = collections.size === 1 && [...collections][0] ? [...collections][0] : 'matching';
-      const summaryParts = [`Found ${validNames.length} ${subject} products`];
+      const summaryParts = [`Found ${entries.length} ${subject} products`];
       if (pricedCount > 0 || unpricedCount > 0) {
         summaryParts.push(`${pricedCount} priced, ${unpricedCount} without price data yet`);
       }
       const summary = `${summaryParts.join(' -- ')}. Full details and page images are shown below.`;
       message = [summary, ...notFoundLines].join('\n\n');
     } else {
-      message = [...perProduct.map(p => `${p.name}: ${p.result.message}`), ...notFoundLines].join('\n\n');
+      message = [...entries.map(p => `${p.name}: ${p.result.message}`), ...notFoundLines].join('\n\n');
     }
 
     return {
       status: 'multi_product',
       message,
-      product_name: validNames.join(', '),
+      product_name: productNameOverride ?? entries.map(p => p.name).join(', '),
       matches: combinedMatches,
       image_urls: combinedImages,
     };
+  }
+
+  /**
+   * Detects the one narrow elided same-product multi-variant shape this
+   * session confirmed live -- "give online 2er and 3er sofa prices" means
+   * "2-er sofa AND 3-er sofa", but the shared trailing word "sofa" is only
+   * typed once. lookupForProduct's own variant-matching has no concept of
+   * "this query names 2 different variants of the SAME product" -- its
+   * compact-match strategy (see there) short-circuits on the FIRST variant
+   * whose stripped suffix happens to be CONTIGUOUS in the stripped query.
+   * Here only "3-er sofa" qualifies ("3er" sits directly next to "sofa" in
+   * the raw text); "2-er sofa" doesn't ("and 3er" sits between "2er" and
+   * "sofa"), so it's silently never even considered a candidate -- not
+   * losing a tie-break, just invisible. No wrong price is ever shown (this
+   * is a silent-drop, not a confidently-wrong-price bug), but the second
+   * variant is missing with no ambiguity note at all.
+   *
+   * Deliberately narrow, matching this session's "fix the proven bug
+   * shape, don't build a general grammar parser" discipline: only the
+   * "<digit-word> and <digit-word> <shared trailing text>" shape is
+   * recognized syntactically. Whether it actually FIRES is gated
+   * behaviorally, not just syntactically: both reconstructed clauses are
+   * run through the exact same, unmodified `lookupForProduct` used by
+   * every other caller, and this only takes effect if BOTH independently
+   * resolve to a single, real, and mutually DIFFERENT model_variant. Any
+   * other outcome (one side doesn't resolve to exactly one variant, both
+   * resolve to the same variant, or the query doesn't match the shape at
+   * all) falls straight through to the original single-call behavior,
+   * unchanged -- so a false trigger costs 2 extra in-memory lookups, never
+   * a wrong or different answer than before this existed.
+   */
+  private resolveProductQuery(
+    productName: string,
+    size: string | null,
+    tiers: string[],
+    brand: string,
+    rawQueryHint: string,
+    lastModelVariant: string | null,
+    wantsFullList: boolean
+  ): ChatResult {
+    // Hyphen made optional in the digit-word itself so this matches both
+    // how the variant is actually PRINTED ("3-er") and how the original
+    // live repro typed it (no hyphen at all, "3er") -- same "typed vs
+    // printed" gap this session's qWords glued-digit fix closed elsewhere.
+    const m = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)\s+and\s+(\d+-?[a-zA-Z]*)\b/i);
+    if (m) {
+      const clauseA = rawQueryHint.replace(m[0], m[1]);
+      const clauseB = rawQueryHint.replace(m[0], m[2]);
+      const resultA = this.lookupForProduct(productName, size, tiers, brand, clauseA, lastModelVariant, wantsFullList);
+      const resultB = this.lookupForProduct(productName, size, tiers, brand, clauseB, lastModelVariant, wantsFullList);
+      const soleVariant = (r: ChatResult): string | null => {
+        const variants = new Set((r.matches || []).map(row => row.model_variant).filter((v): v is string => !!v));
+        return variants.size === 1 ? [...variants][0] : null;
+      };
+      const variantA = soleVariant(resultA);
+      const variantB = soleVariant(resultB);
+      if (variantA && variantB && variantA !== variantB) {
+        return this.combineResults(
+          [{ name: variantA, result: resultA }, { name: variantB, result: resultB }],
+          [],
+          productName
+        );
+      }
+    }
+    return this.lookupForProduct(productName, size, tiers, brand, rawQueryHint, lastModelVariant, wantsFullList);
   }
 
   /** Full list of real product names for this brand -- used to ground the LLM's guesses. */
@@ -1302,7 +1387,7 @@ export class CatalogChat {
         const tiers = extractTiers(scopedQuery, [productName]);
         const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
         return this.withUnresolvedClauseNote(
-          this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+          this.resolveProductQuery(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
           excludedClause
         );
       }
@@ -1329,7 +1414,7 @@ export class CatalogChat {
       const isContentFree = queryWords.length > 0 && queryWords.every(w => RISKY_SIZE_CODE_WORDS.has(w));
       if (isContentFree && lastProduct && this.productNames.includes(lastProduct)) {
         const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
-        return this.lookupForProduct(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
+        return this.resolveProductQuery(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
       }
       // Sibling anchor to lastProduct above, for the case where the PREVIOUS
       // turn was itself unresolved -- a clarify_product candidate list, not
@@ -1507,7 +1592,7 @@ export class CatalogChat {
       const tiers = extractTiers(scopedQuery, [productName]);
       const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
       return this.withUnresolvedClauseNote(
-        this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+        this.resolveProductQuery(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
         excludedClause
       );
     }
@@ -1518,7 +1603,7 @@ export class CatalogChat {
     const tiers = extractTiers(scopedQuery, [productName]);
     const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
     return this.withUnresolvedClauseNote(
-      this.lookupForProduct(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+      this.resolveProductQuery(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
       excludedClause
     );
   }
@@ -1892,7 +1977,7 @@ export class CatalogChat {
     // already passes an individually-scoped clause with no "and" left in
     // it, so excludedClause is always null in that context.
     return this.withUnresolvedClauseNote(
-      this.lookupForProduct(effectiveProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+      this.resolveProductQuery(effectiveProductName, effectiveSize, normalizedTiers, brand, scopedQuery, lastModelVariant, wantsFullList),
       excludedClause
     );
   }
