@@ -1138,7 +1138,7 @@ export class CatalogChat {
     tiers: string[],
     brand: string,
     rawQueryHint: string,
-    lastModelVariant: string | null,
+    lastModelVariant: string | string[] | null,
     wantsFullList: boolean
   ): ChatResult {
     // Hyphen made optional in the digit-word itself so this matches both
@@ -1367,7 +1367,7 @@ export class CatalogChat {
   answer(
     query: string,
     brand: string,
-    lastModelVariant: string | null = null,
+    lastModelVariant: string | string[] | null = null,
     lastProduct: string | null = null,
     lastCandidates: string[] | null = null
   ): ChatResult {
@@ -1833,7 +1833,7 @@ export class CatalogChat {
     tier: string | string[] | null,
     rawQuery: string,
     brand: string,
-    lastModelVariant: string | null = null,
+    lastModelVariant: string | string[] | null = null,
     wantsFullList: boolean = false,
     lastProduct: string | null = null,
     lastCandidates: string[] | null = null,
@@ -2047,7 +2047,7 @@ export class CatalogChat {
     tier: string | string[] | null,
     rawQuery: string,
     brand: string,
-    lastModelVariant: string | null = null,
+    lastModelVariant: string | string[] | null = null,
     wantsFullList: boolean = false,
     lastProduct: string | null = null,
     lastCandidates: string[] | null = null
@@ -2184,9 +2184,24 @@ export class CatalogChat {
     tiers: string[],
     brand: string,
     rawQueryHint: string = '',
-    lastModelVariant: string | null = null,
+    lastModelVariant: string | string[] | null = null,
     wantsFullListHint: boolean = false
   ): ChatResult {
+    // Normalized to an array everywhere below -- a single anchor variant
+    // (the ordinary case) is just a 1-element array, so every consumer of
+    // `lastVariants` handles both shapes through one code path. Needed
+    // because a MULTIPLE PRODUCTS turn (this session's own same-product
+    // multi-variant elision feature) can legitimately leave MORE than one
+    // variant as "what we were just discussing" -- lastModelVariant used
+    // to be a single string only, built on the assumption (true before
+    // that feature existed) that one turn always resolves to exactly one
+    // variant. Confirmed real and live: after "give online 3er and 3er
+    // maxi all price" (a MULTIPLE PRODUCTS result spanning "3-er sofa"
+    // AND "3-er maxi sofa"), a vague follow-up like "give all online
+    // price" had no way to recall more than one of them.
+    const lastVariants: string[] = Array.isArray(lastModelVariant)
+      ? lastModelVariant
+      : (lastModelVariant ? [lastModelVariant] : []);
     let rows = this.prices.filter(r => r.product_name === productName);
     if (rows.length === 0) {
       return {
@@ -2709,7 +2724,7 @@ export class CatalogChat {
       // that family, before ever falling back to blindly repeating
       // whatever variant was shown last turn.
       if (!matched && tiedFamily.length > 1) {
-        const heightToUse = qHeight || (lastModelVariant ? extractShortCode(lastModelVariant) : null);
+        const heightToUse = qHeight || (lastVariants.length > 0 ? extractShortCode(lastVariants[0]) : null);
         if (heightToUse) {
           const withinFamily = tiedFamily.filter(v => extractShortCode(v) === heightToUse);
           if (withinFamily.length === 1) {
@@ -2759,7 +2774,7 @@ export class CatalogChat {
 
       if (matched && matchingVariant) {
         rows = rows.filter(r => r.model_variant === matchingVariant);
-      } else if (!hasContradictingTurnSignal && !explicitProductRebroaden && lastModelVariant) {
+      } else if (!hasContradictingTurnSignal && !explicitProductRebroaden && lastVariants.length > 0) {
         // Nothing in THIS message names a specific variant, but we were
         // already narrowed to something in a previous turn. If that
         // anchor has a height number, prefer expanding to ALL current
@@ -2770,17 +2785,29 @@ export class CatalogChat {
         // also handles switching between variant FAMILIES that share a
         // height but have different names (e.g. "Face - h.27 basamento
         // regolabile" -> "Face / Struttura Legno Massello FSC (h.27)").
-        const lastHeight = extractShortCode(lastModelVariant);
-        const heightMatches = lastHeight
-          ? distinctVariants.filter(v => extractShortCode(v) === lastHeight)
+        // Union of every height code ANY anchor variant resolves to --
+        // usually 1 anchor variant means 1 code, but a multi-variant
+        // anchor (from a MULTIPLE PRODUCTS turn) can legitimately have
+        // several, and they don't need to share a height at all.
+        const lastHeights = new Set(
+          lastVariants.map(v => extractShortCode(v)).filter((h): h is string => !!h)
+        );
+        const heightMatches = lastHeights.size > 0
+          ? distinctVariants.filter(v => { const h = extractShortCode(v); return !!h && lastHeights.has(h); })
           : [];
         if (heightMatches.length > 0) {
           rows = rows.filter(r => r.model_variant && heightMatches.includes(r.model_variant));
-        } else if (distinctVariants.includes(lastModelVariant)) {
-          // No height number to work with -- fall back to the plain
-          // exact-string anchor match (e.g. a variant family that isn't
-          // height-based at all, like Jack's wood vs iron frame).
-          rows = rows.filter(r => r.model_variant === lastModelVariant);
+        } else {
+          // No height code to expand by -- fall back to the plain exact-
+          // string anchor match(es). Restores EVERY anchor variant that
+          // still exists for this product, not just one -- this is the
+          // actual fix: lastModelVariant used to only ever be a single
+          // string, so a vague follow-up after a genuine multi-variant
+          // MULTIPLE PRODUCTS turn had no way to recall more than one.
+          const validAnchors = lastVariants.filter(v => distinctVariants.includes(v));
+          if (validAnchors.length > 0) {
+            rows = rows.filter(r => r.model_variant && validAnchors.includes(r.model_variant));
+          }
         }
       } else if (tiedFamily.length > 1) {
         // A genuine tie among THIS turn's own word-matched candidates

@@ -81,7 +81,7 @@ export interface BrandSession {
   messages: ChatMessage[];
   loading: boolean;
   lastProduct: string | null;
-  lastModelVariant: string | null;
+  lastModelVariant: string | string[] | null;
   lastCandidates: string[] | null;
 }
 
@@ -204,7 +204,7 @@ export default function CatalogChatWidget({
         newLastCandidates = null;
       }
       const variantsInResult = [...new Set((result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
-      let newLastModelVariant: string | null;
+      let newLastModelVariant: string | string[] | null;
       if (variantsInResult.length === 1) {
         newLastModelVariant = variantsInResult[0];
       } else if (variantsInResult.length > 1) {
@@ -221,7 +221,17 @@ export default function CatalogChatWidget({
           return m ? `${m[1].toLowerCase()}:${m[2]}` : null;
         };
         const codes = new Set(variantsInResult.map(shortCode).filter(Boolean));
-        newLastModelVariant = codes.size === 1 ? variantsInResult[0] : null;
+        // No single short code unifies them -- rather than losing the
+        // anchor entirely (the old behavior: falling back to null), keep
+        // the FULL list. Needed since tonight's own same-product multi-
+        // variant elision feature can produce a genuine MULTIPLE PRODUCTS
+        // turn discussing 2+ real, differently-named variants at once
+        // (e.g. "3-er sofa" AND "3-er maxi sofa", no shared h.NN/sp.NN
+        // code between them at all) -- a vague follow-up right after that
+        // turn ("give all online price") needs to recall BOTH, not
+        // silently broaden to every variant of the product as if nothing
+        // had just been discussed.
+        newLastModelVariant = codes.size === 1 ? variantsInResult[0] : variantsInResult;
       } else {
         newLastModelVariant = null;
       }

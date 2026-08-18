@@ -62,7 +62,7 @@ router.post('/chat', async (req: Request, res: Response) => {
     message?: string;
     history?: ChatTurn[];
     lastProduct?: string | null;
-    lastModelVariant?: string | null;
+    lastModelVariant?: string | string[] | null;
     lastCandidates?: string[] | null;
   };
 
