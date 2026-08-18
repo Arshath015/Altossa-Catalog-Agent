@@ -70,6 +70,36 @@ interface ChatMessage {
   result?: ChatResult;
 }
 
+/** One brand's entire chat session -- messages plus the anchor context used
+ * to resolve content-free follow-ups ("give all", "yes"). Lives in a
+ * Record<brand, BrandSession> at the CatalogApp level so switching brands
+ * swaps which slot this widget reads/writes instead of unmounting the
+ * widget and destroying state (the old `key={brand}` approach). Anchors
+ * are per-slot so a product resolved while chatting about one brand can
+ * never leak into another brand's follow-up resolution. */
+export interface BrandSession {
+  messages: ChatMessage[];
+  loading: boolean;
+  lastProduct: string | null;
+  lastModelVariant: string | null;
+  lastCandidates: string[] | null;
+}
+
+export function createInitialBrandSession(brand: string): BrandSession {
+  return {
+    messages: [
+      {
+        role: 'assistant',
+        text: `Ask me about any ${brand} product - e.g. "how much is the Ceylon in 160x200, Extra fabric?"`,
+      },
+    ],
+    loading: false,
+    lastProduct: null,
+    lastModelVariant: null,
+    lastCandidates: null,
+  };
+}
+
 const STATUS_STYLES: Record<string, { badge: string; color: string; icon?: 'warn' | 'help' }> = {
   ok: { badge: 'VERIFIED PRICE', color: 'text-[var(--riso-yellow)] border-[var(--riso-yellow)]' },
   full_price_grid: { badge: 'FULL PRICE LIST', color: 'text-[var(--riso-yellow)] border-[var(--riso-yellow)]' },
@@ -98,31 +128,25 @@ function buildImagePanelLabel(result: ChatResult, variantsInResult: string[]): s
 
 export default function CatalogChatWidget({
   brand,
+  session,
+  onSessionChange,
   onLatestImages,
 }: {
   brand: string;
+  session: BrandSession;
+  onSessionChange: (updater: (prev: BrandSession) => BrandSession) => void;
   onLatestImages?: (data: ImagePanelData) => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      text: `Ask me about any ${brand} product — e.g. "how much is the Ceylon in 160x200, Extra fabric?"`,
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const { messages, loading, lastProduct, lastModelVariant, lastCandidates } = session;
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastProductRef = useRef<string | null>(null);
-  const lastModelVariantRef = useRef<string | null>(null);
-  /** The candidate list from the most recent `clarify_product` turn, when
-   * nothing has been confirmed yet -- mutually exclusive with
-   * lastProductRef (exactly one is non-null at a time, or neither),
-   * symmetrically cleared the same way Issue 5 fixed lastProductRef: any
-   * turn that DOES resolve a real product clears this, any OTHER
-   * unresolved/ambiguous turn clears both. Lets a content-free follow-up
-   * ("give all", "yes") right after a clarify_product turn reference the
-   * list the user was just shown, instead of having nothing to anchor to
-   * at all (the gap Issue 5's fix correctly left safe but unhelpful). */
-  const lastCandidatesRef = useRef<string[] | null>(null);
+  /** Tracks the currently-selected brand so a response that resolves after
+   * the user has already switched brands doesn't push its images into the
+   * ImagePanel for whatever brand is now on screen. The session data itself
+   * still lands in the correct (originating) brand's slot regardless. */
+  const currentBrandRef = useRef(brand);
+  useEffect(() => {
+    currentBrandRef.current = brand;
+  }, [brand]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -130,19 +154,20 @@ export default function CatalogChatWidget({
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
-    setMessages(prev => [...prev, { role: 'user', text }]);
-    setLoading(true);
+    const requestBrand = brand;
+    const historyForRequest = messages.slice(-4).map(m => ({ role: m.role, text: m.text }));
+    onSessionChange(prev => ({ ...prev, messages: [...prev.messages, { role: 'user', text }], loading: true }));
     try {
       const res = await fetch('/api/catalog/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brand,
+          brand: requestBrand,
           message: text,
-          history: messages.slice(-4).map(m => ({ role: m.role, text: m.text })),
-          lastProduct: lastProductRef.current,
-          lastModelVariant: lastModelVariantRef.current,
-          lastCandidates: lastCandidatesRef.current,
+          history: historyForRequest,
+          lastProduct,
+          lastModelVariant,
+          lastCandidates,
         }),
       });
       const result: ChatResult = await res.json();
@@ -166,19 +191,22 @@ export default function CatalogChatWidget({
       // one of the two anchors is ever populated at a time, never both, so
       // a later content-free follow-up always has a single unambiguous
       // source of context to fall back on.
+      let newLastProduct: string | null;
+      let newLastCandidates: string[] | null;
       if (result.product_name) {
-        lastProductRef.current = result.product_name;
-        lastCandidatesRef.current = null;
+        newLastProduct = result.product_name;
+        newLastCandidates = null;
       } else if (result.status === 'clarify_product' && result.candidates && result.candidates.length > 0) {
-        lastProductRef.current = null;
-        lastCandidatesRef.current = result.candidates;
+        newLastProduct = null;
+        newLastCandidates = result.candidates;
       } else {
-        lastProductRef.current = null;
-        lastCandidatesRef.current = null;
+        newLastProduct = null;
+        newLastCandidates = null;
       }
       const variantsInResult = [...new Set((result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
+      let newLastModelVariant: string | null;
       if (variantsInResult.length === 1) {
-        lastModelVariantRef.current = variantsInResult[0];
+        newLastModelVariant = variantsInResult[0];
       } else if (variantsInResult.length > 1) {
         // Not a single exact variant, but if they all share the same
         // short distinguishing code -- "h.NN" (e.g. "h.8 basamento" +
@@ -193,25 +221,36 @@ export default function CatalogChatWidget({
           return m ? `${m[1].toLowerCase()}:${m[2]}` : null;
         };
         const codes = new Set(variantsInResult.map(shortCode).filter(Boolean));
-        lastModelVariantRef.current = codes.size === 1 ? variantsInResult[0] : null;
+        newLastModelVariant = codes.size === 1 ? variantsInResult[0] : null;
       } else {
-        lastModelVariantRef.current = null;
+        newLastModelVariant = null;
       }
 
-      onLatestImages?.({
-        urls: result.image_urls || [],
-        label: buildImagePanelLabel(result, variantsInResult),
-        status: result.status,
-      });
+      if (currentBrandRef.current === requestBrand) {
+        onLatestImages?.({
+          urls: result.image_urls || [],
+          label: buildImagePanelLabel(result, variantsInResult),
+          status: result.status,
+        });
+      }
 
-      setMessages(prev => [...prev, { role: 'assistant', text: result.message, result }]);
+      onSessionChange(prev => ({
+        ...prev,
+        messages: [...prev.messages, { role: 'assistant', text: result.message, result }],
+        loading: false,
+        lastProduct: newLastProduct,
+        lastCandidates: newLastCandidates,
+        lastModelVariant: newLastModelVariant,
+      }));
     } catch (err) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: "Something went wrong reaching the catalog. Please try again.",
-      }]);
-    } finally {
-      setLoading(false);
+      onSessionChange(prev => ({
+        ...prev,
+        messages: [...prev.messages, {
+          role: 'assistant',
+          text: "Something went wrong reaching the catalog. Please try again.",
+        }],
+        loading: false,
+      }));
     }
   }
 
@@ -359,6 +398,26 @@ function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShow
           <table className="w-full font-data text-xs">
             <thead className="bg-[var(--riso-surface)] text-stone-400">
               <tr>
+                {/* Only shown when at least one row actually has a
+                    model_variant -- many products have no variant
+                    dimension at all, and a column of nothing but "—"
+                    would just be noise (same "don't show an inapplicable
+                    dimension" precedent as tierColumnHeader's own "—"
+                    fallback just to the right of this). Needed because
+                    this table is the ONLY place a multi-row response
+                    shows size/tier/code/price side by side without also
+                    showing WHICH named variant each row belongs to --
+                    the full_price_grid/multi_product path already groups
+                    by variant via ProductSection headers, but this
+                    smaller multiple_options table had no equivalent,
+                    even though model_variant is already resolved
+                    correctly on every row (confirmed live: "3-er sofa"/
+                    "3-er maxi sofa"/"3-er extra sofa"/"3-er central
+                    element" rows were indistinguishable from each other
+                    beyond their raw size string). */}
+                {message.result.matches.some(r => r.model_variant) && (
+                  <th className="text-left px-3 py-1.5 font-medium">VARIANT</th>
+                )}
                 <th className="text-left px-3 py-1.5 font-medium">SIZE</th>
                 <th className="text-left px-3 py-1.5 font-medium">{tierColumnHeader(message.result.matches)}</th>
                 <th className="text-left px-3 py-1.5 font-medium">CODE</th>
@@ -368,6 +427,9 @@ function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShow
             <tbody>
               {message.result.matches.map((r, i) => (
                 <tr key={i} className="border-t border-[var(--riso-line)]">
+                  {message.result!.matches!.some(m => m.model_variant) && (
+                    <td className="px-3 py-1.5 text-stone-300">{r.model_variant || '—'}</td>
+                  )}
                   <td className="px-3 py-1.5 text-stone-300">{r.size || '—'}</td>
                   <td className="px-3 py-1.5 text-stone-300">{r.fabric_tier || '—'}</td>
                   <td className="px-3 py-1.5 text-stone-500">{r.code || '—'}</td>

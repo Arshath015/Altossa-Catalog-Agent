@@ -21,7 +21,7 @@ give premier wood 240 120 price
 get me all prices for Richard bed
 wlima pelle glove
 sierra pouf 100x94x41h pelle and tina pelle
-gve me greta wood pelle and wlima pelle glove
+gve me greta wood pelle and wilma pelle glove
 
 bonaldo
 get me cuff bench
@@ -60,3 +60,9 @@ a Cattelan or Bonaldo product name asked under Varaschini — expect no cross-br
 Emma Tavolino 23670 price — known gap, expect clean fail
 Belt Air 249C3 price — now should resolve with real data (was a discovery gap, just fixed)
 Teli di Copertura 9C5210 price (or similar 9C5XXX code) — now should resolve with real data (was a discovery gap, just fixed)
+
+Ditre
+give all Ada sofa price
+give online 2er sofa price
+give vento category u and leather vip price
+give puppet bed all price
