@@ -234,7 +234,9 @@ addCase('new-elision-extra-modifier', 'give online 3er and 3er extra all price',
   expectVariants: ['3-er sofa', '3-er extra sofa'],
 });
 addCase('new-elision-central-modifier', 'give online 2er and 2er central element price', {
-  note: 'central-element side has a 2-word modifier ("central element") -- regex only captures ONE trailing modifier word, documents actual behavior',
+  expectStatus: 'multi_product',
+  expectVariants: ['2-er sofa', '2-er central element'],
+  note: 'central-element side has a 2-word modifier ("central element") -- found live in this session\'s own battery: the original 1-word-only capture silently dropped "2-er sofa" (both clauses coincidentally resolved to "2-er central element"); fixed by widening the modifier capture to 1-2 words',
 });
 
 // D4: tier lists with mixed comma/and separators, different orders

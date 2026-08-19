@@ -1184,9 +1184,9 @@ export class CatalogChat {
     // to combine for this shape, falling through to here. Confirmed live: without this
     // second attempt, "give online 3er and 3er maxi all price" silently
     // dropped "3-er sofa" entirely (only "3-er maxi sofa" was ever
-    // considered). Each digit-word optionally captures ONE trailing
-    // modifier word as part of the SAME matched span here (unlike
-    // attempt 1) specifically so it CAN be included on one clause and
+    // considered). Each digit-word optionally captures ONE OR TWO trailing
+    // modifier words as part of the SAME matched span here (unlike
+    // attempt 1) specifically so they CAN be included on one clause and
     // omitted from the other -- this only runs as a fallback, after
     // attempt 1 already had first claim on the ordinary case, so it no
     // longer swallows a genuinely SHARED trailing word that attempt 1
@@ -1194,7 +1194,25 @@ export class CatalogChat {
     // this session's own verification, is why this is two attempts
     // instead of one combined regex).
     //
-    const mModifier = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\b/i);
+    // TWO words (not one) because this catalog has real TWO-word variant
+    // modifiers (Ditre's "central element") -- found via this session's
+    // own battery, not a live report: "give online 2er and 2er central
+    // element price" only captured "central" (the original one-word-only
+    // version), leaving "element" outside the matched span, where it
+    // stayed present in BOTH reconstructed clauses. clauseA ("2er" +
+    // stray "element") then coincidentally scored a unique match against
+    // "2-er central element" (sharing "2"+"element") -- the SAME real
+    // variant clauseB resolves to -- so both sides resolved to the
+    // IDENTICAL variant, the combine guard correctly refused to merge
+    // two identical results, and the whole elision attempt silently fell
+    // through to plain lookupForProduct on the original query, which
+    // (coincidentally, for the same reason) resolved ONLY to "2-er
+    // central element" -- "2-er sofa" dropped with no ambiguity note,
+    // same severity class as the case this whole feature exists to fix.
+    // A bare digit-word can never itself be swallowed as extra modifier
+    // text ([a-zA-Z]+ requires letters only), so this doesn't risk
+    // consuming the OTHER clause's own digit-word.
+    const mModifier = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?))?\b/i);
     if (mModifier) {
       const part1 = mModifier[2] ? `${mModifier[1]} ${mModifier[2]}` : mModifier[1];
       const part2 = mModifier[4] ? `${mModifier[3]} ${mModifier[4]}` : mModifier[3];
