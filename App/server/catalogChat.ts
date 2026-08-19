@@ -685,7 +685,29 @@ export class CatalogChat {
    * so it must NOT also register as a second product). */
   detectNamedProductsInText(rawQuery: string): string[] {
     const q = normalize(rawQuery);
-    const tokenRe = /[a-z0-9]+/g;
+    // Apostrophe kept as part of the token it's attached to (not treated
+    // as a separator, unlike every other punctuation character here) --
+    // root-caused live: Ditre's "Chloè luxury" and "Chloe' Luxury" are two
+    // genuinely different real products (different price ranges, not a
+    // data duplicate), but normalize() only strips ACCENTS, not
+    // apostrophes, so "chloe' luxury".split(/[^a-z0-9]+/) treated the
+    // apostrophe as a plain separator and collapsed BOTH names to the
+    // identical token sequence ["chloe","luxury"]. A query naming ONLY
+    // "Chloè luxury" (no apostrophe anywhere in the text) still spuriously
+    // "found" its sibling too, since this scan claims token spans by
+    // whichever catalog name reaches them first in length-sorted order,
+    // not by whether that name's own actual text is present -- confirmed
+    // via direct tracing: 30/30 identical repeated calls with fully fixed
+    // inputs deterministically merged both products into one multi_product
+    // answer, 100% of the time this scan ran (not occasional/LLM-sampling-
+    // dependent -- the LLM's own intent extraction was separately
+    // confirmed 100% consistent too). This bypassed checkFamilyAmbiguity
+    // entirely (a separate, real bug in that function for this exact
+    // pair, fixed independently above) -- answerFromIntentMulti unions
+    // this scan's own output with the LLM's guess BEFORE that check is
+    // ever reached, so validNames already had 2 entries by the time
+    // control would have gotten there.
+    const tokenRe = /[a-z0-9']+/g;
     const tokens: string[] = [];
     let tm: RegExpExecArray | null;
     while ((tm = tokenRe.exec(q))) tokens.push(tm[0]);
@@ -695,7 +717,7 @@ export class CatalogChat {
     const found: string[] = [];
 
     for (const name of byLengthDesc) {
-      const nameTokens = normalize(name).split(/[^a-z0-9]+/).filter(Boolean);
+      const nameTokens = normalize(name).split(/[^a-z0-9']+/).filter(Boolean);
       if (nameTokens.length === 0) continue;
       let matchedFree = false;
       for (let i = 0; i <= tokens.length - nameTokens.length; i++) {
@@ -1923,6 +1945,40 @@ export class CatalogChat {
 
     const family = [chosenName, ...familyMembers];
     if (family.length <= 1) return null;
+
+    // A family member's own FULL, EXACT name appearing verbatim in the raw
+    // query is the strongest possible signal -- checked BEFORE the
+    // "distinguishing suffix" logic below, because that logic has no way
+    // to disambiguate two family members that tokenize to the exact SAME
+    // LENGTH after normalization (both end up with an EMPTY distinguishing
+    // suffix beyond the shared prefix, so both are vacuously "satisfied"
+    // unconditionally, every single time, regardless of what the query
+    // actually says). Confirmed real and root-caused, not theoretical:
+    // Ditre's "Chloè luxury" and "Chloe' Luxury" tokenize to the IDENTICAL
+    // 2-token sequence ["chloe","luxury"] (NFD accent-stripping treats "è"
+    // the same as "e", and non-alphanumeric splitting drops the apostrophe
+    // the same way) -- maxLen=2 equals BOTH names' own full length, so
+    // `distinguishingOf` returns an empty array for each, and the
+    // "satisfied" filter below always keeps both no matter what.
+    // Confirmed via 30 direct repeated calls with fully fixed inputs
+    // (chosenName + rawQuery both constant) that this was NOT occasional
+    // -- it was 100% deterministic and 100% wrong whenever this function
+    // was reached at all; the LLM's own intent extraction was separately
+    // confirmed 100% consistent across 20 calls, so the apparent
+    // "sometimes correct" behavior in production was never this function
+    // behaving differently -- it was the request occasionally bypassing
+    // the LLM-assisted path entirely (a Groq timeout/rate-limit) and
+    // landing on the unrelated, always-correct deterministic answer()
+    // path instead, which has its own separate exact-match-wins scoring
+    // (`maximal`, see answer() above) and never calls this function.
+    // Scoped narrowly: only short-circuits when the EXACT match is for
+    // chosenName itself (the name already selected upstream) -- if some
+    // OTHER family member is the one exactly named instead, that's a
+    // different problem (the caller's own product-name guess was wrong),
+    // not something this ambiguity check is positioned to correct, so it
+    // falls through to the existing logic unchanged in that case.
+    const exactNameMatches = family.filter(n => containsWholeWord(normalize(rawQuery), normalize(n)));
+    if (exactNameMatches.length === 1 && exactNameMatches[0] === chosenName) return null;
 
     const qTokens = new Set(
       tokenizeLoose(rawQuery).filter(t => !CONVERSATIONAL_FILLER_WORDS.has(t))

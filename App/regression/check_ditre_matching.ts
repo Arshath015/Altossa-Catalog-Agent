@@ -1,16 +1,24 @@
 /**
  * regression/check_ditre_matching.ts
  * --------------------------------------
- * Dedicated test battery for Ditre Italia's deterministic chat-matching
- * logic (CatalogChat.answer(), no LLM/HTTP involved -- same discipline as
- * check_tier_isolation_stress.ts's DETERMINISTIC mode). Built per explicit
- * user instruction after a prior session found real bugs via reactive
- * live-patching but also caused 2 regressions along the way (see project
- * memory: tiedvariant_coverage_ratio_fix.md, same_product_multi_variant_
- * query_gap.md) -- this battery exists so any future change to
- * lookupForProduct/resolveProductQuery/excludeUnrelatedAndClause/
- * checkFamilyAmbiguity is verified against EVERY known pattern together,
- * not just the newest symptom.
+ * Dedicated test battery for Ditre Italia's chat-matching logic. Most
+ * cases call CatalogChat.answer() directly (no LLM/HTTP involved -- same
+ * discipline as check_tier_isolation_stress.ts's DETERMINISTIC mode).
+ * Built per explicit user instruction after a prior session found real
+ * bugs via reactive live-patching but also caused 2 regressions along the
+ * way (see project memory: tiedvariant_coverage_ratio_fix.md,
+ * same_product_multi_variant_query_gap.md) -- this battery exists so any
+ * future change to lookupForProduct/resolveProductQuery/
+ * excludeUnrelatedAndClause/checkFamilyAmbiguity/detectNamedProductsInText
+ * is verified against EVERY known pattern together, not just the newest
+ * symptom.
+ *
+ * A few cases set `simulateLlmProductNames` and call
+ * answerFromIntentMulti() directly instead (see Category F) -- needed for
+ * bugs that only exist in the LLM-assisted path (checkFamilyAmbiguity,
+ * answerFromIntentMulti's own union with detectNamedProductsInText's raw
+ * scan) and are structurally invisible to answer() alone, confirmed
+ * directly for the Chloè/Chloe' Luxury case.
  *
  * Every case asserts on structural facts (status, resolved product_name,
  * the SET of distinct model_variant values in `matches`, row count) --
@@ -32,6 +40,23 @@ interface Case {
   lastModelVariant?: string | string[] | null;
   lastProduct?: string | null;
   lastCandidates?: string[] | null;
+  /** When set, this case calls `answerFromIntentMulti` directly instead of
+   * the plain deterministic `answer()`, simulating a specific LLM guess
+   * (`product_names`) -- same discipline as check_tier_isolation_stress.ts's
+   * PARTIAL-LLM/FULL-LLM simulated modes. Needed for bugs that ONLY exist
+   * in the LLM-assisted path: `answer()` alone doesn't exercise
+   * `checkFamilyAmbiguity` or `answerFromIntentMulti`'s own union of the
+   * LLM's guess with `detectNamedProductsInText`'s raw-text scan, so a
+   * case using the plain query-only mode can pass even when this exact
+   * mechanism is broken (confirmed directly: the Chloè/Chloe' Luxury bug
+   * below was invisible to `answer()` alone -- it only fired via
+   * `answerFromIntentMulti`, so a battery case built the ordinary way
+   * would have given false coverage). */
+  simulateLlmProductNames?: string[];
+  /** Only used alongside simulateLlmProductNames -- defaults to inferring
+   * from the query text (same regex the real route/answer() use) if
+   * omitted. */
+  simulateWantsFullList?: boolean;
   /** What we assert. All optional -- only checked fields are asserted. */
   expectStatus?: string;
   expectProductName?: string; // substring match against resp.product_name
@@ -314,6 +339,52 @@ addCase('new-secondtier-and-clause-pair3', 'give online 3er leather premium and 
 });
 
 // ============================================================
+// Category F: Chloè luxury / Chloe' Luxury -- confirmed LIVE nondeterminism
+// (not a wording difference), root-caused and fixed. TWO separate real
+// bugs in the LLM-assisted path, both required for the fix:
+// 1. detectNamedProductsInText's tokenization treated an apostrophe as a
+//    plain word-separator, so "Chloe' Luxury" and "Chloè luxury" (a
+//    genuinely different real product, NOT a data duplicate -- their
+//    price ranges don't overlap) collapsed to the IDENTICAL token
+//    sequence ["chloe","luxury"]. answerFromIntentMulti unions this
+//    scan's own findings with the LLM's guess BEFORE checkFamilyAmbiguity
+//    ever runs, so a query naming ONLY "Chloè luxury" (LLM confirmed
+//    100% consistent across 20 direct calls) still ended up with BOTH
+//    names in validNames, short-circuiting straight to
+//    buildMultiProductResult -- checkFamilyAmbiguity was never reached.
+// 2. checkFamilyAmbiguity itself ALSO had a real, independent bug for
+//    this exact pair (fixed alongside, defense in depth): when 2 family
+//    members tokenize to the SAME length, `distinguishingOf()` returns
+//    an empty array for both, so the "satisfied" check is vacuously true
+//    for both regardless of query content -- no existing mechanism could
+//    ever prefer one over the other via an exact full-name match, unlike
+//    answer()'s own scoring.
+// This case uses simulateLlmProductNames specifically because `answer()`
+// alone (used by every other case in this file) never exercises
+// answerFromIntentMulti/checkFamilyAmbiguity at all -- confirmed directly
+// that this exact bug was INVISIBLE to a plain answer()-only test.
+// ============================================================
+addCase('regress-chloe-apostrophe-accent-collision', "give me all prices for Chloè luxury", {
+  simulateLlmProductNames: ['Chloè luxury'],
+  // status+rowCount alone fully discriminate the bug from the fix: the
+  // bug produced status=multi_product/41 rows (26+15, both products
+  // merged); the fix produces status=full_price_grid/26 rows (just this
+  // one product) -- a regression back to the bug is caught by EITHER
+  // assertion alone, both are asserted for a stronger signal.
+  expectStatus: 'full_price_grid',
+  expectProductName: 'Chloè luxury',
+  expectRowCount: 26,
+  note: 'LLM intent confirmed 100% consistent across 20 direct extractIntent calls; the bug was 100% deterministic and 100% wrong across 30 direct answerFromIntentMulti calls before the fix -- verified live 20/20 correct via HTTP after',
+});
+addCase('new-chloe-apostrophe-accent-collision-reverse', "give me all prices for Chloe' Luxury", {
+  simulateLlmProductNames: ["Chloe' Luxury"],
+  expectStatus: 'full_price_grid',
+  expectProductName: "Chloe' Luxury",
+  expectRowCount: 15,
+  note: 'reverse direction -- querying the OTHER sibling by its own exact name must resolve to just that one too, not merge back the other way',
+});
+
+// ============================================================
 // Runner
 // ============================================================
 interface Result {
@@ -329,7 +400,13 @@ interface Result {
 
 const results: Result[] = [];
 for (const c of CASES) {
-  const resp = cc.answer(c.query, BRAND, c.lastModelVariant ?? null, c.lastProduct ?? null, c.lastCandidates ?? null);
+  const resp = c.simulateLlmProductNames
+    ? cc.answerFromIntentMulti(
+        c.simulateLlmProductNames, null, null, c.query, BRAND, c.lastModelVariant ?? null,
+        c.simulateWantsFullList ?? /\b(all|full|complete|every)\b/i.test(c.query),
+        c.lastProduct ?? null, c.lastCandidates ?? null
+      )
+    : cc.answer(c.query, BRAND, c.lastModelVariant ?? null, c.lastProduct ?? null, c.lastCandidates ?? null);
   const variants = [...new Set((resp.matches || []).map(r => r.model_variant).filter((v): v is string => !!v))].sort();
   const tiers = [...new Set((resp.matches || []).map(r => r.fabric_tier).filter((t): t is string => !!t))].sort();
   const rowCount = (resp.matches || []).length;
