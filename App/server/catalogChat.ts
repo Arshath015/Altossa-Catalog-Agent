@@ -1193,6 +1193,7 @@ export class CatalogChat {
     // would have handled correctly (that regression, found live during
     // this session's own verification, is why this is two attempts
     // instead of one combined regex).
+    //
     const mModifier = rawQueryHint.match(/\b(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\s+and\s+(\d+-?[a-zA-Z]*)(?:\s+([a-zA-Z]+))?\b/i);
     if (mModifier) {
       const part1 = mModifier[2] ? `${mModifier[1]} ${mModifier[2]}` : mModifier[1];
@@ -1241,6 +1242,43 @@ export class CatalogChat {
           if (soleVariant(resultAClean) === guessedVariantA) {
             return this.combineResults(
               [{ name: guessedVariantA, result: resultAClean }, { name: variantB, result: resultB }],
+              [],
+              productName
+            );
+          }
+        }
+      }
+
+      // Mirror of the block just above -- the bare, unresolved side can
+      // just as easily land on clauseB instead of clauseA, purely
+      // depending on which digit-word the modifier word happened to sit
+      // next to in the sentence. Found live in this session's own
+      // battery: "give online 3er maxi and 3er all price" (modifier
+      // FIRST, bare digit SECOND) reconstructs clauseA="3er maxi"
+      // (resolves cleanly to "3-er maxi sofa") and clauseB="3er"/"3er
+      // all" (bare, ties the whole family, exactly like clauseA does in
+      // the ordinary case above) -- but only the clauseA-is-bare
+      // direction had a narrowing fallback; this direction fell all the
+      // way through to plain lookupForProduct on the untouched original
+      // query, which happened to resolve to just "3-er maxi sofa" by
+      // coincidence (real-word scoring against the FULL query still
+      // favors it) -- silently dropping "3-er sofa" with no ambiguity
+      // note at all, the same severity class as the bug this whole
+      // feature exists to fix. Same narrowing logic, mirrored: use
+      // variantA to exclude itself from clauseB's own tied set, then
+      // shortest-remaining-name as the same defensible "bare member of
+      // the family" guess.
+      if (variantA && !variantB) {
+        const variantsInB = [...new Set(
+          (resultB.matches || []).map(r => r.model_variant).filter((v): v is string => !!v)
+        )];
+        const remaining = variantsInB.filter(v => v !== variantA);
+        if (remaining.length > 0) {
+          const guessedVariantB = [...remaining].sort((a, b) => a.length - b.length)[0];
+          const resultBClean = lookup(guessedVariantB);
+          if (soleVariant(resultBClean) === guessedVariantB) {
+            return this.combineResults(
+              [{ name: variantA, result: resultA }, { name: guessedVariantB, result: resultBClean }],
               [],
               productName
             );
@@ -3054,6 +3092,26 @@ export class CatalogChat {
       ? ` Note: these are add-on surcharge prices for "${remainingVariants[0]}", meant to be added to the base structure's price, not a standalone product price.`
       : '';
 
+    // When 2+ genuinely DISTINCT model_variant names remain in `rows` (a
+    // real tie, not just several sizes/tiers of the SAME variant), name
+    // them explicitly instead of letting a generic productName-only
+    // label ("Here's the full price list for 'On Line'") silently imply
+    // this is one complete, single thing. Confirmed real: Ditre's "give
+    // all online 2er price" (bare digit-word, no other distinguishing
+    // text) correctly ties "2-er sofa" and "2-er central element" --
+    // TWO real, structurally different products that only share a
+    // capacity number -- but the response never said so, reading exactly
+    // like a normal single-product full price list. The underlying
+    // row-selection is already correct and safe (every row is real,
+    // verified data, see the tie-break's own 3-iteration history) --
+    // this only changes what the MESSAGE says, so it can't turn a
+    // genuine tie into a wrong price, and it applies uniformly to every
+    // brand/product that ever reaches this point with 2+ distinct
+    // variants, not just this one Ditre shape.
+    const variantsNote = remainingVariants.length > 1
+      ? ` (Matches ${remainingVariants.length} distinct variants: "${remainingVariants.join('", "')}".)`
+      : '';
+
     // If the user explicitly asked for the full/complete price list, return
     // everything with a distinct status so the UI renders a proper
     // pivoted grid (sizes x tiers, like the real PDF page) instead of a
@@ -3068,7 +3126,7 @@ export class CatalogChat {
     if (wantsFullList && !tierWasExplicitlyFiltered) {
       return {
         status: 'full_price_grid',
-        message: `Here's the full price list for "${displayName}":${ambiguousNote}${addonGridNote}`,
+        message: `Here's the full price list for "${displayName}":${variantsNote}${ambiguousNote}${addonGridNote}`,
         product_name: productName,
         matches: rows,
         image_urls: this.getImageUrls(productName, brand, rows),
@@ -3092,9 +3150,9 @@ export class CatalogChat {
         + (tiersAvail.length ? `, fabric tiers: ${tiersAvail.join(', ')}` : '')
         + (priceRange ? `. Prices range ${priceRange}.` : '.')
         + ' Tell me a specific size and/or fabric tier and I can give you the exact price, or ask me for "all prices" to see the full list.'
-        + ambiguousNote + addonGridNote;
+        + variantsNote + ambiguousNote + addonGridNote;
     } else {
-      message = `Found ${rows.length} price options for "${displayName}" matching your query. Here they are, along with the catalog page:${ambiguousNote}${addonGridNote}`;
+      message = `Found ${rows.length} price options for "${displayName}" matching your query. Here they are, along with the catalog page:${variantsNote}${ambiguousNote}${addonGridNote}`;
     }
 
     return {
