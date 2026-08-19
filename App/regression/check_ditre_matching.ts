@@ -41,6 +41,8 @@ interface Case {
   expectRowCount?: number;
   expectMinRowCount?: number;
   expectMaxRowCount?: number;
+  expectTiers?: string[]; // exact set (order-independent) of distinct fabric_tier in matches
+  expectMessageExcludes?: string; // substring that must NOT appear in resp.message (e.g. an "unresolved clause" note)
   /** Documents a DELIBERATE, accepted, known-safe limitation -- still run
    * and printed, but failures here are reported separately, not counted
    * against the gating pass rate, so a future run can tell "still safe as
@@ -66,6 +68,7 @@ addCase('gap-bare-digit', 'give all online 2er price', {
 });
 addCase('gap-tier-list-3clause', 'give online 3er category u, A and leather vip', {
   expectProductName: 'On Line',
+  expectTiers: ['Category A', 'Category U', 'Leather Vip'],
   note: '3-clause tier list (comma + "and"), bare "3er" is the only remaining variant signal once all 3 tiers are consumed. On Line has 4+ real "3-er..." members.',
 });
 
@@ -271,6 +274,46 @@ addCase('new-order-tier-variant-size', 'online category a 3-er sofa 82x82', {
 });
 
 // ============================================================
+// Category E: second-tier-in-"and"-clause parsing (found live via user
+// report, root-caused and fixed same session -- excludeUnrelatedAndClause's
+// own tier check required the WHOLE and-clause segment to be a subset of
+// the tier's own tokens, so any extra surrounding word ("...leather vip
+// price") broke it and silently excluded the clause -- fixed by flipping
+// to the same token-SET containment direction used everywhere else tier
+// matching happens in this file (tier's own tokens must appear in the
+// segment, not the reverse). All 4 cases below assert BOTH tiers actually
+// resolved (expectTiers) and that no "couldn't match it" note leaked into
+// the message, not just a loose product-name check.
+// ============================================================
+addCase('regress-secondtier-and-clause', 'give online 3er category u and leather vip price', {
+  expectProductName: 'On Line',
+  expectTiers: ['Category U', 'Leather Vip'],
+  expectRowCount: 8,
+  expectMessageExcludes: "couldn't match it",
+  note: 'exact reported repro -- "leather vip" is the SECOND tier, trailing "price" broke the old subset check',
+});
+addCase('new-secondtier-and-clause-reversed', 'give online 3er leather vip and category u price', {
+  expectProductName: 'On Line',
+  expectTiers: ['Category U', 'Leather Vip'],
+  expectRowCount: 8,
+  expectMessageExcludes: "couldn't match it",
+  note: 'tier order reversed from the reported repro -- "leather vip" now first, "category u" second',
+});
+addCase('new-secondtier-and-clause-pair2', 'give online 3er category a and leather soft price', {
+  expectProductName: 'On Line',
+  expectTiers: ['Category A', 'Leather Soft'],
+  expectRowCount: 8,
+  expectMessageExcludes: "couldn't match it",
+});
+addCase('new-secondtier-and-clause-pair3', 'give online 3er leather premium and category t price', {
+  expectProductName: 'On Line',
+  expectTiers: ['Category T', 'Leather Premium'],
+  expectRowCount: 8,
+  expectMessageExcludes: "couldn't match it",
+  note: 'reversed order + a different tier pair, for coverage beyond just Category U/Leather Vip',
+});
+
+// ============================================================
 // Runner
 // ============================================================
 interface Result {
@@ -278,6 +321,7 @@ interface Result {
   status: string;
   productName: string | undefined;
   variants: string[];
+  tiers: string[];
   rowCount: number;
   message: string;
   failures: string[];
@@ -287,6 +331,7 @@ const results: Result[] = [];
 for (const c of CASES) {
   const resp = cc.answer(c.query, BRAND, c.lastModelVariant ?? null, c.lastProduct ?? null, c.lastCandidates ?? null);
   const variants = [...new Set((resp.matches || []).map(r => r.model_variant).filter((v): v is string => !!v))].sort();
+  const tiers = [...new Set((resp.matches || []).map(r => r.fabric_tier).filter((t): t is string => !!t))].sort();
   const rowCount = (resp.matches || []).length;
   const failures: string[] = [];
 
@@ -319,8 +364,17 @@ for (const c of CASES) {
   if (c.expectMaxRowCount !== undefined && rowCount > c.expectMaxRowCount) {
     failures.push(`rowCount: expected <= ${c.expectMaxRowCount}, got ${rowCount}`);
   }
+  if (c.expectTiers) {
+    const expected = [...c.expectTiers].sort();
+    if (JSON.stringify(expected) !== JSON.stringify(tiers)) {
+      failures.push(`tiers: expected [${expected.join(', ')}], got [${tiers.join(', ')}]`);
+    }
+  }
+  if (c.expectMessageExcludes && resp.message.includes(c.expectMessageExcludes)) {
+    failures.push(`message: unexpectedly contains "${c.expectMessageExcludes}"`);
+  }
 
-  results.push({ case: c, status: resp.status, productName: resp.product_name, variants, rowCount, message: resp.message, failures });
+  results.push({ case: c, status: resp.status, productName: resp.product_name, variants, tiers, rowCount, message: resp.message, failures });
 }
 
 console.log('='.repeat(100));
@@ -331,7 +385,8 @@ let pass = 0, fail = 0, gapNoted = 0;
 for (const r of results) {
   const hasAssertions = r.case.expectStatus || r.case.expectProductName || r.case.expectVariants
     || r.case.expectVariantsSubset || r.case.expectVariantsExclude || r.case.expectRowCount !== undefined
-    || r.case.expectMinRowCount !== undefined || r.case.expectMaxRowCount !== undefined;
+    || r.case.expectMinRowCount !== undefined || r.case.expectMaxRowCount !== undefined
+    || r.case.expectTiers || r.case.expectMessageExcludes;
   const ok = r.failures.length === 0;
   if (hasAssertions) { if (ok) pass++; else fail++; }
   else gapNoted++;
@@ -343,6 +398,7 @@ for (const r of results) {
   }
   console.log(`       status=${r.status} product_name=${JSON.stringify(r.productName)} rows=${r.rowCount}`);
   console.log(`       variants=[${r.variants.join(', ')}]`);
+  if (r.tiers.length > 0) console.log(`       tiers=[${r.tiers.join(', ')}]`);
   if (r.case.note) console.log(`       note: ${r.case.note}`);
   if (r.failures.length > 0) {
     for (const f of r.failures) console.log(`       ** ${f}`);

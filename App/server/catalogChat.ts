@@ -837,9 +837,51 @@ export class CatalogChat {
       if (containsWholeWord(normalize(seg), normalize(productName))) return true;
       const tokens = segTokens(seg);
       if (tokens.length === 0) return false;
+      // Token-SET containment in the SAME direction as every other tier
+      // check in this file (e.g. lookupForProduct's own rawTierHits scan,
+      // `tierTokens.every(tok => queryTokens.has(tok))`) -- every token of
+      // the TIER's own name must appear in the segment, not the reverse.
+      // The original, opposite direction (segment tokens must ALL be
+      // found within the tier's own token list) silently broke the moment
+      // an AND-clause segment naming a real tier had ANY extra word
+      // around it -- confirmed live: "give online 3er category u and
+      // leather vip price" splits into ["give online 3er category u",
+      // "leather vip price"]; the second segment's tokens are
+      // ["leather","vip","price"], and "price" is not itself a token of
+      // the real tier "Leather Vip" (["leather","vip"]), so the OLD
+      // subset check failed and wrongly excluded the whole clause --
+      // discarding the "Leather Vip" tier mention entirely before tier
+      // resolution ever ran. "category u" only survived in that same
+      // query because it happened to share its clause with the digit-
+      // word "3er", which belongs via the unrelated digit/variant check
+      // below -- not because its OWN tier check passed either (it has the
+      // exact same "extra words" shape).
+      //
+      // NOT unconditionally permissive, though -- a first version of this
+      // fix allowed ANY leftover word in the segment, and broke this
+      // file's own existing cross-product isolation regression test
+      // (check_multi_product_isolation.ts, "greta-wilma-tier-leak"):
+      // "gve me greta wood pelle and wlima pelle glove", scoping for
+      // GRETA Wood, has segment 2 = "wlima pelle glove" -- GRETA Wood
+      // itself has a real tier "Pelle" (single token), which IS fully
+      // contained in that segment's tokens, but the leftover word
+      // "wlima" is WILMA's own (typo'd) product-name fragment, not
+      // generic filler -- an unconditional leftover-word pass would
+      // wrongly claim this clause for GRETA Wood too, leaking WILMA's
+      // "Pelle Glove" tier into GRETA Wood's result. The fix keeps the
+      // wider match direction (fixes the real "extra word" bug above) but
+      // requires every LEFTOVER token (the segment's tokens minus the
+      // tier's own) to be a known, already-vetted generic filler word
+      // (RISKY_SIZE_CODE_WORDS -- "price"/"give"/"me"/"and"/... checked
+      // against every brand's real product/tier/size vocabulary already,
+      // same list used elsewhere in this file for exactly this "is this
+      // leftover text safe filler or possibly real signal" question) --
+      // "price" passes this gate, "wlima" does not.
       const tierMatch = realTierValues.some(t => {
         const tierTokens = segTokens(t);
-        return tokens.every(tok => tierTokens.includes(tok));
+        if (tierTokens.length === 0 || !tierTokens.every(tok => tokens.includes(tok))) return false;
+        const leftover = tokens.filter(tok => !tierTokens.includes(tok));
+        return leftover.every(tok => RISKY_SIZE_CODE_WORDS.has(tok));
       });
       if (tierMatch) return true;
       const segDigits = new Set(tokens.map(leadingDigits).filter((d): d is string => d !== null));
