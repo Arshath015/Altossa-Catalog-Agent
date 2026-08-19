@@ -1620,6 +1620,22 @@ export class CatalogChat {
         const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
         return this.resolveProductQuery(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
       }
+      // Sibling to the content-free case just above, for a query that has
+      // REAL content (isContentFree is false) but names zero products at
+      // all -- e.g. "give 3er extra leather vip, category u and category
+      // A" right after a turn about On Line. Only reached when `matches`
+      // is already empty (zero named-product candidates, never an
+      // ambiguous 2+ case -- ambiguity is handled entirely separately,
+      // above this whole block), and only fires when EVERY real word in
+      // the query is already explained by the anchor's own known variant/
+      // tier vocabulary -- see queryOnlySpecifiesAnchorProductDetails's
+      // own doc comment for the full safety reasoning (deliberately the
+      // mirror of the Ada anchor-over-trust fix, not a relaxation of it).
+      if (!isContentFree && lastProduct && this.productNames.includes(lastProduct)
+        && this.queryOnlySpecifiesAnchorProductDetails(query, lastProduct)) {
+        const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+        return this.resolveProductQuery(lastProduct, null, [], brand, query, lastModelVariant, wantsFullList);
+      }
       // Sibling anchor to lastProduct above, for the case where the PREVIOUS
       // turn was itself unresolved -- a clarify_product candidate list, not
       // a confirmed product. Without this, a content-free follow-up right
@@ -2042,6 +2058,76 @@ export class CatalogChat {
       !/^\d+$/.test(t)
     );
     return leftover.length > 0;
+  }
+
+  /** True if `rawQuery` names NO real product at all (the caller only
+   * calls this when `matches.length === 0`, i.e. zero candidates, never
+   * an ambiguous 2+ case) but every real word in it is already explained
+   * by THIS specific anchor product's own known tier/variant vocabulary --
+   * meaning the query is fully-specified detail of the SAME product being
+   * discussed, not a vague fragment (already handled by the separate
+   * content-free "give all" fallback) and not an attempt to name a
+   * DIFFERENT product (which must still fail honestly, same as before).
+   *
+   * Deliberately the mirror-opposite check of
+   * queryLooksLikeUnrecognizedProductAttempt just above, reusing the exact
+   * same word lists (CONVERSATIONAL_FILLER_WORDS/RISKY_SIZE_CODE_WORDS/
+   * GENERIC_CATEGORY_WORDS/realTierPhrases) PLUS this product's own real
+   * variant-distinguishing vocabulary (the same isDistinguishingWord/
+   * leadingDigits construction lookupForProduct's own qWords/tie-break use
+   * for exactly this "typed without its hyphen" gap, e.g. "3er" needing to
+   * match a variant's own separately-split "3" token). Found live: "give
+   * 3er extra leather vip, category u and category A" (zero product-name
+   * signal at all, immediately after a turn about On Line) fell to a flat
+   * "couldn't find a product" instead of reusing the obvious anchor --
+   * queryLooksLikeUnrecognizedProductAttempt's own tier-only stripping
+   * left "3er"/"extra" as unexplained leftover, since those are VARIANT
+   * words, not tier words, and that function was never meant to answer
+   * this question (it gates whether to DISTRUST an anchor already in use,
+   * not whether a zero-name query is safe to attach one to at all).
+   *
+   * Safety mirrors the Ada anchor-over-trust fix precisely: reused ONLY
+   * when the leftover is COMPLETELY empty (not "explained enough") --
+   * confirmed via the exact original Ada repro reused here as its own
+   * regression guard: "give online 2er sofa price" against anchor "Ada
+   * (Sofa)" leaves "online" unexplained by Ada's own vocabulary (an
+   * unrelated product name attempt), so this correctly returns false and
+   * the caller falls through to the existing honest "couldn't find"
+   * message, same as before this method existed. */
+  private queryOnlySpecifiesAnchorProductDetails(rawQuery: string, productName: string): boolean {
+    const stripped = stripNameFromQuery(normalize(rawQuery), normalize(productName));
+    const tokens = tokenizeLoose(stripped);
+    const tierWords = new Set(this.realTierPhrases.flatMap(t => tokenizeLoose(t)));
+
+    const isDistinguishingWord = (w: string) => w.length >= 4 || /\d/.test(w);
+    const leadingDigits = (w: string): string | null => {
+      const m = w.match(/^(\d+)/);
+      return m ? m[1] : null;
+    };
+    const npn = normalize(productName);
+    const realVariantValues = [...new Set(
+      this.prices.filter(r => r.product_name === productName).map(r => r.model_variant).filter((v): v is string => !!v)
+    )];
+    const anchorVocab = new Set<string>();
+    for (const v of realVariantValues) {
+      const nv = normalize(v);
+      const suffix = nv.includes(npn) ? nv.split(npn).join('').trim() : (npn.includes(nv) ? '' : nv);
+      if (!suffix) continue;
+      for (const w of suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord)) {
+        anchorVocab.add(w);
+        const d = leadingDigits(w);
+        if (d) anchorVocab.add(d);
+      }
+    }
+
+    const leftover = tokens.filter(t => {
+      if (CONVERSATIONAL_FILLER_WORDS.has(t) || RISKY_SIZE_CODE_WORDS.has(t) || GENERIC_CATEGORY_WORDS.has(t)) return false;
+      if (tierWords.has(t) || /^\d+x\d+/.test(t) || /^\d+$/.test(t)) return false;
+      if (anchorVocab.has(t)) return false;
+      const d = leadingDigits(t);
+      return !(d && anchorVocab.has(d));
+    });
+    return leftover.length === 0;
   }
 
   answerFromIntent(

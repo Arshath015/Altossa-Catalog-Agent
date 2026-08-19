@@ -458,6 +458,47 @@ addCase('regress-codesuffix-guard-broad-sofa', 'give online sofa price', {
 });
 
 // ============================================================
+// Category H: zero-product-name follow-up that fully specifies details of
+// the anchored product (queryOnlySpecifiesAnchorProductDetails). Reopened
+// per explicit user request, sharper framing: this is a SIBLING of the
+// existing content-free "give all" fallback, not a relaxation of the Ada
+// anchor-over-trust fix -- gated so it fires ONLY when zero products are
+// named at all (matches.length===0, never an ambiguous 2+ case) AND every
+// real word in the query is already explained by the anchor's own known
+// tier/variant vocabulary. A query with real leftover content NOT
+// explained by the anchor (an attempt at a different, unrecognized
+// product) must still fail honestly, same as before this existed --
+// that's the exact Ada bug shape, re-verified here as its own guardrail.
+// ============================================================
+addCase('regress-anchor-details-followup', 'give 3er extra leather vip, category u and category A', {
+  lastProduct: 'On Line',
+  lastModelVariant: '3-er extra sofa',
+  expectProductName: 'On Line',
+  expectVariants: ['3-er extra sofa'],
+  expectTiers: ['Category A', 'Category U', 'Leather Vip'],
+  note: 'exact reported gap -- zero product-name signal at all, but every real word ("3er","extra","leather vip","category u","category a") is explained by On Line\'s own known variant/tier vocabulary',
+});
+addCase('new-anchor-details-tier-only', 'leather vip price', {
+  lastProduct: 'On Line',
+  expectProductName: 'On Line',
+  note: 'bare real tier mention alone (no variant word at all) after an anchor -- simplest case of the same mechanism',
+});
+addCase('regress-anchor-details-guard-unrelated-word', 'give swivel category a price', {
+  // "swivel" is a real, distinguishing variant word for a DIFFERENT real
+  // product (Puppet (Armchairs) has "Swivel armchair"), not part of On
+  // Line's own vocabulary at all -- must NOT reuse the On Line anchor,
+  // same severity class as the Ada anchor-over-trust bug this whole
+  // mechanism is deliberately built not to reintroduce.
+  lastProduct: 'On Line',
+  expectStatus: 'no_product_match',
+});
+addCase('regress-anchor-details-guard-nonexistent', 'xyznonexistentproduct123 price', {
+  lastProduct: 'On Line',
+  expectStatus: 'no_product_match',
+  note: 'unrelated garbage content after a real anchor must still fail honestly, not silently reuse the anchor',
+});
+
+// ============================================================
 // Runner
 // ============================================================
 interface Result {
