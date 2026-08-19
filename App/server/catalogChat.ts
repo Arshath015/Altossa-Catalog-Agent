@@ -2963,6 +2963,86 @@ export class CatalogChat {
         }
       }
 
+      // Narrow a real tie using the catalog's OWN product-code numbering,
+      // when it actually encodes a base-vs-modified distinction -- NOT a
+      // name-length/word-count guess (that shape was already tried and
+      // rejected once tonight for a different reason, see isAddonVariant).
+      // Ditre's own SKU convention: a variant that's a MODIFIED sibling of
+      // a plainer one (an explicit "maxi"/"extra"/etc. word in its name)
+      // has its own code differ from that plainer sibling's code in ONLY
+      // the trailing character -- the plain one ends in the literal digit
+      // "0", the modified one has a letter there instead (confirmed
+      // across 20+ Ditre products, not just this one: "3-er sofa"=
+      // ONLID3000 / "3-er maxi sofa"=ONLID300M / "3-er extra sofa"=
+      // ONLID300E share the identical 8-char prefix "ONLID300", differing
+      // ONLY in that final character; same pattern holds for "2-er maxi
+      // sofa"=...200G-style codes elsewhere in the catalog, always some
+      // non-"0" character in that same trailing position). This is real,
+      // sourced, structural signal -- not a guess -- so when a tie
+      // contains BOTH the "0"-ending base code and a same-prefix sibling
+      // requiring its own explicit modifier word (which the query didn't
+      // supply), the modified sibling is dropped from the tie: it needed
+      // its own distinguishing word to be selected, same as it already
+      // does when this exact query ADDS "maxi"/"extra" and correctly
+      // narrows to just that one.
+      //
+      // Deliberately narrow in scope: only prunes within a SHARED code
+      // prefix (same product line, e.g. the "D" sofa line), never across
+      // one (e.g. "3-er central element" is a genuinely different product
+      // TYPE with code prefix "ONLIC300", not "ONLID300" -- it has no
+      // "0"-ending sibling to compare against here, so it's untouched and
+      // stays honestly tied against the base sofa -- there is no data
+      // signal saying a sofa is more likely meant than a modular
+      // component, and this does not invent one).
+      if (!matched && tiedFamily.length > 1) {
+        const codeOf = (v: string): string | null => {
+          const vRows = variantRowsMap.get(v);
+          return vRows && vRows.length > 0 ? (vRows[0].code || null) : null;
+        };
+        const byPrefix = new Map<string, string[]>();
+        for (const v of tiedFamily) {
+          const code = codeOf(v);
+          if (!code || code.length < 2) continue;
+          const prefix = code.slice(0, -1);
+          if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
+          byPrefix.get(prefix)!.push(v);
+        }
+        // Gated to when the tie is PURELY the bare digit -- if the query
+        // ALSO already shares a real, non-digit word with the base
+        // member's own suffix (e.g. "sofa" in "give online sofa price"),
+        // that's a deliberate, intentional broad request for the whole
+        // family (confirmed correct, already-shipped behavior -- ties all
+        // 6 real "...sofa" variants on purpose), not a coincidental
+        // digit-only overlap, and must NOT be narrowed by this rule.
+        // Confirmed via this exact battery: without this guard, "give
+        // online sofa price" (bare category word, no digit at all) was
+        // wrongly narrowed from 4 real sofa variants down to 2, silently
+        // dropping "3-er maxi sofa"/"3-er extra sofa" even though the
+        // query never asked to exclude them.
+        const requiresOwnModifierWord = new Set<string>();
+        for (const members of byPrefix.values()) {
+          if (members.length < 2) continue;
+          const baseMembers = members.filter(v => codeOf(v)!.endsWith('0'));
+          const modifiedMembers = members.filter(v => !codeOf(v)!.endsWith('0'));
+          if (baseMembers.length !== 1 || modifiedMembers.length === 0) continue;
+          const baseSuffixWords = variantSuffix(baseMembers[0]).split(/[^a-z0-9]+/).filter(isDistinguishingWord);
+          const hasRealSharedWord = baseSuffixWords.some(w => !/^\d+$/.test(w) && qWords.has(w));
+          if (!hasRealSharedWord) {
+            modifiedMembers.forEach(v => requiresOwnModifierWord.add(v));
+          }
+        }
+        if (requiresOwnModifierWord.size > 0) {
+          const narrowed = tiedFamily.filter(v => !requiresOwnModifierWord.has(v));
+          if (narrowed.length > 0) {
+            tiedFamily = narrowed;
+            if (tiedFamily.length === 1) {
+              matchingVariant = tiedFamily[0];
+              matched = true;
+            }
+          }
+        }
+      }
+
       // A tie (e.g. "struttura" alone matches all of Face's several
       // "Struttura..." sub-variants equally) still tells us something
       // real: the person wants THIS family, just not which member of it.

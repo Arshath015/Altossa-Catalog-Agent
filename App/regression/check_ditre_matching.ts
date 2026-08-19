@@ -85,16 +85,27 @@ function addCase(cat: string, query: string, opts: Partial<Case> = {}) {
 // ============================================================
 // Category A: the 2 logged-but-unfixed gaps (must be in the battery
 // per explicit instruction, whether fixed or deliberately left as a
-// documented known_gap)
+// documented known_gap). PARTIALLY RESOLVED same session via Category G's
+// code-suffix base-variant narrowing below: a bare digit-word with a
+// same-product-line "maxi"/"extra" sibling now correctly excludes that
+// sibling (it needs its own modifier word) -- but a bare digit alone
+// still can't and shouldn't cross-resolve between genuinely different
+// product TYPES that happen to share the same digit (sofa vs central
+// element) -- no data signal exists for that, confirmed deliberately NOT
+// invented. gap-bare-digit (2er) has no maxi/extra sibling in On Line at
+// all, so it's untouched by the narrowing and stays a real, honest 2-way
+// tie; gap-tier-list-3clause (3er) narrows from 4 candidates to 2.
 // ============================================================
 addCase('gap-bare-digit', 'give all online 2er price', {
   expectStatus: 'full_price_grid',
-  note: 'bare "2er", zero other distinguishing word -- On Line has 2 real, structurally different "2-er..." members (sofa, central element). No text signal distinguishes them.',
+  expectVariants: ['2-er sofa', '2-er central element'],
+  note: 'bare "2er", zero other distinguishing word -- On Line has 2 real, structurally different "2-er..." members (sofa, central element), NEITHER a maxi/extra modifier of the other, so the code-suffix narrowing has nothing to prune here. No text signal distinguishes them -- genuinely, honestly tied.',
 });
 addCase('gap-tier-list-3clause', 'give online 3er category u, A and leather vip', {
   expectProductName: 'On Line',
   expectTiers: ['Category A', 'Category U', 'Leather Vip'],
-  note: '3-clause tier list (comma + "and"), bare "3er" is the only remaining variant signal once all 3 tiers are consumed. On Line has 4+ real "3-er..." members.',
+  expectVariants: ['3-er sofa', '3-er central element'],
+  note: '3-clause tier list (comma + "and"), bare "3er" is the only remaining variant signal once all 3 tiers are consumed -- now correctly narrows to just the base sofa + the genuinely-different central element (was 4 candidates, code-suffix narrowing excludes "3-er maxi sofa"/"3-er extra sofa" since neither modifier word was typed).',
 });
 
 // ============================================================
@@ -309,31 +320,42 @@ addCase('new-order-tier-variant-size', 'online category a 3-er sofa 82x82', {
 // segment, not the reverse). All 4 cases below assert BOTH tiers actually
 // resolved (expectTiers) and that no "couldn't match it" note leaked into
 // the message, not just a loose product-name check.
+//
+// expectRowCount/expectVariants updated later the SAME session once the
+// bare-digit code-suffix narrowing (Category G below) landed -- these 4
+// queries never mention "sofa"/"maxi"/"extra"/etc, so "3er" is bare, and
+// now correctly narrows to just {3-er sofa, 3-er central element} (2
+// variants) instead of tying in "3-er maxi sofa"/"3-er extra sofa" too
+// (4 variants) -- NOT a re-break, the intended improvement.
 // ============================================================
 addCase('regress-secondtier-and-clause', 'give online 3er category u and leather vip price', {
   expectProductName: 'On Line',
   expectTiers: ['Category U', 'Leather Vip'],
-  expectRowCount: 8,
+  expectVariants: ['3-er sofa', '3-er central element'],
+  expectRowCount: 4,
   expectMessageExcludes: "couldn't match it",
   note: 'exact reported repro -- "leather vip" is the SECOND tier, trailing "price" broke the old subset check',
 });
 addCase('new-secondtier-and-clause-reversed', 'give online 3er leather vip and category u price', {
   expectProductName: 'On Line',
   expectTiers: ['Category U', 'Leather Vip'],
-  expectRowCount: 8,
+  expectVariants: ['3-er sofa', '3-er central element'],
+  expectRowCount: 4,
   expectMessageExcludes: "couldn't match it",
   note: 'tier order reversed from the reported repro -- "leather vip" now first, "category u" second',
 });
 addCase('new-secondtier-and-clause-pair2', 'give online 3er category a and leather soft price', {
   expectProductName: 'On Line',
   expectTiers: ['Category A', 'Leather Soft'],
-  expectRowCount: 8,
+  expectVariants: ['3-er sofa', '3-er central element'],
+  expectRowCount: 4,
   expectMessageExcludes: "couldn't match it",
 });
 addCase('new-secondtier-and-clause-pair3', 'give online 3er leather premium and category t price', {
   expectProductName: 'On Line',
   expectTiers: ['Category T', 'Leather Premium'],
-  expectRowCount: 8,
+  expectVariants: ['3-er sofa', '3-er central element'],
+  expectRowCount: 4,
   expectMessageExcludes: "couldn't match it",
   note: 'reversed order + a different tier pair, for coverage beyond just Category U/Leather Vip',
 });
@@ -382,6 +404,57 @@ addCase('new-chloe-apostrophe-accent-collision-reverse', "give me all prices for
   expectProductName: "Chloe' Luxury",
   expectRowCount: 15,
   note: 'reverse direction -- querying the OTHER sibling by its own exact name must resolve to just that one too, not merge back the other way',
+});
+
+// ============================================================
+// Category G: bare-digit-word narrowing via the catalog's OWN product-CODE
+// numbering (reopened per explicit user request, sharper framing: "respect
+// existing intent signal that's currently being ignored," not "pick a
+// default by guessing"). Real, verified signal: within a shared code
+// prefix, Ditre's own SKU convention marks the unmodified base variant
+// with a trailing "0" and a modified sibling ("maxi"/"extra"/etc) with a
+// trailing letter instead (confirmed across 20+ Ditre products, not just
+// On Line) -- NOT a name-length/word-count guess (that shape was already
+// tried and rejected once this session for isAddonVariant). Deliberately
+// narrow: only prunes within a shared code prefix (same product line),
+// never across one -- "3-er central element" has its own different code
+// prefix (a genuinely different product TYPE), so it's never touched by
+// this and stays honestly tied against the base sofa when nothing else
+// distinguishes them (see gap-bare-digit/gap-tier-list-3clause above).
+// Also gated so it never fires when the query ALREADY shares a real,
+// non-digit word with the base variant's own suffix (e.g. "sofa") --
+// that's a deliberate, intentional broad request for the whole family,
+// confirmed via a real regression this exact battery caught: an earlier,
+// ungated version of this fix wrongly narrowed "give online sofa price"
+// (which must keep tying all 4 real sofa variants) down to just 2.
+// ============================================================
+addCase('new-codesuffix-modifier-maxi', 'give online 3er maxi category u and leather vip price', {
+  expectProductName: 'On Line',
+  expectVariants: ['3-er maxi sofa'],
+  expectRowCount: 2,
+  note: 'typing "maxi" still resolves to exactly that one variant, unaffected by the new narrowing',
+});
+addCase('new-codesuffix-modifier-extra', 'give online 3er extra category u and leather vip price', {
+  expectProductName: 'On Line',
+  expectVariants: ['3-er extra sofa'],
+  expectRowCount: 2,
+});
+addCase('new-codesuffix-modifier-central', 'give online 3er central element category u and leather vip price', {
+  expectProductName: 'On Line',
+  expectVariants: ['3-er central element'],
+  expectRowCount: 2,
+});
+addCase('new-codesuffix-modifier-sofa-explicit', 'give online 3er sofa category u and leather vip price', {
+  expectProductName: 'On Line',
+  expectVariants: ['3-er sofa'],
+  expectRowCount: 2,
+});
+addCase('regress-codesuffix-guard-broad-sofa', 'give online sofa price', {
+  // Regression guardrail for the exact bug the guard condition fixes --
+  // a real, non-digit shared word ("sofa") must keep tying every real
+  // sofa variant, not get narrowed to just the base one.
+  expectProductName: 'On Line',
+  expectVariantsSubset: ['2-er sofa', '3-er sofa', '3-er maxi sofa', '3-er extra sofa'],
 });
 
 // ============================================================
