@@ -1106,7 +1106,20 @@ def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int
             left = float(row[col["left"]])
             if left < 200.0:
                 continue  # page furniture: "INDICE" title, "INTERACTIVE" watermark
-            words.append((float(row[col["top"]]), left, row[col["text"]]))
+            top = float(row[col["top"]])
+            if top > 750.0:
+                # The INDICE page's OWN page-number footer (e.g. "Progetti
+                # di design 01") sits in the exact same x-columns as this
+                # page's third category block (confirmed real on Progetti
+                # 09's page 3: "Progetti"/"di"/"design" at x=483-517,
+                # "01" at x=539.77 -- indistinguishable from a real
+                # Madie/Mambo/Norma Up/Siviglia row by x-position alone).
+                # Every real INDICE row seen across both verified files
+                # sits well above top=750 (an A4 page is ~842pt tall, so
+                # this is comfortably inside the bottom margin); the
+                # footer is the only content that ever lands this low.
+                continue
+            words.append((top, left, row[col["text"]]))
         if not words:
             continue
         words.sort()
