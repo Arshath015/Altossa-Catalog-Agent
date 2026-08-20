@@ -1175,25 +1175,42 @@ def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int
 
 def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
     """Read every page's footer to map printed page numbers -> real PDF
-    pages. Pianca's footer is a single running counter joined to the
-    current PRODUCT's own uppercase section name by an underscore, in one
-    of two mirrored forms depending on which side of the spread the page
-    is on: "<N>_SECTIONNAME" (e.g. "4_PROGETTI DI DESIGN") or
-    "SECTIONNAME_<N>" (e.g. "PROGETTI DI DESIGN_5") -- confirmed by direct
-    pdftotext inspection across multiple pages/sections of Progetti 08
-    (SEDIE_1, PROGETTI DI DESIGN_5/9/11/19, UNLESS_7, SIPARIO_15,
-    TEATRO_305/309, ANTEPRIMA_291, PRIMO_2 all seen across the 10 source
-    files during the Step-1 pass), not assumed from a single sample. The
-    section-name label itself varies per product/section (unlike Ditre's
-    constant "Ditre Italia" wordmark) so the regex matches ANY uppercase
-    label, not a hardcoded brand name. No offset/formula fallback here
-    either -- see build_offset_fallback, called separately by main() for
-    whichever pages this leaves unmapped (full-bleed section-divider pages
-    confirmed to have no footer at all, e.g. Progetti 08's own "PEONIA"
-    divider page)."""
+    pages. Two confirmed, mutually exclusive footer conventions coexist
+    ACROSS DIFFERENT PIANCA SOURCE FILES (not within one file -- each
+    file uses exactly one convention throughout, confirmed by direct
+    pdftotext inspection, not assumed):
+      1) Progetti 08 (and other files from the Step-1 pass -- SEDIE_1,
+         UNLESS_7, SIPARIO_15, TEATRO_305/309, ANTEPRIMA_291, PRIMO_2):
+         a running counter joined to the current section's own UPPERCASE
+         name by an underscore, mirrored by spread side --
+         "<N>_SECTIONNAME" (e.g. "4_PROGETTI DI DESIGN") on one side,
+         "SECTIONNAME_<N>" (e.g. "PROGETTI DI DESIGN_5") on the other.
+      2) Progetti 09: the same mirrored-by-spread-side idea, but with the
+         literal MIXED-CASE phrase "Progetti di design" joined by a plain
+         space instead of an underscore -- "<N> Progetti di design" (e.g.
+         "06 Progetti di design") / "Progetti di design <N>" (e.g.
+         "Progetti di design 05"). Confirmed a flat +2 real-vs-printed
+         offset throughout this file (real page 6 -> printed 4, real 15
+         -> printed 13, etc.), but this still reads every page's actual
+         footer rather than trusting that as a blind formula -- only
+         build_offset_fallback (below) uses the map's own derived offset,
+         and only for pages with no readable footer at all.
+    Both pattern pairs are tried on every page since they're mutually
+    exclusive per-file; whichever matches wins. The section-name label
+    itself varies per product/section (unlike Ditre's constant "Ditre
+    Italia" wordmark), so pattern 1 matches ANY uppercase label rather
+    than a hardcoded name, and pattern 2 is scoped to the literal phrase
+    actually observed for Progetti 09 rather than "any mixed-case label"
+    (which would risk matching ordinary prose sentences ending a page).
+    No offset/formula fallback here either -- see build_offset_fallback,
+    called separately by main() for whichever pages this leaves unmapped
+    (full-bleed section-divider pages confirmed to have no footer at
+    all, e.g. Progetti 08's own "PEONIA" divider page)."""
     page_map: dict[int, int] = {}
     prefix_re = re.compile(r"^\s*(\d{1,4})_[A-ZÀ-Ù][A-ZÀ-Ù ]*\s*$")
     suffix_re = re.compile(r"^\s*[A-ZÀ-Ù][A-ZÀ-Ù ]*_(\d{1,4})\s*$")
+    prefix_re2 = re.compile(r"^\s*(\d{1,4})\s+Progetti di design\s*$", re.IGNORECASE)
+    suffix_re2 = re.compile(r"^\s*Progetti di design\s+(\d{1,4})\s*$", re.IGNORECASE)
     FOOTER_LOOKBACK = 4
     for pg in range(1, total_pages + 1):
         text = pdftotext_page(pdf_path, pg)
@@ -1201,7 +1218,7 @@ def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
         if not lines:
             continue
         for last in reversed(lines[-FOOTER_LOOKBACK:]):
-            m = prefix_re.match(last) or suffix_re.match(last)
+            m = prefix_re.match(last) or suffix_re.match(last) or prefix_re2.match(last) or suffix_re2.match(last)
             if m:
                 page_map[int(m.group(1))] = pg
                 break

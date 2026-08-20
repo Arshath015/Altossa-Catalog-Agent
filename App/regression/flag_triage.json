@@ -2751,6 +2751,34 @@
     "Lina": {
       "status": "known_gap",
       "note": "Lina's own page (real PDF page 7 / printed page 4) carries TWO price tables: 'Sedia con seduta legno' (code 01120, Shape B -- CODICI + named finish columns Frassino Nero/Essenza/Laccato Opaco) and 'Sedia con seduta imbottita' (code 01121, Shape A -- CODICI + A/B/C/H/P/Q tier grid, correctly parsed). parse_file_pianca (App/parse_prices.py) only implements Shape A in this first implementation slice (scoped to Progetti di Design 08 -- see that function's module comment); Shape B is deliberately flagged and skipped, not guessed at. Safe: zero rows lost for code 01120 rather than a silently wrong parse. Needs a Shape B parser as a follow-up slice, same discipline as Ditre's Shape 1/Shape 2 build-out."
+    },
+    "Elide": {
+      "status": "known_gap",
+      "note": "Real PDF page 9 (printed 7): 'L H P CODICI Carta Kraft' -- Shape B, single named finish column, 2 rows (codes 01125/01126). Same deliberate scope gap as Lina above -- Shape B parser not built yet in this session."
+    },
+    "Enea Up": {
+      "status": "known_gap",
+      "note": "Real PDF page 12 (printed 10): 'L H CODICI L. Opaco Essenza Noce Canaletto' -- Shape B, 3 named finish columns, PLUS a wildcard code legend ('*P L. Opaco / Essenza', '*C noce Canaletto', e.g. 'T0E * 09M') where the SAME resolved code covers 2 of the 3 price columns (L. Opaco and Essenza both resolve to suffix P despite having different prices) -- a materially different wildcard shape than Collezione Notte's 1:1 legno/cuoio pairs found during Step 1, not yet investigated. Flagged and skipped rather than guessed at."
+    },
+    "Onda Indoor": {
+      "status": "known_gap",
+      "note": "Real PDF page 14 (printed 12): two Shape B tables -- 'L H P CODICI L. Opaco / Lucido Sp. / Essenza' and a second 'L H P CODICI' Marmo-finish table (Gioia di Carrara/Emperador/Fior di.../Verde Alpi/Rosso...). Same deliberate scope gap as Lina/Elide."
+    },
+    "Soffio Up": {
+      "status": "known_gap",
+      "note": "4 blocks flagged across the product's page range (fixed + allungabile tavolo variants), all Shape B named-finish-column tables (L.Opaco/Essenza/Fenix/V.Lacc./V.Marmo/Gres per the Step-1 visual sample). Same deliberate scope gap."
+    },
+    "Mambo": {
+      "status": "known_gap",
+      "note": "18 blocks flagged -- Mambo (Progetti 09/Spazi 10's Madie line, distinct product from Progetti 08's Mambo tavolino/poltrona) has the WIDEST shape variety seen in any single Pianca product so far: plain 2-column (L.Opaco/Essenza), 3-column (+Lucido Sp.), a bare 'CODICI Prezzo' flat-price table, a 5-column marmo/vetro finish table (V.Laccato/V.Marmo/Specchio/Pelle Sint./Cuoio Rig.), AND genuine Shape A tier tables (correctly auto-detected and parsed, not flagged -- confirmed via the same page range producing real rows). Every non-Shape-A block here is deliberately flagged, not guessed at."
+    },
+    "Norma Up": {
+      "status": "known_gap",
+      "note": "13 blocks flagged, real PDF pages 53-64. The 2-axis finish-grid variant identified during the Step-1 extended visual sample (p.53/55): rows vary by Struttura finish (Materico/L.Opaco/Essenza-L.Metallico) x dimension, columns vary independently by Frontali/Copertura finish (6 combinations under 2 parent headers) -- price = f(struttura_finish, frontali_finish, dimension). Also has a simpler single-column 'L CODICI Laccato Opaco' block (p.53). Deliberately flagged rather than force-fit through a parser only verified against the simpler 1-axis Shape B case -- needs its own dedicated build, explicitly requested as the next priority after this Progetti 08 checkpoint."
+    },
+    "Siviglia": {
+      "status": "known_gap",
+      "note": "9 blocks flagged, real PDF pages 71-79: Materico/L.Opaco 2-column tables, a bare 'CODICI Prezzo' flat table, a 5-column V.Laccato/V.Marmo/Specchio/Cuoio Rig./Marmo finish table, and a 'Frontali x4' pattern (real PDF page 79) that may be the SAME 2-axis shape as Norma Up -- not yet confirmed, needs its own visual check before assuming so. Deliberately flagged rather than guessed at."
     }
   }
 }
