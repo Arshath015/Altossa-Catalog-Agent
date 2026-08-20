@@ -66,5 +66,6 @@
   {"id": 65, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for lulu' 2.0 sofa bed", "note": "Night-catalog page-range fix, other half of the Sanders sofa bed pair"},
   {"id": 66, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sanders sofa bed", "note": "checksum-neighbor of Lulu' 2.0 sofa bed pre-fix (was carrying 21 of its rows), must have its OWN correct page images and price data now"},
   {"id": 67, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for skin mix", "note": "Night-catalog page-range fix, other half of the Sound pair"},
-  {"id": 68, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sound", "note": "checksum-neighbor of Skin mix pre-fix, must have its OWN correct page images and price data now"}
+  {"id": 68, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sound", "note": "checksum-neighbor of Skin mix pre-fix, must have its OWN correct page images and price data now"},
+  {"id": 69, "cat": "full_catalog", "brand": "Pianca", "query": "give me all prices for Peonia (Divani)", "note": "Pianca's first implementation slice (Progetti di Design 08, Shape A tier grid only) -- Peonia (Divani) is its largest single product (360 rows across cuscinetti/pouf/poltrone/divano/divano con penisola sub-sections), a reasonable stress case for the full-list path"}
 ]

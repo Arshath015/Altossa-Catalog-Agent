@@ -282,6 +282,18 @@ addCase('2prod', 'Cali (Sofa) 2-er sofa category a and Cali (Armchairs) armchair
   { product: 'Cali (Armchairs)', tier: 'Category A', price: '1.837,00' },
 ], undefined, 'Ditre Italia');
 
+// ===== Pianca name-collision isolation (1) =====
+// "Levante" and "Peonia" are each both a Divani (sofa) AND a Poltrone
+// (armchair) line in Progetti di Design 08, sharing one bare printed
+// name in the INDICE -- same collision family as Ditre's Cali above.
+// Unlike Ditre, Pianca's fabric_tier is stored as the bare letter ("A"),
+// not a compound "Category A" string -- tier_label ("Category") is a
+// separate field, verified live against the running server, not assumed.
+addCase('2prod', 'give me all prices for Levante (Divani) and Levante (Poltrone)', ['Levante (Divani)', 'Levante (Poltrone)'], [
+  { product: 'Levante (Divani)', tier: 'A', price: '2.647' },
+  { product: 'Levante (Poltrone)', tier: 'A', price: '1.643' },
+], undefined, 'Pianca');
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----

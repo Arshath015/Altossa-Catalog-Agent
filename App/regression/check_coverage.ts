@@ -23,7 +23,7 @@ import path from 'path';
 
 const ROOT = path.join(__dirname, '..', '..');
 const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
-const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca'];
 
 // Products already triaged as `known_gap` in flag_triage.json are an
 // accepted, documented, SAFE backlog (parser returns zero rows / skips

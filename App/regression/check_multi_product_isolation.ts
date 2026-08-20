@@ -159,6 +159,16 @@ const CASES: Case[] = [
       { product: 'Tao outdoor', tier: 'Category P outdoor', expectedPrices: ['3.488,00', '4.361,00', '5.309,00', '5.380,00'] },
     ],
   },
+  {
+    id: 'pianca-levante-divani-poltrone-collision',
+    brand: 'Pianca',
+    query: 'give me all prices for Levante (Divani) and Levante (Poltrone)',
+    note: 'Pianca name-collision disambiguation: "Levante" and "Peonia" are each both a Divani (sofa) AND a Poltrone (armchair) line in Progetti di Design 08, sharing one bare printed name in the INDICE (same pattern as Ditre\'s Cali case above) -- extract_catalog.py\'s parse_index_pianca qualifies them as "Levante (Divani)"/"Levante (Poltrone)" at index time. Verified live against the running server (not assumed): this exact query deterministically returns Levante (Divani)\'s "S" module (code D9LV118 D/S, tier A=2.647) and Levante (Poltrone) (codes D9LV080/F9LV080, tier A=1.643/656) with neither product\'s prices leaking into the other.',
+    required: [
+      { product: 'Levante (Divani)', tier: 'A', price: '2.647', excludePrices: ['1.643', '656'] },
+      { product: 'Levante (Poltrone)', tier: 'A', price: '1.643', excludePrices: ['2.647'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

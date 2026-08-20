@@ -158,6 +158,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISHES',
     note: 'Ditre\'s Shape 2 (named material-finish-code grid) real source label -- deliberately DIFFERENT from Shape 1\'s "UPHOLSTERING" above, proves the tier_label column isn\'t hardcoded per-brand but genuinely varies with the source page\'s own printed word. Also disambiguated against "Claire (Night)"/"Claire mix" the same way as Ada above.',
   },
+  {
+    id: 'pianca-lina-shapeA-tier',
+    category: 'tessuto/pelle Shape A tier grid (Pianca)',
+    brand: 'Pianca',
+    query: 'Lina Frassino Nero category a price',
+    productName: 'Lina',
+    expectedHeader: 'CATEGORY',
+    note: 'Pianca\'s Shape A (tessuto/pelle A/B/C/H/P/Q tier grid, first implementation slice scoped to Progetti di Design 08) real source label -- the printed column header is literally "A B C H P Q" with no descriptive word of its own on the page, so parse_file_pianca uses the literal generic word "Category" (matching how this project\'s Step-1 structural report described the column set) rather than inventing brand-specific vocabulary the source doesn\'t use.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

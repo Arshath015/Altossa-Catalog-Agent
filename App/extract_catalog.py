@@ -1044,6 +1044,157 @@ def build_offset_fallback(page_map: dict[int, int]):
     return lambda p: p + common_offset
 
 
+# ---------------------------------------------------------------------------
+# Pianca -- INDICE format so far only verified against
+# "2024_10_Progetti_di_Design_08_1R +6_.pdf" (the file this style is scoped
+# to for its first implementation slice; the other 9 Pianca source PDFs use
+# structurally different INDICE layouts per the Step-1 structural read-only
+# pass -- e.g. Sistemi Giorno/Notte's INDICE nests category > sub-section >
+# page-number several levels deep, Progetti 09/Spazi-10 use a numbered
+# "card" grid instead of a text list -- and have NOT been verified against
+# this parser. Do not widen --index-pages usage to those files without
+# re-verifying the coordinate bands below against their own -tsv output
+# first, the same way this file's bands were confirmed against Progetti
+# 08's real page-4 -tsv dump (3 x-bands: category label ~x254, product name
+# ~x480-535, page number ~x535-545, right-aligned) rather than assumed from
+# the rendered layout alone.
+#
+# A product name is not always followed immediately by its own category
+# label -- e.g. Progetti 08's INDICE prints "Sedie" once (aligned with
+# "Lina"), then "Palù" on the next row with NO repeated "Sedie" label,
+# since both belong to the same category block. This mirrors how "Divani"
+# covers Levante+Peonia and "Poltrone" covers Levante+Peonia again (the
+# SAME two names recur under a second category -- Levante and Peonia are
+# each both a sofa AND an armchair line, confirmed via Step-1's visual
+# inspection of pages 15/20). Per the approved product model, these are
+# kept as distinct top-level catalog entries qualified by category
+# ("Levante (Divani)" vs "Levante (Poltrone)"), not merged or deduped.
+# ---------------------------------------------------------------------------
+
+def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
+    """Parse Pianca's INDICE page (Progetti 08 layout only -- see module
+    comment above) via -tsv coordinates: category label / product name /
+    page number sit in 3 distinct x-bands on each visual row, with the
+    category label only present on the FIRST row of its own block (later
+    rows in the same category inherit it). Returns (name, printed_page)
+    with name qualified as "Name (Category)" whenever the same bare name
+    recurs under more than one category in this index (verified needed:
+    Levante and Peonia each appear under both Divani and Poltrone)."""
+    CATEGORY_X_MAX = 300.0
+    NAME_X_MIN = 400.0
+    PAGENUM_X_MIN = 530.0
+    ROW_TOP_TOLERANCE = 3.0
+
+    raw_entries: list[tuple[str, str, int]] = []  # (category, name, page)
+    for pg in index_pages:
+        result = subprocess.run(
+            [PDFTOTEXT, "-tsv", "-enc", "UTF-8", "-f", str(pg), "-l", str(pg), pdf_path, "-"],
+            capture_output=True,
+        )
+        tsv_text = result.stdout.decode("utf-8", errors="replace")
+        tsv_rows = [ln.rstrip("\r").split("\t") for ln in tsv_text.split("\n") if ln.strip()]
+        if not tsv_rows:
+            continue
+        header = tsv_rows[0]
+        col = {name: i for i, name in enumerate(header)}
+        words = []  # (top, left, text)
+        for row in tsv_rows[1:]:
+            if len(row) <= max(col.values()):
+                continue
+            if row[col["level"]] != "5":
+                continue
+            left = float(row[col["left"]])
+            if left < 200.0:
+                continue  # page furniture: "INDICE" title, "INTERACTIVE" watermark
+            words.append((float(row[col["top"]]), left, row[col["text"]]))
+        if not words:
+            continue
+        words.sort()
+
+        visual_rows: list[list[tuple[float, float, str]]] = []
+        for w in words:
+            if visual_rows and abs(w[0] - visual_rows[-1][0][0]) <= ROW_TOP_TOLERANCE:
+                visual_rows[-1].append(w)
+            else:
+                visual_rows.append([w])
+
+        current_category = None
+        for row in visual_rows:
+            row = sorted(row, key=lambda w: w[1])
+            cat_tokens = [t for _, left, t in row if left < CATEGORY_X_MAX]
+            name_tokens = [t for _, left, t in row if NAME_X_MIN <= left < PAGENUM_X_MIN]
+            pagenum_tokens = [t for _, left, t in row if left >= PAGENUM_X_MIN]
+            if cat_tokens:
+                current_category = " ".join(cat_tokens).strip()
+            if not name_tokens or not pagenum_tokens:
+                continue  # e.g. a trailing back-matter line with no page number
+            if not re.fullmatch(r"\d{1,4}", pagenum_tokens[-1]):
+                continue
+            name = " ".join(name_tokens).strip()
+            page_num = int(pagenum_tokens[-1])
+            if name and current_category:
+                raw_entries.append((current_category, name, page_num))
+
+    # Qualify with category only for names that recur under >1 category --
+    # confirmed necessary (Levante, Peonia); leaving single-category names
+    # (Lina, Palù) unqualified matches how every other Pianca product is
+    # named elsewhere in this project (no brand precedent qualifies a name
+    # that doesn't actually collide).
+    names_by_category: dict[str, set] = {}
+    for cat, name, _ in raw_entries:
+        names_by_category.setdefault(name, set()).add(cat)
+
+    entries: list[tuple[str, int]] = []
+    for cat, name, page_num in raw_entries:
+        display_name = f"{name} ({cat})" if len(names_by_category[name]) > 1 else name
+        entries.append((display_name, page_num))
+
+    seen = set()
+    unique = []
+    for name, pg in entries:
+        key = (name, pg)
+        if key not in seen:
+            seen.add(key)
+            unique.append((name, pg))
+    unique.sort(key=lambda x: x[1])
+    return unique
+
+
+def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Read every page's footer to map printed page numbers -> real PDF
+    pages. Pianca's footer is a single running counter joined to the
+    current PRODUCT's own uppercase section name by an underscore, in one
+    of two mirrored forms depending on which side of the spread the page
+    is on: "<N>_SECTIONNAME" (e.g. "4_PROGETTI DI DESIGN") or
+    "SECTIONNAME_<N>" (e.g. "PROGETTI DI DESIGN_5") -- confirmed by direct
+    pdftotext inspection across multiple pages/sections of Progetti 08
+    (SEDIE_1, PROGETTI DI DESIGN_5/9/11/19, UNLESS_7, SIPARIO_15,
+    TEATRO_305/309, ANTEPRIMA_291, PRIMO_2 all seen across the 10 source
+    files during the Step-1 pass), not assumed from a single sample. The
+    section-name label itself varies per product/section (unlike Ditre's
+    constant "Ditre Italia" wordmark) so the regex matches ANY uppercase
+    label, not a hardcoded brand name. No offset/formula fallback here
+    either -- see build_offset_fallback, called separately by main() for
+    whichever pages this leaves unmapped (full-bleed section-divider pages
+    confirmed to have no footer at all, e.g. Progetti 08's own "PEONIA"
+    divider page)."""
+    page_map: dict[int, int] = {}
+    prefix_re = re.compile(r"^\s*(\d{1,4})_[A-ZÀ-Ù][A-ZÀ-Ù ]*\s*$")
+    suffix_re = re.compile(r"^\s*[A-ZÀ-Ù][A-ZÀ-Ù ]*_(\d{1,4})\s*$")
+    FOOTER_LOOKBACK = 4
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        if not lines:
+            continue
+        for last in reversed(lines[-FOOTER_LOOKBACK:]):
+            m = prefix_re.match(last) or suffix_re.match(last)
+            if m:
+                page_map[int(m.group(1))] = pg
+                break
+    return page_map
+
+
 def compute_ranges(entries: list[tuple[str, int]], last_printed_page_guess: int) -> list[dict]:
     """Turn a sorted (name, start_page) list into (name, start_page, end_page).
 
@@ -2080,7 +2231,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -2101,7 +2252,13 @@ def main():
                           "name-then-number), coordinate-based column "
                           "split like bonaldo, footer is either "
                           "'<Name> | <N>' (Night catalogs) or a bare <N> "
-                          "beside the 'Ditre Italia' wordmark (all others).")
+                          "beside the 'Ditre Italia' wordmark (all others). "
+                          "'pianca' = 3-band INDICE (category/name/page-"
+                          "number columns), footer is '<N>_SECTION' or "
+                          "'SECTION_<N>' -- ONLY verified against Progetti "
+                          "di Design 08 so far, see parse_index_pianca's "
+                          "module comment before pointing this at any of "
+                          "the other 9 Pianca source PDFs.")
     ap.add_argument("--merge", action="store_true",
                      help="Merge into an existing catalog_index.json instead "
                           "of overwriting it: entries from this run replace "
@@ -2145,6 +2302,8 @@ def main():
         entries = [(name, page) for name, page in entries if name not in DUPLICATE_VARIANT_ENTRIES]
     elif args.style == "ditre":
         entries = parse_index_ditre(pdf_path, index_pages)
+    elif args.style == "pianca":
+        entries = parse_index_pianca(pdf_path, index_pages)
     else:
         entries = parse_index(pdf_path, index_pages)
     print(f"      -> found {len(entries)} products")
@@ -2171,6 +2330,19 @@ def main():
         # safer than a formula neither confirmed nor even hypothesized for
         # this brand.
         page_fallback = lambda p: p
+    elif args.style == "pianca":
+        page_map = build_pianca_page_map(pdf_path, total_pages)
+        # Unlike bonaldo/ditre, Pianca's printed page numbers do NOT equal
+        # PDF page index (confirmed offset of +3 throughout Progetti 08 --
+        # printed page 1 is real PDF page 4, since the file opens with a
+        # cover + front-matter + INDICE before content starts). Also
+        # unlike Bolzan/Cattelan, there's no known universal formula
+        # (offset differs per source file). build_offset_fallback derives
+        # the fallback from the ACTUAL page_map's own most-common offset
+        # rather than assuming one, so an unreadable-footer page (e.g. a
+        # full-bleed section divider) still gets a sane estimate instead
+        # of silently mismapping to itself.
+        page_fallback = build_offset_fallback(page_map)
     else:
         page_map = build_printed_to_pdf_page_map(pdf_path, total_pages)
         page_fallback = printed_to_pdf_fallback

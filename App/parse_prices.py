@@ -4174,6 +4174,222 @@ def parse_file_ditre_casegoods(path, product_name, brand, all_headings=None, hea
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca -- first implementation slice scoped to Progetti di Design 08 ONLY
+# (see extract_catalog.py's parse_index_pianca module comment for the same
+# scope caveat on the index side). Only Shape A (the tessuto/pelle tier
+# grid: L/H/P + CODICI + the non-contiguous A/B/C/H/P/Q price columns --
+# confirmed the SAME 6-tier convention across Collezione Giorno/Notte,
+# Progetti 08/09, and Spazi-10's upholstered items during the Step-1
+# structural read-only pass) is implemented here.
+#
+# Shape B (named finish-family columns -- e.g. Lina's OWN "Sedia con
+# seduta legno" table sits on the exact same page as its Shape A "Sedia
+# con seduta imbottita" table, headed "L H P CODICI Frassino Nero Essenza
+# Laccato Opaco") and Shape C (Snake's per-square-metre rate, found only
+# in Sistemi Notte, out of scope for this file anyway) are NOT implemented
+# yet. Per explicit instruction: any table whose header contains "CODICI"
+# but doesn't match Shape A's exact column signature is FLAGGED (with its
+# raw header line) and skipped -- never guessed at as Shape A, and never
+# silently absorbed into a generic "else" catch-all. Widening this parser
+# to a shape it hasn't been verified against risks a silently wrong price,
+# which is worse than a visible, triaged gap.
+# ---------------------------------------------------------------------------
+
+_PIANCA_TIER_LETTERS = ['A', 'B', 'C', 'H', 'P', 'Q']
+_PIANCA_PRICE_CELL_RE = re.compile(r'^-$|^[\d.]{1,7}$')
+_PIANCA_CODE_RE = re.compile(r'^[A-Z0-9]{4,10}$')
+
+
+def _pianca_is_shape_a_header(line: str) -> bool:
+    """A Shape A header line ends in exactly the 6 tier-letter tokens 'A B
+    C H P Q', in that order, and contains 'CODICI' somewhere before them.
+    Checking the LAST 6 tokens (rather than searching for 'H'/'P' as
+    isolated characters anywhere after 'CODICI') sidesteps the dimension
+    columns' own 'L H P CODICI' segment entirely -- those tokens are never
+    among the line's last 6, so there's no ambiguity to resolve."""
+    if 'CODICI' not in line:
+        return False
+    tokens = line.split()
+    return tokens[-6:] == _PIANCA_TIER_LETTERS
+
+
+def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
+    """Shape A (tessuto/pelle tier grid) only -- see module comment above
+    for scope. Any table whose header contains 'CODICI' but doesn't match
+    Shape A's exact 'CODICI ... A B C H P Q' signature is flagged (with
+    its raw header line, for manual follow-up) and skipped.
+
+    Price cells are matched by TOKEN POSITION FROM THE END OF THE LINE,
+    not by character offset under the header's own letter positions --
+    confirmed necessary: pdftotext -layout right-justifies each price
+    column independently, so a row's actual price digits routinely start
+    several characters to the left OR right of where the header's single-
+    character tier letter (e.g. 'A') sits above it. Slicing by the
+    header's column offsets silently mis-cut every price on every row
+    (verified: it originally produced 0 rows across all 6 Progetti 08
+    products). The trailing-6-token approach works because every Shape A
+    row unconditionally prints all 6 cells, using a literal '-' for any
+    tier with no price (confirmed on Levante's module rows) rather than
+    omitting the cell -- so the last 6 whitespace tokens on a matched row
+    are always exactly the 6 tier values, in A/B/C/H/P/Q order."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    # Nearest preceding short sub-heading line (e.g. "Composizione",
+    # "Sedia con seduta imbottita", "Modulo laterale") -- attached to
+    # every row found until the next one is seen. Purely descriptive
+    # metadata; never affects which price is recorded for which code.
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if 'CODICI' not in line:
+            i += 1
+            continue
+
+        if not _pianca_is_shape_a_header(line):
+            flags.append((page_of_line[i], product_name,
+                          f"unrecognized price-table header (not Shape A), skipped: {line.strip()[:120]!r}"))
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        # Threshold verified against real data: the widest observed blank
+        # run between a sub-heading line and its own price row (diagram
+        # spacing) is exactly 4 consecutive blank lines, confirmed by a
+        # direct count across lina.txt and levante_divani.txt -- an
+        # earlier version used 4 as the cutoff itself, which terminates
+        # the scan exactly ONE line too early (the loop condition is
+        # checked before processing, so blank_run reaching 4 exits before
+        # the row right after it is ever read), silently producing 0 rows
+        # for every product. 10 gives real margin beyond the widest
+        # observed gap without risking a scan running past its table
+        # into unrelated later content (the next Shape A/B header line
+        # still ends the scan immediately regardless of blank_run).
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if 'CODICI' in raw and _pianca_is_shape_a_header(raw):
+                break  # next table's header -- let the outer loop handle it
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-6:]
+            if len(tokens) < 7 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                # Not a price row -- either a sub-heading (e.g.
+                # "Composizione") or unrelated prose/diagram text. Only
+                # accept it as a new variant_context if it's short,
+                # digit-free, and more than a single stray diagram-letter
+                # marker (e.g. the "S"/"D" left/right-orientation notes
+                # sprinkled through composition diagrams -- confirmed
+                # these would otherwise silently clobber a real
+                # "Composizione" context with a 1-character label).
+                if 2 < len(stripped) <= 60 and len(tokens) <= 6 and not re.search(r'\d', stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-6]
+            code = None
+            label_tokens = []
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                    label_tokens = list(pre_tokens[:-2])
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+                    label_tokens = list(pre_tokens[:-1])
+
+            if code is None:
+                i += 1
+                continue
+
+            # Dimension columns (L, H, P) are plain numbers immediately
+            # preceding the code -- strip up to 3 trailing numeric tokens
+            # so they don't get glued into the model_variant label.
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                label_tokens.pop()
+
+            # LEADING noise confirmed real on Levante (Divani): pdftotext
+            # -layout sometimes glues a stray diagram annotation onto the
+            # FRONT of an otherwise-clean row when its vertical position
+            # happens to coincide with this row's, since the module-width
+            # diagram sits in the same character columns as the label
+            # text further right. Two confirmed patterns, both from
+            # direct inspection of levante_divani.txt: (1) a bare 'S' or
+            # 'D' left/right-orientation marker (documented on this same
+            # page: "Le immagini di listino rappresentano prodotti
+            # sinistri (S). I prodotti destri (D) si intendono
+            # perfettamente speculari." -- purely a mirror-image note,
+            # redundant with the code's own already-correct ' D/S' suffix,
+            # never a real distinguishing variant) glued directly onto a
+            # real code's own row (e.g. "S" + "118 65 98 D9LV118 D/S ..."
+            # on one physical line, corrupting model_variant to bare "S");
+            # (2) a truncated "<width> -" fragment from a multi-line
+            # width-range diagram (e.g. "98 -" from a "138 / 118 - / 98 -"
+            # list) landing in front of a real label (e.g. "98 -
+            # rivestimento seduta" instead of clean "rivestimento
+            # seduta"). Both confirmed to fragment what should be ONE
+            # clean variant group into several near-duplicate ones,
+            # which the chat layer's "give me all prices" path picked up
+            # on and silently narrowed to just one fragment-labeled group
+            # (4 of 108 real rows) instead of the product's whole set --
+            # caught by check_coverage.ts, not assumed fixed by inspection
+            # alone.
+            while label_tokens:
+                if re.match(r'^[SD]$', label_tokens[0]):
+                    label_tokens.pop(0)
+                    continue
+                if re.match(r'^\d+(\.\d+)?$', label_tokens[0]) and len(label_tokens) > 1 and label_tokens[1] == '-':
+                    label_tokens.pop(0)
+                    label_tokens.pop(0)
+                    continue
+                break
+
+            label = ' '.join(label_tokens).strip() or None
+
+            any_price = False
+            for letter, cell in zip(_PIANCA_TIER_LETTERS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": label,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": letter,
+                    "tier_label": "Category",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
 _DITRE_FLAG_CODE_RE = re.compile(r'code (\S+)$')
 
 
@@ -4277,7 +4493,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -4544,6 +4760,10 @@ def main():
             elif args.format == "ditre":
                 heading_text = p.get("index_heading", p["product_name"])
                 rows, flags = parse_file_ditre(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "pianca":
+                heading_text = p.get("index_heading", p["product_name"])
+                rows, flags = parse_file_pianca(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

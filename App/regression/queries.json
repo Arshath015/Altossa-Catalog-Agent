@@ -723,5 +723,21 @@
     "query": "xyznonexistentproduct123 price",
     "note": "garbage product name, must not fabricate a match",
     "expect_status": "no_product_match"
+  },
+  {
+    "id": 79,
+    "cat": "multi_product",
+    "brand": "Pianca",
+    "query": "give me all prices for Levante (Divani) and Levante (Poltrone)",
+    "note": "Levante and Peonia are each both a Divani (sofa) AND a Poltrone (armchair) line in Progetti di Design 08, sharing one bare printed name in the INDICE -- same collision family as Ditre's Cali (id 73). Naming two disambiguated forms together must resolve and isolate both.",
+    "expect_prices": ["2.647", "1.643"]
+  },
+  {
+    "id": 80,
+    "cat": "ambiguous_same_code_variant",
+    "brand": "Pianca",
+    "query": "Lina Frassino Nero category a price",
+    "note": "Lina's own printed order code (01121) is identical across all 3 leg-finish variants (Frassino Nero/Essenza/Laccato Opaco), each with its own distinct price -- the shared cross-brand ambiguous-row check (keyed on product+code+tier, deliberately not widened to include model_variant, see App/regression/flag_triage.json's Pianca entry for why) correctly can't disambiguate purely from (code, tier), so it falls back to the safe ambiguous_price status with the real page image rather than guessing.",
+    "expect_status": "ambiguous_price"
   }
 ]
