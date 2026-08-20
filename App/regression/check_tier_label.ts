@@ -167,6 +167,15 @@ const CASES: Case[] = [
     expectedHeader: 'CATEGORY',
     note: 'Pianca\'s Shape A (tessuto/pelle A/B/C/H/P/Q tier grid, first implementation slice scoped to Progetti di Design 08) real source label -- the printed column header is literally "A B C H P Q" with no descriptive word of its own on the page, so parse_file_pianca uses the literal generic word "Category" (matching how this project\'s Step-1 structural report described the column set) rather than inventing brand-specific vocabulary the source doesn\'t use.',
   },
+  {
+    id: 'pianca-normaup-2axis-tier',
+    category: '2-axis Struttura x Frontali finish grid (Pianca)',
+    brand: 'Pianca',
+    query: 'Norma Up materico price',
+    productName: 'Norma Up',
+    expectedHeader: 'FINISH',
+    note: 'Norma Up\'s 2-axis grid (Progetti di Design 09, real PDF pages 54-64) folds BOTH the Struttura finish and the Frontali/Copertura finish into one fabric_tier string (e.g. "Materico — Copertura L.Opaco/Essenza — Frontali L.Opaco") rather than splitting the row axis into model_variant -- necessary because main()\'s shared ambiguous-row detection keys on (product, code, fabric_tier) only, and this table\'s same printed code repeats across all 3 Struttura rows for one dimension (confirmed real, not a parsing bug) -- splitting the axes across two fields caused every one of the product\'s 1566 rows to collide and get marked ambiguous before this was fixed. tier_label is "Finish" (generic, no single descriptive source word covers a combined 2-axis tier).',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

@@ -4214,7 +4214,7 @@ def _pianca_is_shape_a_header(line: str) -> bool:
     return tokens[-6:] == _PIANCA_TIER_LETTERS
 
 
-def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
+def parse_file_pianca_shape_a(path, product_name, brand, all_headings=None, heading_text=None):
     """Shape A (tessuto/pelle tier grid) only -- see module comment above
     for scope. Any table whose header contains 'CODICI' but doesn't match
     Shape A's exact 'CODICI ... A B C H P Q' signature is flagged (with
@@ -4388,6 +4388,251 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
             i += 1
         # continue outer loop from wherever the inner scan stopped
     return rows, flags
+
+
+# ---------------------------------------------------------------------------
+# Pianca Shape B, 2-axis variant -- Norma Up (Progetti di Design 09) only,
+# verified against real PDF pages 54-64 (visually confirmed at 150dpi, not
+# just text extraction). Price varies along TWO independent axes at once:
+#   - ROW axis: "Struttura" (frame) finish -- exactly 3 known values,
+#     "Materico" / "L. Opaco" / "Essenza / L. Metallico" -- printed ONCE on
+#     the first of 3 consecutive dimension sub-rows, omitted on the other 2
+#     (a continuation pattern, same idea as Peonia's Zoccolo rows in Shape
+#     A, but here the label is fully ABSENT on continuation rows rather
+#     than repeated).
+#   - COLUMN axis: 6 "Frontali" (drawer-front) finish columns, nested under
+#     2 parent "Copertura esterna" (exterior covering) groups of 3 each --
+#     confirmed via direct pdftotext -tsv inspection of real page 12's
+#     analogous header (see Enea Up investigation) and cross-checked
+#     against the identical multi-line header text repeated verbatim on
+#     every Norma Up 2-axis page sampled (54/55/56...64).
+# The CODE alone identifies dimension only (same code appears across all 3
+# struttura-finish rows for one L/P pair, confirmed real: "00KFFC" prints
+# on the Materico, L. Opaco, AND Essenza/L. Metallico rows alike) -- a full
+# unique price key is (code, struttura_finish, frontali_column), all 3
+# captured here, so there is no ambiguity despite the code repeating.
+#
+# Same leading-diagram-noise risk as Levante's S/D bug, but a DIFFERENT
+# fix: rather than positional stripping (which only works when noise sits
+# at a fixed position relative to real content), this searches for one of
+# the 3 known struttura_finish keywords anywhere in the row's pre-code
+# text and ignores everything else -- confirmed necessary on real page 55,
+# where a stray "A 116" diagram annotation (anta-type letter + a width
+# number) glues onto the front of an "Essenza / L. Metallico" row.
+# ---------------------------------------------------------------------------
+
+_PIANCA_2AXIS_COLUMNS = [
+    "Copertura L.Opaco/Essenza — Frontali L.Opaco",
+    "Copertura L.Opaco/Essenza — Frontali Essenza",
+    "Copertura L.Opaco/Essenza — Frontali Lucido/Metall/Laccato/Marmo",
+    "Copertura Lucido/Metall/Laccato/Marmo — Frontali L.Opaco",
+    "Copertura Lucido/Metall/Laccato/Marmo — Frontali Essenza",
+    "Copertura Lucido/Metall/Laccato/Marmo — Frontali Lucido/Metall/Laccato/Marmo",
+]
+_PIANCA_2AXIS_LEGEND_RE = re.compile(r'^[A-Z]:\s')
+_PIANCA_2AXIS_HEADING_RE = re.compile(r'^\d+\s*\(.+\)$')
+
+
+def _pianca_is_2axis_header(line: str) -> bool:
+    """A 2-axis header line ends in exactly 6 repetitions of the bare word
+    'Frontali' (the finish-specific sub-label -- 'L. Opaco'/'Essenza'/etc
+    -- wraps to the FOLLOWING physical line, confirmed on every sampled
+    page), and contains 'CODICI' somewhere before them."""
+    if 'CODICI' not in line:
+        return False
+    tokens = line.split()
+    return tokens[-6:] == ['Frontali'] * 6
+
+
+def _pianca_2axis_struttura_finish(pre_tokens: list) -> str | None:
+    """Keyword search rather than positional parsing -- see module comment
+    for why (stray diagram annotations can land anywhere in the leading
+    text, not just a fixed position). Checked in this order because
+    'Essenza' uniquely identifies the 3rd value even though 'L. Opaco'
+    could otherwise partially overlap in casual substring checks.
+
+    The 3rd value's own label is NOT always spelled out in full --
+    confirmed real via a direct count across norma_up.txt: 'Ess. /
+    L-Met.' (14x, abbreviated -- narrower-width sections truncate it to
+    fit) vs 'Essenza / L-Met.' (10x) vs 'Essenza / L. Metallico' (5x).
+    Matching on a bare 'Essenza' substring silently missed all 14
+    abbreviated instances, which then fell through with found_finish=None
+    and incorrectly CARRIED FORWARD the previous row's struttura_finish
+    (e.g. 'L. Opaco') instead -- confirmed to cause 504 real (code,
+    fabric_tier) collisions this way (e.g. code 00K74T's real 'L. Opaco'
+    row and its real 'Ess. / L-Met.' row both got labeled 'L. Opaco',
+    silently merging two DIFFERENT real prices, 1.459 and 1.722, under
+    one ambiguous-marked key). Matching on the 'Ess' PREFIX (not a
+    full-word 'Essenza' substring) catches all 3 spellings identically."""
+    text = ' '.join(pre_tokens)
+    if any(t.startswith('Ess') for t in pre_tokens):
+        return 'Essenza / L. Metallico'
+    if 'Materico' in text:
+        return 'Materico'
+    if 'Opaco' in text:
+        return 'L. Opaco'
+    return None
+
+
+def parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope (Norma Up only, verified against
+    real PDF pages 54-64)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None  # e.g. "102 (2 vani anta)" -- the module-width heading
+    struttura_finish = None  # carried forward across continuation rows with no label of their own
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_2axis_header(line):
+            i += 1
+            continue
+
+        # Safety gate: verify the "Copertura esterna" parent header this
+        # column-label set assumes is actually present nearby, rather than
+        # trusting the hardcoded _PIANCA_2AXIS_COLUMNS blind just because
+        # the line ends in 6x "Frontali". Checked in the 6 lines before
+        # the header (confirmed real position: 4 lines above on every
+        # sampled page).
+        lookback = '\n'.join(lines[max(0, i - 6):i])
+        if lookback.count('Copertura esterna') < 2:
+            flags.append((page_of_line[i], product_name,
+                          f"2-axis-shaped header (6x 'Frontali') but 'Copertura esterna' parent labels not confirmed nearby, skipped: {line.strip()[:120]!r}"))
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        struttura_finish = None  # reset per table -- don't leak a prior table's last row-label
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_2axis_header(raw) or _pianca_is_shape_a_header(raw):
+                break  # next table's header (either shape) -- let the outer loop handle it
+            blank_run = 0
+
+            if _PIANCA_2AXIS_LEGEND_RE.match(stripped):
+                i += 1
+                continue  # "A: battente" / "C: cassetto" / etc -- anta-type legend, not context
+
+            tokens = stripped.split()
+            trailing = tokens[-6:]
+            if len(tokens) < 7 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                # Not a price row. Unlike Shape A's context capture, this
+                # DELIBERATELY allows digit-bearing headings (e.g. "102 (2
+                # vani anta)" -- the module-width group heading), since
+                # excluding all-digit-free lines the way Shape A does
+                # would silently drop the only context these rows have.
+                # But NOT any short digit-bearing line -- confirmed real
+                # on page 55: a stray "60    60" diagram width-pair
+                # (unrelated to price data) sits between two struttura-
+                # finish row groups and would otherwise silently clobber
+                # the real "122 (1 vano anta)" heading with garbage,
+                # corrupting every row after it until the next real
+                # heading. Real headings all match "<digits> (<text>)" --
+                # a bare number or number-pair never does, so requiring
+                # the parenthesized suffix is a precise, verified filter
+                # rather than a loose length/token-count heuristic.
+                if _PIANCA_2AXIS_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-6]
+            code = None
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            found_finish = _pianca_2axis_struttura_finish(pre_tokens)
+            if found_finish is not None:
+                struttura_finish = found_finish
+
+            # Both axes are folded into fabric_tier (not split across
+            # fabric_tier + model_variant) because main()'s cross-brand
+            # ambiguous-row detection keys on (product, code, fabric_tier)
+            # ONLY -- model_variant is deliberately excluded there (kept
+            # that way after confirming widening it would silently un-
+            # flag real conflicts in Bolzan/Cattelan, see the Lina
+            # investigation). The SAME code prints across all 3 struttura
+            # rows for one L/P pair (confirmed real, not a parsing
+            # error), so leaving struttura_finish in model_variant made
+            # every single Norma Up row collide on (code, column) and
+            # get marked ambiguous -- 1566/1566 rows, confirmed via a
+            # real parser run, not assumed. Combining both axes into one
+            # fabric_tier string is also the semantically honest model:
+            # a customer must specify BOTH the Struttura finish and the
+            # Frontali/Copertura finish to get an exact price, so
+            # "the tier" genuinely is the pair, not either alone.
+            any_price = False
+            for column_label, cell in zip(_PIANCA_2AXIS_COLUMNS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                tier = f"{struttura_finish} — {column_label}" if struttura_finish else column_label
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": tier,
+                    "tier_label": "Finish",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
+    """Dispatcher: runs Shape A and the Norma Up 2-axis variant over the
+    same text and merges results. The two header signatures are mutually
+    exclusive by construction (Shape A ends in 'A B C H P Q', 2-axis ends
+    in 6x 'Frontali'), so rows never collide -- a plain union is correct,
+    same reasoning as Ditre's Shape 1/Shape 2 merge (see parse_file_ditre)
+    though simpler here since there's no shared-code overlap to resolve.
+    Shape A's own scan flags EVERY 'CODICI' line it doesn't recognize,
+    including 2-axis headers -- so any such flag on a page the 2-axis
+    parser actually resolved rows for is dropped here as superseded,
+    rather than left as a duplicate/stale flag alongside the real data."""
+    rows_a, flags_a = parse_file_pianca_shape_a(path, product_name, brand, all_headings, heading_text)
+    rows_2axis, flags_2axis = parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings, heading_text)
+
+    resolved_2axis_pages = {r["source_pdf_page"] for r in rows_2axis}
+    flags_a_filtered = [
+        f for f in flags_a
+        if not (f[0] in resolved_2axis_pages and 'Frontali' in f[2])
+    ]
+
+    return rows_a + rows_2axis, flags_a_filtered + flags_2axis
 
 
 _DITRE_FLAG_CODE_RE = re.compile(r'code (\S+)$')
