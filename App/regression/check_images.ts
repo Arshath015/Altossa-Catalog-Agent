@@ -37,7 +37,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 const ROOT = path.join(__dirname, '..', '..');
-const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca'];
 
 interface CatalogEntry {
   product_name: string;
@@ -45,6 +45,7 @@ interface CatalogEntry {
   art_code?: string;
   images: string[];
   text_file: string;
+  page_images?: Record<string, string>;
 }
 
 function realHeading(entry: CatalogEntry): string {
@@ -68,6 +69,45 @@ function isLegitimatePair(pText: string, otherEntry: CatalogEntry): boolean {
     return pText.includes(otherEntry.art_code.toUpperCase());
   }
   return pText.includes(realHeading(otherEntry).toUpperCase());
+}
+
+// Pianca-specific case found 2026-08-20: two entirely unrelated products
+// (Palù, Peonia (Divani)) share a byte-identical image because BOTH
+// entries' page ranges happen to end on a genuinely blank filler page in
+// the source PDF (real PDF pages 9 and 23 respectively -- confirmed via
+// direct pdftotext: zero characters of text on either page, and the
+// rendered JPGs are visually solid blank grey/white, not a mis-rendered
+// content page). This is a different failure class than the RICHARD bug
+// this whole check was built to catch (a WRONG CONTENT-BEARING image
+// silently substituted for the right one) -- a blank page can never leak
+// a wrong price or a wrong product's photo, so flagging two blank pages
+// against each other as "suspicious" is a false positive, not a real
+// finding. isLegitimatePair's cross-reference-by-heading-or-art_code
+// check can never hold for a blank page (there's no text on it AT ALL to
+// contain the other product's heading), so this needs its own path
+// rather than widening that function's existing logic.
+function pageTextFor(entry: CatalogEntry, imageFilename: string, allText: string): string | null {
+  const pdfPage = Object.entries(entry.page_images || {}).find(([, f]) => f === imageFilename)?.[0];
+  if (!pdfPage) return null;
+  const marker = `<<<PDFPAGE:${pdfPage}>>>`;
+  const start = allText.indexOf(marker);
+  if (start === -1) return null;
+  const nextMarkerIdx = allText.indexOf('<<<PDFPAGE:', start + marker.length);
+  const end = nextMarkerIdx === -1 ? allText.length : nextMarkerIdx;
+  return allText.slice(start + marker.length, end);
+}
+
+function isBlankPageCollision(products: string[], files: string[], idx: CatalogEntry[], textFor: (p: string) => string): boolean {
+  for (const p of products) {
+    const entry = idx.find(e => e.product_name === p)!;
+    const allText = textFor(p);
+    const ownFiles = files.filter(f => (entry.images || []).includes(f));
+    for (const f of ownFiles) {
+      const pageText = pageTextFor(entry, f, allText);
+      if (pageText === null || pageText.trim() !== '') return false;
+    }
+  }
+  return true;
 }
 
 function checkBrand(brand: string): { suspicious: number; legitimate: number } {
@@ -130,6 +170,8 @@ function checkBrand(brand: string): { suspicious: number; legitimate: number } {
         if (!isLegitimatePair(pText, otherEntry)) isLegit = false;
       }
     }
+
+    if (!isLegit && isBlankPageCollision(products, files, idx, textFor)) isLegit = true;
 
     if (isLegit) {
       legitimateCount++;
