@@ -4649,6 +4649,11 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
         ['V. Laccato / V. L-Met. / V. Metall.', 'V. Marmo', 'Specchio', 'Pelle Sint.', 'Cuoio Rig.', 'Marmo / Terrazzo'],
     ('Struttura', 'e', 'frontali'): ['Struttura e frontali'],
     ('Essenza', 'Poro', 'aperto'): ['Essenza', 'Poro aperto'],
+    # Enea Up (Progetti di Design 09), real PDF page 12 -- wildcard-code
+    # table, price-safe (see the wildcard-code comment above in the row
+    # scan loop): price is resolved by (row, column) regardless of the
+    # '*' placeholder in the printed order code.
+    ('L.', 'Opaco', 'Essenza', 'Noce', 'Canaletto'): ['L. Opaco', 'Essenza', 'Noce Canaletto'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
@@ -4732,7 +4737,27 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
             pre_tokens = tokens[:-n_cols]
             code = None
             if pre_tokens:
-                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                # Wildcard-legend code (Enea Up, real PDF page 12: "T0E *
+                # 09M") -- the literal printed order-code string has a
+                # bare '*' placeholder in the middle, resolved per-COLUMN
+                # by a legend elsewhere on the page (e.g. '*P' for L.Opaco/
+                # Essenza, '*C' for Noce Canaletto). Confirmed (see the
+                # dedicated Enea Up investigation in flag_triage.json)
+                # that price is always resolved by (row, column) here,
+                # completely independent of the wildcard -- so this
+                # deliberately does NOT attempt letter resolution, just
+                # preserves the exact printed '<prefix> * <suffix>' text
+                # as the code, which is honest (that's what's actually
+                # printed) without being wrong (no price decision depends
+                # on it). Checked first, before the single-token/D-S
+                # checks below, since '<3-char suffix>' alone would fail
+                # _PIANCA_CODE_RE's 4-char minimum and fall through
+                # silently otherwise.
+                if (len(pre_tokens) >= 3 and pre_tokens[-2] == '*'
+                        and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])
+                        and re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1])):
+                    code = f"{pre_tokens[-3]} * {pre_tokens[-1]}"
+                elif len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
                     code = f"{pre_tokens[-2]} D/S"
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]

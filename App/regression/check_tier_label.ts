@@ -194,6 +194,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Mambo\'s 2-axis grid (parse_file_pianca_mambo_2axis, real PDF pages 28-35) is structurally DIFFERENT from Norma Up\'s: asymmetric 3+1 column split ("Ante e fianchi": L.Opaco/Essenza/Lucido Sp., then "Basamento": one combined column) and a 4TH row-type ("Basamento", the leg/base accessory) that isn\'t one of the other 3 Struttura values at all -- verified via pasted values (code 00M3FE\'s 9 combinations and code 06MZE3\'s Basamento-only row all match source exactly) and an independent (code, fabric_tier) collision recompute (965 distinct keys across 998 rows, 0 conflicts) before this was considered done, same rigor as Norma Up.',
   },
+  {
+    id: 'pianca-eneaup-wildcard-code-tier',
+    category: 'wildcard order-code, price-safe (Pianca)',
+    brand: 'Pianca',
+    query: 'Enea Up 180 essenza price',
+    productName: 'Enea Up',
+    expectedHeader: 'FINISH',
+    note: 'Enea Up\'s table (real PDF page 12) prints a literal wildcard in its order code ("T0E * 09M") resolved per-column by an on-page legend -- confirmed via a dedicated investigation (see prior flag_triage.json history) that price is always resolved by (row, column), never the wildcard itself, so no letter-resolution logic was needed for correctness. The code field preserves the exact printed "<prefix> * <suffix>" text rather than guessing a resolved letter. Live-verified: code T0E * 09M\'s 3 columns (2.770/2.409/3.068) match source exactly, and 0 regressions on Elide/Onda Indoor/Soffio Up/Mambo after adding this code-shape detection to the shared named-columns parser.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
