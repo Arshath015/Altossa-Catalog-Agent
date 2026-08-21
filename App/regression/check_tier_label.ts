@@ -185,6 +185,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Elide\'s single-column Shape B table (Progetti di Design 09, real PDF page 9 -- "L H P CODICI Carta Kraft") is the simplest instance of the new verified-registry named-columns parser (parse_file_pianca_shape_b_named), also covering Onda Indoor (3-col + a separately-wrapped 5-col Marmo table) and Soffio Up (6-col, 822 rows, 0 collisions independently re-verified). Column labels come from an explicit registry keyed on the header\'s own literal post-CODICI tokens, not a generic multi-word-header guesser -- any table not in the registry stays flagged rather than mis-labeled.',
   },
+  {
+    id: 'pianca-mambo-2axis-tier',
+    category: 'Mambo\'s OWN 2-axis Ante-e-fianchi/Basamento grid (Pianca)',
+    brand: 'Pianca',
+    query: 'Mambo materico price',
+    productName: 'Mambo',
+    expectedHeader: 'FINISH',
+    note: 'Mambo\'s 2-axis grid (parse_file_pianca_mambo_2axis, real PDF pages 28-35) is structurally DIFFERENT from Norma Up\'s: asymmetric 3+1 column split ("Ante e fianchi": L.Opaco/Essenza/Lucido Sp., then "Basamento": one combined column) and a 4TH row-type ("Basamento", the leg/base accessory) that isn\'t one of the other 3 Struttura values at all -- verified via pasted values (code 00M3FE\'s 9 combinations and code 06MZE3\'s Basamento-only row all match source exactly) and an independent (code, fabric_tier) collision recompute (965 distinct keys across 998 rows, 0 conflicts) before this was considered done, same rigor as Norma Up.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

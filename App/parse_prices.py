@@ -4637,9 +4637,21 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
         ['Gioia di Carrara', 'Emperador Grafite', 'Fior di Pesco', 'Verde Alpi Travertino', 'Rosso Lepanto'],
     ('L.', 'Opaco', 'Essenza', 'Fenix®', 'V.', 'Lacc.', 'V.', 'Marmo', 'Gres'):
         ['L. Opaco', 'Essenza', 'Fenix®', 'V. Lacc. / V. L-Met.', 'V. Marmo', 'Gres'],
+    # Mambo (Progetti di Design 09), verified against real PDF pages
+    # 36, 41-42, 44 -- each confirmed via direct row inspection to have
+    # ONE code per row (no struttura-style repeat across multiple
+    # labeled rows), so these are genuinely simple single-axis tables
+    # despite living on the same product as Mambo's OWN 2-axis grid
+    # (parse_file_pianca_mambo_2axis, a structurally different table).
+    ('L.', 'Opaco', 'Essenza', 'Lucido', 'Sp.'):
+        ['L. Opaco', 'Essenza', 'Lucido Sp. / L. Metallico'],
+    ('V.', 'Laccato', 'V.', 'Marmo', 'Specchio', 'Pelle', 'Sint.', 'Cuoio', 'Rig.', 'Marmo'):
+        ['V. Laccato / V. L-Met. / V. Metall.', 'V. Marmo', 'Specchio', 'Pelle Sint.', 'Cuoio Rig.', 'Marmo / Terrazzo'],
+    ('Struttura', 'e', 'frontali'): ['Struttura e frontali'],
+    ('Essenza', 'Poro', 'aperto'): ['Essenza', 'Poro aperto'],
 }
 
-_PIANCA_SHAPEB_HEADING_RE = re.compile(r'^[A-Za-zÀ-ÿ]{3,}')
+_PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
 
 
 def _pianca_shapeb_named_header_columns(line: str):
@@ -4754,33 +4766,394 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
     return rows, flags
 
 
-def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
-    """Dispatcher: runs Shape A, the Norma Up 2-axis variant, and the
-    simple named-columns variant over the same text and merges results.
-    All 3 header signatures are mutually exclusive by construction (Shape
-    A ends in 'A B C H P Q', 2-axis ends in 6x 'Frontali', named-columns
-    only matches a table explicitly listed in
-    _PIANCA_SHAPEB_NAMED_HEADERS), so rows never collide -- a plain union
-    is correct, same reasoning as Ditre's Shape 1/Shape 2 merge (see
-    parse_file_ditre) though simpler here since there's no shared-code
-    overlap to resolve. Shape A's own scan flags EVERY 'CODICI' line it
-    doesn't recognize, including both other shapes' headers -- so any
-    such flag on a page either other parser actually resolved rows for
-    is dropped here as superseded, rather than left as a duplicate/stale
-    flag alongside the real data."""
-    rows_a, flags_a = parse_file_pianca_shape_a(path, product_name, brand, all_headings, heading_text)
-    rows_2axis, flags_2axis = parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings, heading_text)
-    rows_named, flags_named = parse_file_pianca_shape_b_named(path, product_name, brand, all_headings, heading_text)
+# ---------------------------------------------------------------------------
+# Pianca Shape B, Mambo's OWN 2-axis variant -- Mambo (Progetti di Design
+# 09) only, verified against real PDF pages 28-35. Structurally similar to
+# Norma Up's 2-axis grid (same code repeats across multiple row-type
+# labels for one dimension, so both axes must fold into fabric_tier or
+# every row collides on the shared ambiguous-detection key -- confirmed
+# necessary again here, not assumed from the Norma Up precedent alone),
+# but NOT the same shape: 4 columns in an ASYMMETRIC 3+1 split ("Ante e
+# fianchi": L.Opaco/Essenza/Lucido Sp., then "Basamento": one combined
+# L.Opaco-or-L.Metallico column), and a 4TH row-type ("Basamento") that
+# isn't one of Norma Up's 3 Struttura values at all -- it's a physically
+# different accessory (the leg/base component) sharing the same table
+# block, with its own separate code series, populating ONLY the
+# Basamento column (the other 3 always print '-' on those rows).
+# Deliberately a SEPARATE function from parse_file_pianca_norma_up_2axis
+# rather than a generalized shared one -- confirmed the two tables differ
+# in column count/grouping/row-type set, and duplicating the (small)
+# scanning logic here avoids any risk of a Mambo-specific change
+# silently altering Norma Up's already-verified behavior.
+# ---------------------------------------------------------------------------
 
-    resolved_2axis_pages = {r["source_pdf_page"] for r in rows_2axis}
-    resolved_named_pages = {r["source_pdf_page"] for r in rows_named}
+_PIANCA_MAMBO_2AXIS_HEADER = ('L.', 'Opaco', 'Essenza', 'Lucido', 'Sp.', 'L.', 'Opaco')
+_PIANCA_MAMBO_2AXIS_COLUMNS = [
+    'Ante e fianchi — L.Opaco',
+    'Ante e fianchi — Essenza',
+    'Ante e fianchi — Lucido Sp./L.Metallico',
+    'Basamento — L.Opaco/L.Metallico',
+]
+
+
+def _pianca_is_mambo_2axis_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    tail = line.split('CODICI', 1)[1].split()
+    return tuple(tail) == _PIANCA_MAMBO_2AXIS_HEADER
+
+
+def _pianca_mambo_2axis_row_type(pre_tokens: list) -> str | None:
+    """4 known row-type values (unlike Norma Up's 3) -- checked in an
+    order where none of the 4 keyword tests can spuriously match another
+    (verified: 'Basamento' contains neither 'Opaco' nor 'Materico' nor
+    an 'Ess'-prefixed word, so check order among these 4 doesn't matter
+    for correctness, only readability)."""
+    text = ' '.join(pre_tokens)
+    if any(t.startswith('Ess') for t in pre_tokens):
+        return 'Essenza / L. Metallico'
+    if 'Materico' in text:
+        return 'Materico'
+    if 'Basamento' in text:
+        return 'Basamento'
+    if 'Opaco' in text:
+        return 'L. Opaco'
+    return None
+
+
+def parse_file_pianca_mambo_2axis(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope (Mambo only, verified against
+    real PDF pages 28-35)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+    row_type = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_mambo_2axis_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        row_type = None  # reset per table -- don't leak a prior table's last row-type
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_mambo_2axis_header(raw) or _pianca_is_shape_a_header(raw) or _pianca_is_2axis_header(raw):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-4:]
+            if len(tokens) < 5 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                # Same heading-detection signal as the named-columns shape
+                # (real word >= 3 letters up front) -- confirmed safe
+                # against this table's own diagram noise too (e.g. "55
+                # 55" width-pair, "A 37" anta-letter+number, both bare-
+                # digit-first, both excluded).
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-4]
+            code = None
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            found_type = _pianca_mambo_2axis_row_type(pre_tokens)
+            if found_type is not None:
+                row_type = found_type
+
+            any_price = False
+            for column_label, cell in zip(_PIANCA_MAMBO_2AXIS_COLUMNS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                tier = f"{row_type} — {column_label}" if row_type else column_label
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": tier,
+                    "tier_label": "Finish",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
+# Pianca Shape A, "+ Pelle Sint." variant -- Mambo only, verified against
+# real PDF pages 37-40. Identical to the base Shape A tier grid (A/B/C/H/
+# P/Q) but with a 7TH column, "Pelle Sint." (wraps to its own line below
+# "Pelle" on the header, same wrapped-label pattern as several Shape B
+# tables), tacked on after Q. Kept as its own function rather than
+# widening _pianca_is_shape_a_header/parse_file_pianca_shape_a's 6-token
+# check to accept an optional 7th -- confirmed via direct inspection this
+# is Mambo-only so far, and touching the base Shape A function risks the
+# same class of cross-brand regression already avoided elsewhere this
+# session (e.g. the ambiguous-key widening that was confirmed unsafe for
+# Bolzan/Cattelan).
+# ---------------------------------------------------------------------------
+
+_PIANCA_SHAPE_A_PELLE_TIERS = ['A', 'B', 'C', 'H', 'P', 'Q', 'Pelle Sint.']
+
+
+def _pianca_is_shape_a_pelle_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    tokens = line.split()
+    return tokens[-7:] == ['A', 'B', 'C', 'H', 'P', 'Q', 'Pelle']
+
+
+def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_shape_a_pelle_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_shape_a_pelle_header(raw):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-7:]
+            if len(tokens) < 8 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-7]
+            code = None
+            label_tokens = []
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                    label_tokens = list(pre_tokens[:-2])
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+                    label_tokens = list(pre_tokens[:-1])
+
+            if code is None:
+                i += 1
+                continue
+
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                label_tokens.pop()
+            label = ' '.join(label_tokens).strip() or None
+
+            any_price = False
+            for letter, cell in zip(_PIANCA_SHAPE_A_PELLE_TIERS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": label,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": letter,
+                    "tier_label": "Category",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
+# Pianca Shape D -- bare "CODICI / Prezzo" flat single-price accessory
+# tables. Verified on Mambo (kit-luce accessories, real PDF page 35) and
+# structurally the simplest possible Pianca shape: one label, one code,
+# one price, no finish dimension at all.
+# ---------------------------------------------------------------------------
+
+_PIANCA_FLAT_PRICE_HEADER = ('Prezzo',)
+
+
+def _pianca_is_flat_price_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    tail = line.split('CODICI', 1)[1].split()
+    return tuple(tail) == _PIANCA_FLAT_PRICE_HEADER
+
+
+def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_flat_price_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_flat_price_header(raw) or _pianca_is_shape_a_header(raw) or _pianca_is_2axis_header(raw) \
+                    or _pianca_is_mambo_2axis_header(raw) or _pianca_shapeb_named_header_columns(raw) is not None:
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            if len(tokens) < 2 or not _PIANCA_PRICE_CELL_RE.match(tokens[-1]) or tokens[-1] == '-':
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-1]
+            code = None
+            if pre_tokens and _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                code = pre_tokens[-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            label_tokens = list(pre_tokens[:-1])
+            label = ' '.join(label_tokens).strip() or None
+
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": label,
+                "variant_context": variant_context,
+                "size": None,
+                "fabric_tier": None,
+                "tier_label": None,
+                "code": code,
+                "price_eur": tokens[-1],
+                "source_pdf_page": page_of_line[i],
+            })
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
+    """Dispatcher: runs every Pianca shape parser over the same text and
+    merges results. All header signatures are mutually exclusive by
+    construction (Shape A ends in 'A B C H P Q', Norma Up's 2-axis ends
+    in 6x 'Frontali', Mambo's OWN 2-axis matches one exact hardcoded
+    header tuple, named-columns only matches a table explicitly listed
+    in _PIANCA_SHAPEB_NAMED_HEADERS, flat-price ends in just 'Prezzo'),
+    so rows never collide -- a plain union is correct, same reasoning as
+    Ditre's Shape 1/Shape 2 merge (see parse_file_ditre) though simpler
+    here since there's no shared-code overlap to resolve. Shape A's own
+    scan flags EVERY 'CODICI' line it doesn't recognize, including every
+    other shape's headers -- so any such flag on a page ANY other parser
+    actually resolved rows for is dropped here as superseded, rather
+    than left as a duplicate/stale flag alongside the real data."""
+    sub_parsers = [
+        parse_file_pianca_shape_a,
+        parse_file_pianca_norma_up_2axis,
+        parse_file_pianca_mambo_2axis,
+        parse_file_pianca_shape_b_named,
+        parse_file_pianca_flat_price,
+        parse_file_pianca_shape_a_pelle,
+    ]
+    results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
+    rows_a, flags_a = results[0]
+
+    resolved_pages = {r["source_pdf_page"] for _, (rows, _) in zip(sub_parsers[1:], results[1:]) for r in rows}
     flags_a_filtered = [
         f for f in flags_a
-        if not (f[0] in resolved_2axis_pages and 'Frontali' in f[2])
-        and not (f[0] in resolved_named_pages and 'unrecognized price-table header' in f[2])
+        if not (f[0] in resolved_pages and 'unrecognized price-table header' in f[2])
     ]
 
-    return rows_a + rows_2axis + rows_named, flags_a_filtered + flags_2axis + flags_named
+    all_rows = [r for rows, _ in results for r in rows]
+    all_flags = flags_a_filtered + [f for _, flags in results[1:] for f in flags]
+    return all_rows, all_flags
 
 
 _DITRE_FLAG_CODE_RE = re.compile(r'code (\S+)$')
