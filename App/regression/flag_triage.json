@@ -3766,6 +3766,10 @@
     "Maggiorazione Ottone Anticato": {
       "status": "known_gap",
       "note": "Batch-categorized 2026-08-21 as part of CollezioneGiorno's initial 65-product extraction (index/mini_pdf/images/text built, real page ranges verified) -- same discipline as Bonaldo's initial 197-product batch seeding (see known_gap's own _status_meaning): per-product page-image verification and dedicated price-table-shape parser work for all 65 CollezioneGiorno products in one pass would be a multi-session effort on its own, so extraction (this pass) and price-parsing (future dedicated passes, shape by shape) are being done as separate steps, matching how Progetti di Design 08/09 and Spazi-10 were each built up over many commits rather than one. Currently 0 rows extracted for this product -- SAFE (parse_file_pianca's existing shape parsers, none built for CollezioneGiorno's table layouts yet, correctly find no recognized header and return nothing rather than guessing). Not yet individually verified against the real page image. A small number of these (Personalizzazioni Marmi, Lavorazioni su misura, Elettrificazione, Accessori, Maggiorazione Ottone Anticato) may turn out to be reference/informational sections rather than priced products at all once individually checked -- not assumed either way yet."
+    },
+    "Gamma": {
+      "status": "known_gap",
+      "note": "Batch-categorized 2026-08-21, same discipline as CollezioneGiorno's other 40 not-yet-fully-parsed products (see e.g. 'Cora' entry). Gamma has SOME real Shape A rows already (a normal A/B/C/H/P/Q tier table), but its page also has a SECOND table with a Shape B named-columns-style header ('L H P CODICI Sedia Cuscinetto', 2 named columns) that Shape A's own scan correctly flagged as unrecognized rather than guessing at, and that header signature is not yet in _PIANCA_SHAPEB_NAMED_HEADERS either. 0 rows lost for the recognized table (safe); the second table's rows are currently missing, not yet individually verified against the real page image."
     }
   }
 }
