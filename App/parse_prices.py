@@ -5313,14 +5313,150 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca, Primo's dimension-labeled single-column shape -- ArmadioPrimo
+# (single-product file, no per-product photographic INDICE at all -- see
+# --single-product in extract_catalog.py's main()), real PDF pages 6-7
+# ("Composizioni battenti" and "Accessori interni" tables). Header is
+# '<dim-letter> CODICI / P 59 / Materico' -- verified via direct page-
+# image inspection (primo_p6-6.jpg, primo_p7-7.jpg) to be the simplest
+# possible Pianca table shape: ONE named finish column ("Materico"), one
+# code per row, no row-type-axis repeat (every code in both tables
+# confirmed to appear exactly once). NOT folded into the generic Shape B
+# named-columns registry (_PIANCA_SHAPEB_NAMED_HEADERS) despite the
+# single-token 'Materico' tail matching that mechanism's shape, because
+# each row ALSO prints a leading dimension value (H 238.5/257.7 for
+# Composizioni battenti, L 48/98.5 for Accessori interni) on the SAME
+# line as the code+price -- the generic parser has no field for this and
+# would silently drop it. Codes are already fully distinct per dimension
+# value here (AA701 vs AA801, no collision risk either way), but
+# dropping a real printed dimension a user might ask about is worse than
+# the small cost of a dedicated function -- captured into `size`.
+# ---------------------------------------------------------------------------
+
+_PIANCA_PRIMO_DIM_HEADER_TAIL = ('Materico',)
+
+
+def _pianca_is_primo_dim_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    if _pianca_is_shape_a_header(line) or _pianca_is_2axis_header(line):
+        return False
+    if _pianca_shapeb_named_header_columns(line) is not None:
+        return False  # already claimed by the generic named-columns registry
+    tail = line.split('CODICI', 1)[1].split()
+    return tuple(tail) == _PIANCA_PRIMO_DIM_HEADER_TAIL
+
+
+def parse_file_pianca_primo_dim_labeled(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_primo_dim_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if 'CODICI' in raw and (_pianca_is_primo_dim_header(raw)
+                                     or _pianca_shapeb_named_header_columns(raw) is not None
+                                     or _pianca_is_shape_a_header(raw) or _pianca_is_2axis_header(raw)):
+                break  # next table's header (any shape) -- let the outer loop handle it
+            blank_run = 0
+
+            # A real price row's last 3 tokens are always "<dim> <CODE>
+            # <price>" -- but pdftotext -layout's linearization interleaves
+            # the module-width diagram annotations (e.g. "53.0   48") onto
+            # the SAME output line as the row that happens to sit at that
+            # vertical position, ahead of the real dim/code/price triple.
+            # Reading from the END rather than requiring an exact token
+            # count handles both the clean first-row-of-pair ("238.5
+            # AA701 356", 3 tokens) and the noisy second-row-of-pair
+            # ("53.0 48 257.7 AA801 370", 5+ tokens) uniformly.
+            tokens = stripped.split()
+            if len(tokens) < 3:
+                dim = code = price = None
+            else:
+                dim, code, price = tokens[-3:]
+            valid_dim = dim is not None and re.match(r'^\d+(\.\d+)?$', dim)
+            valid_code = code is not None and _PIANCA_CODE_RE.match(code) and re.search(r'\d', code)
+            valid_price = price is not None and _PIANCA_PRICE_CELL_RE.match(price)
+            if not (valid_dim and valid_code and valid_price):
+                # Not a price row -- a sub-heading (e.g. "Ripiani lineari
+                # legno Sp 2.5 cm", "Cassettiera H 42 a 2 cassetti") or
+                # leftover Maniglie-spec preamble text bleeding in from
+                # the facing description column ("Finiture maniglie",
+                # "Laccato Opaco (Bianco, Seta, Ecrù)" -- both otherwise
+                # shape-match the generic heading regex below, confirmed
+                # by direct text inspection of primo.txt). Real sub-
+                # headings here never end in ')' (a finish/color
+                # parenthetical) and never start with "Finiture" (a bare
+                # material-spec label, not a product-type heading) --
+                # both exclusions verified against the actual noise
+                # rather than assumed.
+                if (2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped)
+                        and not stripped.endswith(')') and not stripped.startswith('Finiture')):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            if price == '-':
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+                i += 1
+                continue
+
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": variant_context,
+                "size": dim,
+                "fabric_tier": "Materico",
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": price,
+                "source_pdf_page": page_of_line[i],
+            })
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
     construction (Shape A ends in 'A B C H P Q', Norma Up's 2-axis ends
     in 6x 'Frontali', Mambo's OWN 2-axis matches one exact hardcoded
     header tuple, named-columns only matches a table explicitly listed
-    in _PIANCA_SHAPEB_NAMED_HEADERS, flat-price ends in just 'Prezzo'),
-    so rows never collide -- a plain union is correct, same reasoning as
+    in _PIANCA_SHAPEB_NAMED_HEADERS, flat-price ends in just 'Prezzo',
+    Primo's dim-labeled shape ends in 'Materico' too but is checked only
+    after named-columns explicitly rules it out, since a bare 'Materico'
+    tail isn't itself in that registry), so rows never collide -- a plain
+    union is correct, same reasoning as
     Ditre's Shape 1/Shape 2 merge (see parse_file_ditre) though simpler
     here since there's no shared-code overlap to resolve. Shape A's own
     scan flags EVERY 'CODICI' line it doesn't recognize, including every
@@ -5335,6 +5471,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_flat_price,
         parse_file_pianca_shape_a_pelle,
         parse_file_pianca_siviglia_matrix,
+        parse_file_pianca_primo_dim_labeled,
     ]
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
     rows_a, flags_a = results[0]

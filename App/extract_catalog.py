@@ -2320,6 +2320,15 @@ def main():
                           "any existing entry with the same product_name "
                           "(kept, not duplicated), everything else in the "
                           "existing file is preserved as-is.")
+    ap.add_argument("--single-product", default=None,
+                     help="For --style pianca ONLY: some Pianca source PDFs "
+                          "(e.g. ArmadioPrimo, 8 pages) are a single product "
+                          "with no per-product photographic INDICE at all -- "
+                          "parse_index_pianca has nothing to scan. When set, "
+                          "skips index parsing entirely and treats the whole "
+                          "file (printed page 1 to the last page an actual "
+                          "footer maps to) as one product with this name. "
+                          "--index-pages is not required/used in this mode.")
     args = ap.parse_args()
 
     pdf_path = args.pdf
@@ -2329,38 +2338,45 @@ def main():
         run_varaschini(pdf_path, args.brand, out_root)
         return
 
-    if not args.index_pages:
+    if not args.index_pages and not args.single_product:
         print("ERROR: --index-pages is required for --style "
-              f"{args.style!r} (only 'varaschini' can omit it).")
+              f"{args.style!r} (only 'varaschini' and --single-product can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
     total_pages = len(reader.pages)
 
-    lo, hi = (int(x) for x in args.index_pages.split("-"))
-    index_pages = range(lo, hi + 1)
-
-    print(f"[1/5] Parsing photographic index (PDF pages {lo}-{hi})...")
-    if args.style == "cattelan":
-        entries = parse_index_dot_leader(pdf_path, index_pages)
-    elif args.style == "bonaldo":
-        entries = parse_index_bonaldo(pdf_path, index_pages)
-        # this index is alphabetical, NOT page-ordered -- compute_ranges
-        # below assumes sorted-by-page input like the other two styles'
-        # parsers already return, so sort explicitly here.
-        entries.sort(key=lambda x: x[1])
-        dropped = [name for name, _ in entries if name in DUPLICATE_VARIANT_ENTRIES]
-        if dropped:
-            print(f"      -> dropping {len(dropped)} duplicate-variant index "
-                  f"entr{'y' if len(dropped) == 1 else 'ies'} (see "
-                  f"DUPLICATE_VARIANT_ENTRIES): {dropped}")
-        entries = [(name, page) for name, page in entries if name not in DUPLICATE_VARIANT_ENTRIES]
-    elif args.style == "ditre":
-        entries = parse_index_ditre(pdf_path, index_pages)
-    elif args.style == "pianca":
-        entries = parse_index_pianca(pdf_path, index_pages)
+    if args.single_product:
+        if args.style != "pianca":
+            print("ERROR: --single-product is only supported for --style pianca.")
+            sys.exit(1)
+        print(f"[1/5] Skipping index parsing (--single-product {args.single_product!r})...")
+        entries = [(args.single_product, 1)]
     else:
-        entries = parse_index(pdf_path, index_pages)
+        lo, hi = (int(x) for x in args.index_pages.split("-"))
+        index_pages = range(lo, hi + 1)
+
+        print(f"[1/5] Parsing photographic index (PDF pages {lo}-{hi})...")
+        if args.style == "cattelan":
+            entries = parse_index_dot_leader(pdf_path, index_pages)
+        elif args.style == "bonaldo":
+            entries = parse_index_bonaldo(pdf_path, index_pages)
+            # this index is alphabetical, NOT page-ordered -- compute_ranges
+            # below assumes sorted-by-page input like the other two styles'
+            # parsers already return, so sort explicitly here.
+            entries.sort(key=lambda x: x[1])
+            dropped = [name for name, _ in entries if name in DUPLICATE_VARIANT_ENTRIES]
+            if dropped:
+                print(f"      -> dropping {len(dropped)} duplicate-variant index "
+                      f"entr{'y' if len(dropped) == 1 else 'ies'} (see "
+                      f"DUPLICATE_VARIANT_ENTRIES): {dropped}")
+            entries = [(name, page) for name, page in entries if name not in DUPLICATE_VARIANT_ENTRIES]
+        elif args.style == "ditre":
+            entries = parse_index_ditre(pdf_path, index_pages)
+        elif args.style == "pianca":
+            entries = parse_index_pianca(pdf_path, index_pages)
+        else:
+            entries = parse_index(pdf_path, index_pages)
     print(f"      -> found {len(entries)} products")
     if not entries:
         print("ERROR: no products found. Check --index-pages points at the "

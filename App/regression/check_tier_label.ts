@@ -212,6 +212,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Siviglia\'s own 2-axis grid (parse_file_pianca_siviglia_matrix, real PDF pages 71-77) is a THIRD distinct 2-axis variant -- unlike Norma Up (6 cols/2 groups, 3 row-types) and Mambo (4 cols/asymmetric 3+1 groups, 4 row-types incl. one physically different accessory), Siviglia\'s row-type set and column set are the EXACT SAME 4 finishes (Materico/L.Opaco/Essenza-PoroAperto/LucidoSp-LMetallico), a genuinely symmetric matrix. Verified via pasted values (code 00J4G8\'s all 16 combinations match source exactly, row-major) and an independent (code, fabric_tier) collision recompute (354 distinct keys across 354 rows, 0 conflicts). Siviglia also turned out to need NO further 2-axis work beyond this: its "H L P CODICI + 4x Frontali" table (p.79) and its 5-column Top-opzionali table both confirmed via direct code-repetition checks to have ONE code per row, safe for the simple named-columns registry despite superficially resembling Norma Up\'s pattern.',
   },
+  {
+    id: 'pianca-primo-dim-labeled-tier',
+    category: 'dimension-labeled single-column shape (Pianca)',
+    brand: 'Pianca',
+    query: 'Primo AA701 price',
+    productName: 'Primo',
+    expectedHeader: 'FINISH',
+    note: 'Primo (ArmadioPrimo, a single-product source file with no per-product photographic INDICE at all -- see --single-product in extract_catalog.py) has the simplest Pianca table shape yet: ONE named finish column ("Materico"), one code per row, no row-type-axis at all. Not folded into the generic Shape B named-columns registry despite the single-token "Materico" tail matching that mechanism, because each row also prints a leading dimension value (H 238.5/257.7, or L 48/98.5) on the same line as the code+price that the generic parser has no field for -- captured into `size` instead via a dedicated parser (parse_file_pianca_primo_dim_labeled). Verified against every value in the real page image (primo_p6-6.jpg, primo_p7-7.jpg): all 16 Composizioni battenti codes (AA701-AA808, EUR 356-1.820) and all 3 Accessori interni codes (8AR005/8AR010/8AT010, EUR 30/38/225) match source exactly. Also confirmed a real bug this shape\'s Maniglie-spec preamble text ("Finiture maniglie", "Laccato Opaco (Bianco, Seta, Ecrù)") would otherwise have been mis-captured as variant_context by the generic heading regex -- fixed with two targeted exclusions (real sub-headings here never end in ")" or start with "Finiture"), verified by confirming variant_context is null for all 16 Composizioni battenti rows post-fix.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
