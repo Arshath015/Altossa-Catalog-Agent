@@ -203,6 +203,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Enea Up\'s table (real PDF page 12) prints a literal wildcard in its order code ("T0E * 09M") resolved per-column by an on-page legend -- confirmed via a dedicated investigation (see prior flag_triage.json history) that price is always resolved by (row, column), never the wildcard itself, so no letter-resolution logic was needed for correctness. The code field preserves the exact printed "<prefix> * <suffix>" text rather than guessing a resolved letter. Live-verified: code T0E * 09M\'s 3 columns (2.770/2.409/3.068) match source exactly, and 0 regressions on Elide/Onda Indoor/Soffio Up/Mambo after adding this code-shape detection to the shared named-columns parser.',
   },
+  {
+    id: 'pianca-siviglia-symmetric-matrix-tier',
+    category: 'symmetric 4x4 finish matrix (Pianca)',
+    brand: 'Pianca',
+    query: 'Siviglia materico price',
+    productName: 'Siviglia',
+    expectedHeader: 'FINISH',
+    note: 'Siviglia\'s own 2-axis grid (parse_file_pianca_siviglia_matrix, real PDF pages 71-77) is a THIRD distinct 2-axis variant -- unlike Norma Up (6 cols/2 groups, 3 row-types) and Mambo (4 cols/asymmetric 3+1 groups, 4 row-types incl. one physically different accessory), Siviglia\'s row-type set and column set are the EXACT SAME 4 finishes (Materico/L.Opaco/Essenza-PoroAperto/LucidoSp-LMetallico), a genuinely symmetric matrix. Verified via pasted values (code 00J4G8\'s all 16 combinations match source exactly, row-major) and an independent (code, fabric_tier) collision recompute (354 distinct keys across 354 rows, 0 conflicts). Siviglia also turned out to need NO further 2-axis work beyond this: its "H L P CODICI + 4x Frontali" table (p.79) and its 5-column Top-opzionali table both confirmed via direct code-repetition checks to have ONE code per row, safe for the simple named-columns registry despite superficially resembling Norma Up\'s pattern.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

@@ -4654,6 +4654,26 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # scan loop): price is resolved by (row, column) regardless of the
     # '*' placeholder in the printed order code.
     ('L.', 'Opaco', 'Essenza', 'Noce', 'Canaletto'): ['L. Opaco', 'Essenza', 'Noce Canaletto'],
+    # Siviglia (Progetti di Design 09), verified against real PDF pages
+    # 77 and 79. Both confirmed via direct row inspection to have ONE
+    # code per row (no repeat across labeled rows) despite Siviglia ALSO
+    # having a genuinely 2-axis table (parse_file_pianca_siviglia_matrix,
+    # a structurally different table on the same product).
+    ('V.', 'Laccato', 'V.', 'Marmo', 'Specchio', 'Cuoio', 'Rig.', 'Marmo'):
+        ['V. Laccato / V. L-Met. / V. Metall.', 'V. Marmo', 'Specchio', 'Cuoio Rig.', 'Marmo / Terrazzo'],
+    # p.79's "H L P CODICI Frontali x4" table LOOKS like a 2-axis grid at
+    # first glance (matches Norma Up's 6x-Frontali family in spirit) but
+    # confirmed via direct code-repetition check (grep for each sampled
+    # code, e.g. 06J15) that every code appears EXACTLY ONCE -- so unlike
+    # Norma Up/Mambo/Siviglia's own Materico/L.Opaco/Essenza/Lucido Sp.
+    # matrix, there's no row-type axis needing its own field; the 4
+    # columns (2 parent Struttura groups x 2 Frontali sub-choices each)
+    # are just 4 flat named columns, safe for the simple registry.
+    ('Frontali', 'Frontali', 'Frontali', 'Frontali'):
+        ['Struttura L.Opaco/Essenza/PoroAperto — Frontali L.Opaco/Essenza/PoroAperto',
+         'Struttura L.Opaco/Essenza/PoroAperto — Frontali LucidoSp/LMetallico',
+         'Struttura LucidoSp/LMetallico — Frontali L.Opaco/Essenza/PoroAperto',
+         'Struttura LucidoSp/LMetallico — Frontali LucidoSp/LMetallico'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
@@ -5055,6 +5075,138 @@ def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None
 
 
 # ---------------------------------------------------------------------------
+# Pianca Shape B, Siviglia's OWN symmetric 4x4 finish MATRIX -- Siviglia
+# (Progetti di Design 09) only, verified against real PDF pages 71-77. A
+# third distinct 2-axis variant: unlike Norma Up (6 cols/2 groups, 3 row-
+# types) and Mambo (4 cols/asymmetric 3+1 groups, 4 row-types including
+# one physically different accessory), Siviglia's row-type set and column
+# set are the EXACT SAME 4 finishes (Materico/L.Opaco/Essenza-PoroAperto/
+# LucidoSp-LMetallico) -- confirmed real: one shared code per (L,P)
+# dimension repeats across all 4 row-types (e.g. code 00J4G8 prints on
+# all 4 rows of its group), same collision risk as the other two 2-axis
+# grids, so both axes fold into fabric_tier here too.
+# ---------------------------------------------------------------------------
+
+_PIANCA_SIVIGLIA_MATRIX_HEADER = ('Materico', 'L.', 'Opaco', 'Essenza', 'Lucido', 'Sp.')
+_PIANCA_SIVIGLIA_MATRIX_COLUMNS = ['Materico', 'L. Opaco', 'Essenza / Poro aperto', 'Lucido Sp. / L. Metallico']
+
+
+def _pianca_is_siviglia_matrix_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    tail = line.split('CODICI', 1)[1].split()
+    return tuple(tail) == _PIANCA_SIVIGLIA_MATRIX_HEADER
+
+
+def _pianca_siviglia_matrix_row_type(pre_tokens: list) -> str | None:
+    """4 row-type keywords, all mutually exclusive substrings (verified:
+    'Lucido Sp. / L. Metallico' contains none of 'Ess'/'Materico'/
+    'Opaco'; 'Essenza / Poro aperto' starts with 'Ess' but contains
+    neither 'Materico' nor 'Lucido' nor 'Opaco'), so check order doesn't
+    affect correctness."""
+    text = ' '.join(pre_tokens)
+    if any(t.startswith('Ess') for t in pre_tokens):
+        return 'Essenza / Poro aperto'
+    if 'Materico' in text:
+        return 'Materico'
+    if 'Lucido' in text:
+        return 'Lucido Sp. / L. Metallico'
+    if 'Opaco' in text:
+        return 'L. Opaco'
+    return None
+
+
+def parse_file_pianca_siviglia_matrix(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope (Siviglia only, verified
+    against real PDF pages 71-77)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+    row_type = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_siviglia_matrix_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        row_type = None  # reset per table -- don't leak a prior table's last row-type
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_siviglia_matrix_header(raw) or _pianca_is_shape_a_header(raw) or _pianca_is_2axis_header(raw):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-4:]
+            if len(tokens) < 5 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-4]
+            code = None
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            found_type = _pianca_siviglia_matrix_row_type(pre_tokens)
+            if found_type is not None:
+                row_type = found_type
+
+            any_price = False
+            for column_label, cell in zip(_PIANCA_SIVIGLIA_MATRIX_COLUMNS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                tier = f"{row_type} — {column_label}" if row_type else column_label
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": tier,
+                    "tier_label": "Finish",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape D -- bare "CODICI / Prezzo" flat single-price accessory
 # tables. Verified on Mambo (kit-luce accessories, real PDF page 35) and
 # structurally the simplest possible Pianca shape: one label, one code,
@@ -5166,6 +5318,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_shape_b_named,
         parse_file_pianca_flat_price,
         parse_file_pianca_shape_a_pelle,
+        parse_file_pianca_siviglia_matrix,
     ]
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
     rows_a, flags_a = results[0]
