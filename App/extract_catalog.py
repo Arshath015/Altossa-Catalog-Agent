@@ -1374,6 +1374,23 @@ def _varaschini_full_text_by_page(pdf_path: str, total_pages: int) -> dict[int, 
          bled content, confirmed by direct inspection) -- these 4 specific
          pages are re-extracted individually via pdftotext_page() as a
          fallback patch.
+
+    KNOWN FOLLOW-UP (found 2026-08-21, not yet fixed): on at least one
+    ABACO-style index/legend page (p525, Wellness Therapy sub-catalog),
+    whatever downstream step assigns product_name for catalog_index.json
+    entries picked up this SAME footer line ("525 - VARASCHIN EXPORT
+    2026") as if it were itself a listed product name, producing a
+    phantom "Wellness Therapy (catalogue) VARASCHIN EXPORT 2026" entry
+    with a real page/image but no real product behind it. This function
+    already strips the footer from PAGE text correctly -- the bug is in
+    whatever later step reads product names off an index/legend page's
+    remaining text and doesn't exclude a bare footer-shaped line from
+    being read as a name. That entry was manually removed from
+    data/Varaschini/catalog_index.json rather than parser-generated
+    every run, so a real fix (excluding footer-shaped lines specifically
+    from index/legend product-name extraction) is still needed, and
+    other pages of the same ABACO/index-page shape were not audited for
+    the same artifact.
     """
     result = subprocess.run(
         [PDFTOTEXT, "-layout", "-enc", "UTF-8", pdf_path, "-"],

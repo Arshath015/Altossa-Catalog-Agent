@@ -46,6 +46,25 @@ function loadKnownGapProducts(brand: string): Set<string> {
   );
 }
 
+// For the zero-expected-rows check specifically, ANY triage status counts
+// as "documented" -- not just known_gap. A zero-row product can legitimately
+// be false_alarm (verified genuinely zero-price, e.g. Pianca's Effetto ad
+// intarsio), or one of Varaschini's 2026-08-21 extraction-gap statuses
+// (extraction_gap_confirmed / extraction_gap_suspected_shortpage /
+// page_range_boundary_unverified -- deliberately NOT called known_gap
+// since they carry different, sometimes unverified, confidence levels
+// about whether the gap is even an extraction issue at all; see those
+// entries' own notes). What matters for THIS check is only that the
+// zero-row state has been looked at and recorded somewhere, not which
+// specific status it was recorded under.
+function loadAnyTriagedProducts(brand: string): Set<string> {
+  const triagePath = path.join(ROOT, 'App', 'regression', 'flag_triage.json');
+  if (!fs.existsSync(triagePath)) return new Set();
+  const triage = JSON.parse(fs.readFileSync(triagePath, 'utf-8'));
+  const brandTriage = triage[brand] || {};
+  return new Set(Object.keys(brandTriage));
+}
+
 interface PriceRow {
   product_name: string;
   model_variant: string | null;
@@ -81,6 +100,7 @@ async function postChat(brand: string, message: string): Promise<{ matches?: Pri
 async function checkBrand(brand: string) {
   const dataDir = path.join(ROOT, 'data', brand);
   const pricesPath = path.join(dataDir, 'prices.json');
+  const indexPath = path.join(dataDir, 'catalog_index.json');
   if (!fs.existsSync(pricesPath)) {
     console.log(`\n=== ${brand}: no prices.json found, skipping ===`);
     return { checked: 0, mismatches: [] as string[], fabricated: [] as string[] };
@@ -95,10 +115,36 @@ async function checkBrand(brand: string) {
     byProduct.get(r.product_name)!.push(r);
   }
 
+  // The catalog index (not prices.json) is the source of truth for which
+  // products EXIST. Building the check loop from prices.json alone (as
+  // this used to do) means a product with zero rows never appears in
+  // byProduct at all -- it isn't "checked" and isn't "skipped as
+  // known_gap", it simply never enters the loop, so an undocumented
+  // zero-row product silently reads as nothing-to-see-here instead of a
+  // failure. Every product in the index that has zero rows in
+  // prices.json now MUST have SOME triage entry (any status -- see
+  // loadAnyTriagedProducts) in flag_triage.json, or it's a hard failure --
+  // no silent 0-rows-equals-pass path.
+  const anyTriaged = loadAnyTriagedProducts(brand);
+  const zeroRowUntriaged: string[] = [];
+  if (fs.existsSync(indexPath)) {
+    const index: Array<{ product_name: string }> = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    for (const entry of index) {
+      const name = entry.product_name;
+      if (byProduct.has(name)) continue; // has real rows, checked normally below
+      if (anyTriaged.has(name)) continue; // documented, accepted zero-row gap
+      zeroRowUntriaged.push(name);
+    }
+  }
+
   const mismatches: string[] = [];
   const fabricated: string[] = [];
   let checked = 0;
   let skippedKnownGap = 0;
+
+  for (const name of zeroRowUntriaged) {
+    mismatches.push(`${name}: 0 rows in prices.json and NOT in flag_triage.json as known_gap (undocumented zero-row product)`);
+  }
 
   for (const [productName, rows] of byProduct) {
     if (knownGap.has(productName)) { skippedKnownGap++; continue; }
@@ -127,7 +173,7 @@ async function checkBrand(brand: string) {
     await new Promise(r => setTimeout(r, 80));
   }
 
-  console.log(`\n=== ${brand}: ${checked} products checked (${skippedKnownGap} skipped -- already triaged as known_gap) ===`);
+  console.log(`\n=== ${brand}: ${checked} products checked (${skippedKnownGap} skipped -- already triaged as known_gap, ${zeroRowUntriaged.length} zero-row UNTRIAGED) ===`);
   console.log(`Row-count mismatches: ${mismatches.length}`);
   console.log(`Fabricated rows: ${fabricated.length}`);
   if (mismatches.length > 0) {
