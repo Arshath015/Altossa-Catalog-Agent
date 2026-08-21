@@ -4200,6 +4200,52 @@ _PIANCA_TIER_LETTERS = ['A', 'B', 'C', 'H', 'P', 'Q']
 _PIANCA_PRICE_CELL_RE = re.compile(r'^-$|^[\d.]{1,7}$')
 _PIANCA_CODE_RE = re.compile(r'^[A-Z0-9]{4,10}$')
 
+# Diagram-noise tokens confirmed to glue onto the FRONT of an otherwise
+# clean Shape A row -- a small cushion/module icon's own dimension
+# annotation (e.g. "45", the cushion depth in cm) sits in the same
+# character columns as the row's real label text further right, so
+# pdftotext -layout's linearization occasionally merges them onto one
+# output line. Originally handled by two narrow, exact patterns (a bare
+# 'S'/'D' orientation marker; a "<N> -" pair) that stopped at the first
+# non-matching token -- confirmed insufficient 2026-08-21 on Duo/Time
+# (CollezioneGiorno), which surfaced 3 noise shapes those patterns never
+# covered: a bare '-' alone (no preceding number), a negative-looking
+# fragment like '-27' (actually the tail of a "254 -274" range split
+# across two lines by pdftotext), and MULTIPLE consecutive leading noise
+# tokens ("1 17 -127" in front of a real "rivestimento" label). All 4
+# shapes reduce to the same rule: a diagram annotation is ALWAYS purely
+# numeric (optionally negative-looking) or a bare dash/S/D -- real label
+# text (rivestimento, senza piede centrale, Ø14, ...) never starts that
+# way -- so strip EVERY leading token matching that shape, not just one
+# fixed-length pattern, continuing until real text is reached or nothing
+# is left.
+#
+# Verified this doesn't risk deleting real content before applying it:
+# audited every Category-tier (Shape A) row across all 4 already-touched
+# Pianca files (App/regression -- see the 2026-08-21 investigation) for
+# any model_variant that would become PURELY empty after this strip --
+# every single one found (Asolo '-12', Duo '-'/'-27', Time '-'/'238 168
+# -', Volo '-2 05 -') was ALREADY meaningless noise with no real text at
+# all, never a genuine bare-numeric label -- so nothing real is lost.
+# Also confirmed this bug was NOT limited to the newly-extracted file
+# that surfaced it: Progetti di Design 08's already-live "Peonia
+# (Divani)" ('45 rivestimento') and Spazi-10's "Brando"/"Giona" had the
+# identical silent corruption already present, undetected until this
+# audit -- verified via the real page image (peonia_divani_p19-19.jpg)
+# that '45' is the cushion diagram's own depth label, not part of the
+# real 'rivestimento' row text.
+_PIANCA_LEADING_DIAGRAM_NOISE_RE = re.compile(r'^-?\d+(\.\d+)?$|^-$|^[SD]$')
+
+
+def _pianca_strip_leading_diagram_noise(label_tokens: list) -> list:
+    """Mutates nothing -- returns a new list with every leading
+    diagram-noise-shaped token removed. See _PIANCA_LEADING_DIAGRAM_NOISE_RE
+    for the exact shape and the evidence behind it."""
+    tokens = list(label_tokens)
+    while tokens and _PIANCA_LEADING_DIAGRAM_NOISE_RE.match(tokens[0]):
+        tokens.pop(0)
+    return tokens
+
 
 def _pianca_is_shape_a_header(line: str) -> bool:
     """A Shape A header line ends in exactly the 6 tier-letter tokens 'A B
@@ -4332,36 +4378,14 @@ def parse_file_pianca_shape_a(path, product_name, brand, all_headings=None, head
             # FRONT of an otherwise-clean row when its vertical position
             # happens to coincide with this row's, since the module-width
             # diagram sits in the same character columns as the label
-            # text further right. Two confirmed patterns, both from
-            # direct inspection of levante_divani.txt: (1) a bare 'S' or
-            # 'D' left/right-orientation marker (documented on this same
-            # page: "Le immagini di listino rappresentano prodotti
-            # sinistri (S). I prodotti destri (D) si intendono
-            # perfettamente speculari." -- purely a mirror-image note,
-            # redundant with the code's own already-correct ' D/S' suffix,
-            # never a real distinguishing variant) glued directly onto a
-            # real code's own row (e.g. "S" + "118 65 98 D9LV118 D/S ..."
-            # on one physical line, corrupting model_variant to bare "S");
-            # (2) a truncated "<width> -" fragment from a multi-line
-            # width-range diagram (e.g. "98 -" from a "138 / 118 - / 98 -"
-            # list) landing in front of a real label (e.g. "98 -
-            # rivestimento seduta" instead of clean "rivestimento
-            # seduta"). Both confirmed to fragment what should be ONE
-            # clean variant group into several near-duplicate ones,
-            # which the chat layer's "give me all prices" path picked up
-            # on and silently narrowed to just one fragment-labeled group
-            # (4 of 108 real rows) instead of the product's whole set --
-            # caught by check_coverage.ts, not assumed fixed by inspection
-            # alone.
-            while label_tokens:
-                if re.match(r'^[SD]$', label_tokens[0]):
-                    label_tokens.pop(0)
-                    continue
-                if re.match(r'^\d+(\.\d+)?$', label_tokens[0]) and len(label_tokens) > 1 and label_tokens[1] == '-':
-                    label_tokens.pop(0)
-                    label_tokens.pop(0)
-                    continue
-                break
+            # text further right (originally found via a bare 'S'/'D'
+            # orientation marker and a "<N> -" range fragment; widened
+            # 2026-08-21 to a general strip after Duo/Time surfaced 3 more
+            # noise shapes those exact patterns didn't cover -- see
+            # _pianca_strip_leading_diagram_noise's own comment for the
+            # full evidence, including which already-live products this
+            # was silently affecting before the fix).
+            label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
 
             label = ' '.join(label_tokens).strip() or None
 
@@ -5063,6 +5087,15 @@ def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None
 
             while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
                 label_tokens.pop()
+            # Same leading-diagram-noise risk as the base Shape A parser
+            # (see _pianca_strip_leading_diagram_noise) -- this variant
+            # never had ANY leading-noise protection at all. Not yet
+            # confirmed to have actually corrupted any of Mambo/Siviglia's
+            # rows (audited 2026-08-21, none of their Category-tier
+            # model_variant values matched the noise shape), but the
+            # structural risk is identical, so applying the same fix
+            # protectively rather than waiting for it to surface here too.
+            label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
             label = ' '.join(label_tokens).strip() or None
 
             any_price = False
