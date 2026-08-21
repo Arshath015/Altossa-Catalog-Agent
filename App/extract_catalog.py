@@ -2500,6 +2500,62 @@ def main():
     (out_root / "images").mkdir(parents=True, exist_ok=True)
     (out_root / "text").mkdir(parents=True, exist_ok=True)
 
+    # Cross-run slug collisions silently overwrite mini_pdf/images/text
+    # FILES on disk even when --merge correctly protects catalog_index.json
+    # itself. Confirmed as live data loss twice: Ditre Italia's sofa/
+    # armchairs merge (see DITRE_NAME_DISAMBIGUATION's own comment above --
+    # fixed there by exhaustively pre-renaming every collision found by
+    # checking all pairwise file combinations up front), and Pianca
+    # 2026-08-21 (Peonia (Divani)/Cornice, then Palù/"Mensole legno per
+    # boiserie" -- 2 MORE collisions neither anticipated nor caught by the
+    # PIANCA_INDEX_NAME_OVERRIDES table, found only by chance while
+    # re-verifying an unrelated entry). Pre-renaming every collision is
+    # necessary but not SUFFICIENT on its own -- it only protects names
+    # someone thought to check in advance. This is the structural
+    # complement.
+    #
+    # Deliberately keyed by SOURCE FILE, not product_name -- an earlier
+    # version of this fix compared product_name instead and would have
+    # been a no-op for the exact bug it was meant to catch: Palù and
+    # Mensole legno per boiserie collide precisely BECAUSE their raw
+    # names are identical across files, so "does the name match" can
+    # never distinguish them. Source file is the one thing that's always
+    # different between two genuinely different products' extraction
+    # runs, and always the SAME when a run is legitimately re-extracting
+    # its own prior output (e.g. this project's own restore-by-rerunning
+    # recovery procedure).
+    #
+    # Legacy entries predating the source_file field (added 2026-08-21)
+    # have no source_file to compare -- falls back to product_name for
+    # those specifically (the same weaker signal this whole fix exists
+    # to move away from, but it's the only one available for them, and
+    # only matters until they're next re-extracted and pick up a real
+    # source_file). Deliberately NOT "unknown source = always foreign":
+    # that would make re-extracting a legacy file's OWN unchanged
+    # products (e.g. to fix an unrelated missing_from_index gap in the
+    # same file) spuriously fragment every one of its slugs into "_2"
+    # duplicates on every run, which is real friction, not just an
+    # abundance of caution -- name equality is a fine signal for "is
+    # this run re-touching its own prior output" once source_file itself
+    # is unavailable.
+    existing_slug_source: dict[str, str | None] = {}
+    existing_slug_name: dict[str, str] = {}
+    catalog_path_for_ownership_check = out_root / "catalog_index.json"
+    if args.merge and catalog_path_for_ownership_check.exists():
+        for e in json.loads(catalog_path_for_ownership_check.read_text(encoding="utf-8")):
+            if "slug" in e:
+                existing_slug_source[e["slug"]] = e.get("source_file")
+                existing_slug_name[e["slug"]] = e.get("product_name")
+    current_source_file = Path(pdf_path).name
+
+    def _slug_owned_by_someone_else(slug: str, name: str) -> bool:
+        if slug not in existing_slug_source:
+            return False
+        owner_source = existing_slug_source[slug]
+        if owner_source is not None:
+            return owner_source != current_source_file
+        return existing_slug_name.get(slug) != name
+
     catalog = []
     used_slugs: dict[str, str] = {}  # slug -> product name that claimed it first
     slug_collisions: list[tuple[str, str, str]] = []  # (name, original_slug, final_slug)
@@ -2541,12 +2597,20 @@ def main():
 
         slug = base_slug = slugify(name)
         suffix = 2
-        while slug in used_slugs:
+        while slug in used_slugs or _slug_owned_by_someone_else(slug, name):
             # Two genuinely different index entries produced the same slug
             # (e.g. two distinct products that happen to share a bare name
             # like "Ciro" for both a bed and its matching nightstand) --
             # rather than silently letting the second one's files overwrite
             # the first's, disambiguate the slug and flag it for review.
+            # _slug_owned_by_someone_else extends this across runs, not
+            # just within this one (see its own comment above) -- if this
+            # slug is already on disk from a DIFFERENT source file, that's
+            # a collision too, even though used_slugs (this run's own
+            # claims) doesn't know about it. A slug already owned by THIS
+            # SAME source file is fine -- that's an intentional
+            # re-extraction/update of this file's own prior output, not a
+            # collision with something else.
             slug = f"{base_slug}_{suffix}"
             suffix += 1
         if slug != base_slug:
@@ -2613,9 +2677,11 @@ def main():
 
     if slug_collisions:
         print(f"\nWARNING: {len(slug_collisions)} product name(s) collided on "
-              f"the same slug with another entry from this same run -- these "
-              f"are likely genuinely different products that just share a "
-              f"bare name (verify against the real page before trusting):")
+              f"the same slug with another entry (either from this same run, "
+              f"or already on disk from a PREVIOUS extraction run of a "
+              f"different source file -- both are now caught) -- these are "
+              f"likely genuinely different products that just share a bare "
+              f"name (verify against the real page before trusting):")
         for name, orig, final in slug_collisions:
             print(f"   - \"{name}\": slug '{orig}' already taken -> used '{final}' instead")
 
