@@ -176,6 +176,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Norma Up\'s 2-axis grid (Progetti di Design 09, real PDF pages 54-64) folds BOTH the Struttura finish and the Frontali/Copertura finish into one fabric_tier string (e.g. "Materico — Copertura L.Opaco/Essenza — Frontali L.Opaco") rather than splitting the row axis into model_variant -- necessary because main()\'s shared ambiguous-row detection keys on (product, code, fabric_tier) only, and this table\'s same printed code repeats across all 3 Struttura rows for one dimension (confirmed real, not a parsing bug) -- splitting the axes across two fields caused every one of the product\'s 1566 rows to collide and get marked ambiguous before this was fixed. tier_label is "Finish" (generic, no single descriptive source word covers a combined 2-axis tier).',
   },
+  {
+    id: 'pianca-elide-shapeb-named-tier',
+    category: 'simple named-finish-columns Shape B (Pianca)',
+    brand: 'Pianca',
+    query: 'Elide senza braccioli price',
+    productName: 'Elide',
+    expectedHeader: 'FINISH',
+    note: 'Elide\'s single-column Shape B table (Progetti di Design 09, real PDF page 9 -- "L H P CODICI Carta Kraft") is the simplest instance of the new verified-registry named-columns parser (parse_file_pianca_shape_b_named), also covering Onda Indoor (3-col + a separately-wrapped 5-col Marmo table) and Soffio Up (6-col, 822 rows, 0 collisions independently re-verified). Column labels come from an explicit registry keyed on the header\'s own literal post-CODICI tokens, not a generic multi-word-header guesser -- any table not in the registry stays flagged rather than mis-labeled.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

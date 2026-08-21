@@ -4612,27 +4612,175 @@ def parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings=Non
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca Shape B, simple named-columns variant -- Elide, Onda Indoor, Soffio
+# Up only (verified against real pages). A single-axis version of the named
+# finish-family grid: one row per code (or a few dimension-varying rows
+# under one sub-heading), N named finish columns, no struttura/frontali
+# 2-axis split. Column labels are looked up in an EXPLICIT, per-table
+# VERIFIED registry keyed by the literal tokens the CODICI header line
+# itself carries (the first physical line of what may be a multi-line
+# wrapped column label) -- same discipline as KNOWN_DITRE_TOC_LABELS/
+# VARASCHINI_SECTIONS elsewhere in this project: a table whose header
+# isn't in the registry is flagged, never guessed at with an invented
+# label or a wrong column count. Column COUNT still comes from the real
+# trailing-price-token count on each row (same technique as every other
+# Pianca shape here), not from counting header tokens (unreliable when
+# labels wrap to 2 physical lines, e.g. Onda Indoor's Marmo table: "Gioia
+# di" + "Carrara" on the next line is ONE column, not two).
+# ---------------------------------------------------------------------------
+
+_PIANCA_SHAPEB_NAMED_HEADERS = {
+    ('Carta', 'Kraft'): ['Carta Kraft'],
+    ('L.', 'Opaco', 'Lucido', 'Sp.', 'Essenza'): ['L. Opaco', 'Lucido Sp.', 'Essenza'],
+    ('Gioia', 'di', 'Emperador', 'Fior', 'di', 'Verde', 'Alpi', 'Rosso'):
+        ['Gioia di Carrara', 'Emperador Grafite', 'Fior di Pesco', 'Verde Alpi Travertino', 'Rosso Lepanto'],
+    ('L.', 'Opaco', 'Essenza', 'Fenix®', 'V.', 'Lacc.', 'V.', 'Marmo', 'Gres'):
+        ['L. Opaco', 'Essenza', 'Fenix®', 'V. Lacc. / V. L-Met.', 'V. Marmo', 'Gres'],
+}
+
+_PIANCA_SHAPEB_HEADING_RE = re.compile(r'^[A-Za-zÀ-ÿ]{3,}')
+
+
+def _pianca_shapeb_named_header_columns(line: str):
+    """Return the registered column-label list for this header line, or
+    None if it's not a 'CODICI' line, IS a Shape A or 2-axis header
+    (mutually exclusive with this shape -- checked first so those never
+    fall through here), or its post-CODICI token signature isn't in the
+    verified registry."""
+    if 'CODICI' not in line:
+        return None
+    if _pianca_is_shape_a_header(line) or _pianca_is_2axis_header(line):
+        return None
+    tail = line.split('CODICI', 1)[1].split()
+    return _PIANCA_SHAPEB_NAMED_HEADERS.get(tuple(tail))
+
+
+def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope. Any 'CODICI' line that isn't
+    Shape A, isn't 2-axis, and isn't in the verified column registry is
+    left alone here (Shape A's own scan already flags it; see the
+    dispatcher's flag-merge logic)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        columns = _pianca_shapeb_named_header_columns(line)
+        if columns is None:
+            i += 1
+            continue
+
+        n_cols = len(columns)
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if 'CODICI' in raw and (_pianca_shapeb_named_header_columns(raw) is not None
+                                     or _pianca_is_shape_a_header(raw) or _pianca_is_2axis_header(raw)):
+                break  # next table's header (any shape) -- let the outer loop handle it
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+            if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                # Not a price row -- a sub-heading (e.g. "Sedia con
+                # braccioli", "Tavolo con piano laccato", "Tavolo P 80")
+                # or diagram noise. Real sub-headings in this shape
+                # always start with a real word (>= 3 letters); known
+                # diagram noise (bare dimension numbers, single anta-type
+                # letters S/D/A/C/G/R, "<N> -" range fragments) never
+                # does, confirmed across every other Pianca shape's
+                # diagram-bleed bugs this session -- reusing that same
+                # signal rather than a digit-free-only check, since some
+                # real headings here DO carry digits (e.g. "Tavolo P 80").
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-n_cols]
+            code = None
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            any_price = False
+            for column_label, cell in zip(columns, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": column_label,
+                    "tier_label": "Finish",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
-    """Dispatcher: runs Shape A and the Norma Up 2-axis variant over the
-    same text and merges results. The two header signatures are mutually
-    exclusive by construction (Shape A ends in 'A B C H P Q', 2-axis ends
-    in 6x 'Frontali'), so rows never collide -- a plain union is correct,
-    same reasoning as Ditre's Shape 1/Shape 2 merge (see parse_file_ditre)
-    though simpler here since there's no shared-code overlap to resolve.
-    Shape A's own scan flags EVERY 'CODICI' line it doesn't recognize,
-    including 2-axis headers -- so any such flag on a page the 2-axis
-    parser actually resolved rows for is dropped here as superseded,
-    rather than left as a duplicate/stale flag alongside the real data."""
+    """Dispatcher: runs Shape A, the Norma Up 2-axis variant, and the
+    simple named-columns variant over the same text and merges results.
+    All 3 header signatures are mutually exclusive by construction (Shape
+    A ends in 'A B C H P Q', 2-axis ends in 6x 'Frontali', named-columns
+    only matches a table explicitly listed in
+    _PIANCA_SHAPEB_NAMED_HEADERS), so rows never collide -- a plain union
+    is correct, same reasoning as Ditre's Shape 1/Shape 2 merge (see
+    parse_file_ditre) though simpler here since there's no shared-code
+    overlap to resolve. Shape A's own scan flags EVERY 'CODICI' line it
+    doesn't recognize, including both other shapes' headers -- so any
+    such flag on a page either other parser actually resolved rows for
+    is dropped here as superseded, rather than left as a duplicate/stale
+    flag alongside the real data."""
     rows_a, flags_a = parse_file_pianca_shape_a(path, product_name, brand, all_headings, heading_text)
     rows_2axis, flags_2axis = parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings, heading_text)
+    rows_named, flags_named = parse_file_pianca_shape_b_named(path, product_name, brand, all_headings, heading_text)
 
     resolved_2axis_pages = {r["source_pdf_page"] for r in rows_2axis}
+    resolved_named_pages = {r["source_pdf_page"] for r in rows_named}
     flags_a_filtered = [
         f for f in flags_a
         if not (f[0] in resolved_2axis_pages and 'Frontali' in f[2])
+        and not (f[0] in resolved_named_pages and 'unrecognized price-table header' in f[2])
     ]
 
-    return rows_a + rows_2axis, flags_a_filtered + flags_2axis
+    return rows_a + rows_2axis + rows_named, flags_a_filtered + flags_2axis + flags_named
 
 
 _DITRE_FLAG_CODE_RE = re.compile(r'code (\S+)$')
