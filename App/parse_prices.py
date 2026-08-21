@@ -4674,6 +4674,22 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
          'Struttura L.Opaco/Essenza/PoroAperto — Frontali LucidoSp/LMetallico',
          'Struttura LucidoSp/LMetallico — Frontali L.Opaco/Essenza/PoroAperto',
          'Struttura LucidoSp/LMetallico — Frontali LucidoSp/LMetallico'],
+    # Onda Indoor (Spazi-10), real PDF page 9 ("Tavolo rotondo con piano
+    # fisso"/"...piatto girevole"/"Tavolo large" tables) -- Spazi-10's
+    # version adds a 4th "V. Martellato" column vs. Progetti 09's 3-col
+    # laccato table above; verified via direct code inspection (T0ND16H,
+    # T0ND16R, T0ND12T, T0ND12X each appear exactly once here, no
+    # cross-row-type repeat), so this is the same simple single-axis
+    # shape, just a new column-set registry key -- not a new table shape.
+    ('L.', 'Opaco', 'Lucido', 'Sp.', 'Essenza', 'V.', 'Martellato'):
+        ['L. Opaco', 'Lucido Sp.', 'Essenza', 'V. Martellato'],
+    # Mensole legno per boiserie AND Spazioteca "Passaggio porta per
+    # moduli ponte" (Spazi-10) share this exact header signature --
+    # verified via direct row inspection on both (real PDF pages ~43-45
+    # for Spazioteca, ~70-74 for Mensole legno) that every code appears
+    # exactly once, no row-type-axis repeat.
+    ('Materico', 'L.', 'Opaco', 'Lucido', 'Sp.'):
+        ['Materico', 'L. Opaco / Essenza', 'Lucido Sp. / L. Metallico'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
