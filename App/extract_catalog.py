@@ -223,6 +223,48 @@ DUPLICATE_VARIANT_ENTRIES: set[str] = {
 #     the rest of the catalog extraction over one row.
 MERGE_KEEP_EXISTING = {"Flatiron table"}
 
+# Pianca: names known (via flag_triage.json, real page content -- not
+# assumed) to collide ACROSS different source files, or to be a stale
+# reprint that shouldn't be indexed at all. parse_index_pianca's own
+# in-file "Name (Category)" auto-qualification (see its own comment) only
+# catches recurrence WITHIN one file's own index scan -- it has no idea
+# a bare name it just emitted also belongs to a DIFFERENT file's product,
+# or that a bare/auto-qualified name is a confirmed stale duplicate of an
+# already-live entry. Confirmed the hard way 2026-08-21: CollezioneGiorno's
+# first extraction run silently overwrote Progetti di Design 08's live,
+# already-parsed "Peonia (Divani)" (408 real price rows) via --merge's
+# plain "same product_name wins" rule, because CollezioneGiorno's OWN
+# index also auto-qualified its (unrelated, older, ~4%-stale) Peonia as
+# "Peonia (Divani)" -- an exact string collision neither side could see
+# coming from its own file alone. Same run also overwrote Spazi-10's
+# "Cornice". Both had to be restored by re-running their source files'
+# extraction again to win the merge back.
+#
+# Keyed by (source PDF filename, name AS PARSE_INDEX_PIANCA WOULD RETURN
+# IT -- i.e. already auto-qualified by in-file category if that fired).
+# Value is the desired final product_name, or None to drop the entry
+# entirely (confirmed superseded_reprint / duplicate -- never written to
+# disk, never enters catalog_index.json). Applied once, right after
+# compute_ranges, before ANY per-item extraction work -- so an excluded
+# entry never even gets a mini_pdf/image/text file generated for it.
+PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
+    # CollezioneGiorno (Listino 01 Settembre 2023)
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Cornice'): None,  # superseded_reprint -- see flag_triage.json, Spazi-10's version is current
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Peonia (Divani)'): None,  # superseded_reprint -- Progetti di Design 08's version is current
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Peonia (Poltrone e pouf)'): None,  # same product, same supersede decision
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Dedalo'): 'Dedalo (CollezioneGiorno)',
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Logos'): 'Logos (CollezioneGiorno)',
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Contralto'): 'Contralto (CollezioneGiorno)',
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'People'): 'People (CollezioneGiorno)',
+    # CollezioneNotte (Listino 01 Settembre 2023)
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Dedalo'): 'Dedalo (CollezioneNotte)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Logos'): 'Logos (CollezioneNotte)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Contralto'): 'Contralto (CollezioneNotte)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'People'): 'People (CollezioneNotte)',
+    # Progetti di Design 06-07 (Listino 01 Ottobre 2023)
+    ('2023_10_Progetti_di_Design_06-07_1R +6_.pdf', 'Dedalo'): 'Dedalo (Progetti 06-07)',
+}
+
 
 def slugify(name: str) -> str:
     s = name.strip().lower()
@@ -2429,6 +2471,29 @@ def main():
           f"since there's no next entry to bound it. If it's actually a whole "
           f"subcategory (like a mattress sub-catalog with its own models), "
           f"we'll want to split it further in a follow-up pass.")
+
+    if args.style == "pianca":
+        source_filename = Path(pdf_path).name
+        dropped_names = []
+        renamed = []
+        kept_ranges = []
+        for item in ranges:
+            key = (source_filename, item["name"])
+            if key in PIANCA_INDEX_NAME_OVERRIDES:
+                override = PIANCA_INDEX_NAME_OVERRIDES[key]
+                if override is None:
+                    dropped_names.append(item["name"])
+                    continue
+                renamed.append((item["name"], override))
+                item["name"] = override
+            kept_ranges.append(item)
+        ranges = kept_ranges
+        if dropped_names or renamed:
+            print(f"      -> PIANCA_INDEX_NAME_OVERRIDES applied ({source_filename}):")
+            for n in dropped_names:
+                print(f"           dropped (confirmed superseded_reprint/duplicate): {n!r}")
+            for old, new in renamed:
+                print(f"           renamed (confirmed cross-file collision): {old!r} -> {new!r}")
 
     out_root = Path(args.out) / args.brand
     (out_root / "pages").mkdir(parents=True, exist_ok=True)
