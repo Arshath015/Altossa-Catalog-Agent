@@ -30,10 +30,26 @@
  * the real page (like Varaschini's page_range_boundary_unverified
  * bucket) -- not a claim that every flagged name is definitely a real
  * missing product, and not a guarantee that silence means nothing was
- * missed (an INDICE-listed name close enough to an existing entry that
- * it string-matches would not be flagged even if it's actually a
- * different product reusing the same name, the exact ambiguity Onda
- * Indoor and Clelia both turned out to have).
+ * missed. Check 1 (per-file, against the full index) alone COULD miss a
+ * same-name-different-file collision (an INDICE-listed name matching an
+ * existing entry that actually came from a DIFFERENT file) -- this is
+ * exactly the ambiguity Onda Indoor and Clelia both turned out to have,
+ * and is why check 2 (cross-file collision scan) exists and matters more
+ * than check 1 for this specific failure class: on the only 2 files
+ * checked so far, check 2 found 2 real hits, both invisible to check 1.
+ *
+ * extract_catalog.py now writes a source_file field on every NEW/
+ * re-extracted entry (added 2026-08-21, specifically to make check 1
+ * itself collision-proof going forward, closing the gap check 2 exists
+ * to cover) -- check 1 above already uses it when present: a candidate
+ * only counts as matched if a matching entry's source_file equals the
+ * file being scanned, or the entry predates the field entirely (falls
+ * back to the old name-only match). All 31 of Pianca's current entries
+ * predate this field, so check 1 still can't tell them apart yet --
+ * check 2 remains load-bearing until the touched files are re-extracted.
+ * Once a file is re-extracted with source_file populated, check 1 alone
+ * becomes reliable for it and check 2 becomes a redundant sanity check
+ * rather than the primary signal.
  *
  * RUN WITH:  npx tsx App/regression/diagnose_pianca_index_gaps.ts
  */
@@ -88,10 +104,12 @@ function normalize(s: string): string {
 }
 
 function main() {
-  const idx: Array<{ product_name: string }> = JSON.parse(
+  const idx: Array<{ product_name: string; source_file?: string }> = JSON.parse(
     fs.readFileSync(path.join(ROOT, 'data', 'Pianca', 'catalog_index.json'), 'utf-8')
   );
-  const indexedNorm = idx.map(e => normalize(e.product_name));
+  const withSourceFile = idx.filter(e => e.source_file).length;
+  console.log(`catalog_index.json: ${idx.length} entries, ${withSourceFile} carry a source_file field ` +
+    `(added 2026-08-21 -- entries extracted before that fix have none and fall back to name-only matching below).`);
 
   const perFileCandidates: { label: string; candidates: Set<string> }[] = [];
 
@@ -108,7 +126,16 @@ function main() {
     const unmatched: string[] = [];
     for (const c of candidates) {
       const cn = normalize(c);
-      const matched = indexedNorm.some(n => n.includes(cn) || cn.includes(n));
+      // Prefer source_file when the matching entry/entries have one: only
+      // count it as covered by THIS file if at least one matching entry's
+      // source_file is actually this file's own filename. An entry with no
+      // source_file (legacy, pre-2026-08-21) still falls back to a bare
+      // name match, same as before -- we don't know better for those yet.
+      const matchingEntries = idx.filter(e => {
+        const n = normalize(e.product_name);
+        return n.includes(cn) || cn.includes(n);
+      });
+      const matched = matchingEntries.some(e => !e.source_file || e.source_file === f.file);
       if (!matched) unmatched.push(c);
     }
 

@@ -2516,6 +2516,7 @@ def main():
             "brand": args.brand,
             "product_name": name,
             "slug": slug,
+            "source_file": Path(pdf_path).name,
             "printed_page_start": p_start,
             "printed_page_end": p_end,
             "pdf_page_start": pdf_start,
