@@ -1195,12 +1195,17 @@ def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
          footer rather than trusting that as a blind formula -- only
          build_offset_fallback (below) uses the map's own derived offset,
          and only for pages with no readable footer at all.
-    Both pattern pairs are tried on every page since they're mutually
+      3) Spazi-10: same idea again, with the literal phrase "Spazi" --
+         "<N> Spazi" / "Spazi <N>". Confirmed a flat +0 offset (real page
+         2 -> printed "02", real page 6 -> printed "06", etc. -- real PDF
+         page number equals printed page number exactly), again read from
+         every page's real footer rather than assumed.
+    All pattern pairs are tried on every page since they're mutually
     exclusive per-file; whichever matches wins. The section-name label
     itself varies per product/section (unlike Ditre's constant "Ditre
     Italia" wordmark), so pattern 1 matches ANY uppercase label rather
-    than a hardcoded name, and pattern 2 is scoped to the literal phrase
-    actually observed for Progetti 09 rather than "any mixed-case label"
+    than a hardcoded name, and patterns 2/3 are scoped to the literal
+    phrases actually observed per file rather than "any mixed-case label"
     (which would risk matching ordinary prose sentences ending a page).
     No offset/formula fallback here either -- see build_offset_fallback,
     called separately by main() for whichever pages this leaves unmapped
@@ -1211,6 +1216,8 @@ def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
     suffix_re = re.compile(r"^\s*[A-ZÀ-Ù][A-ZÀ-Ù ]*_(\d{1,4})\s*$")
     prefix_re2 = re.compile(r"^\s*(\d{1,4})\s+Progetti di design\s*$", re.IGNORECASE)
     suffix_re2 = re.compile(r"^\s*Progetti di design\s+(\d{1,4})\s*$", re.IGNORECASE)
+    prefix_re3 = re.compile(r"^\s*(\d{1,4})\s+Spazi\s*$")
+    suffix_re3 = re.compile(r"^\s*Spazi\s+(\d{1,4})\s*$")
     FOOTER_LOOKBACK = 4
     for pg in range(1, total_pages + 1):
         text = pdftotext_page(pdf_path, pg)
@@ -1218,7 +1225,8 @@ def build_pianca_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
         if not lines:
             continue
         for last in reversed(lines[-FOOTER_LOOKBACK:]):
-            m = prefix_re.match(last) or suffix_re.match(last) or prefix_re2.match(last) or suffix_re2.match(last)
+            m = (prefix_re.match(last) or suffix_re.match(last) or prefix_re2.match(last)
+                 or suffix_re2.match(last) or prefix_re3.match(last) or suffix_re3.match(last))
             if m:
                 page_map[int(m.group(1))] = pg
                 break
