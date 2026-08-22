@@ -311,6 +311,35 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Norma'): 'Norma (CollezioneNotte)',
 }
 
+# A second, separate class of the same problem (same pattern already hit
+# and fixed for Ditre Italia -- see DITRE_WITHIN_FILE_DISAMBIGUATION's own
+# comment): a name can recur MULTIPLE TIMES within one file's own INDICE
+# under the SAME category, which parse_index_pianca's in-file "Name
+# (Category)" auto-qualification can't distinguish (it only has one
+# category label to work with, and several genuinely different products
+# can share it). Confirmed on Outdoor's "Levante Out" -- 6 of its 9
+# occurrences (Poltrona, Lettino, Lettino plus, Lettino super, Panca,
+# Panca super) all fall under the single INDICE category "Poltrone,
+# panche e lettini", so the auto-qualifier would produce the exact same
+# "Levante Out (Poltrone, panche e lettini)" string for all 6 -- a
+# collision the (source_file, name) table above can't resolve either,
+# since all 6 raw entries share one key. Printed page number is the only
+# thing that reliably distinguishes them. Every value below verified via
+# direct page content (designer credit + a distinct furniture-type word
+# and/or SKU code family), not assumed from the INDICE listing alone --
+# see flag_triage.json's "Levante Out" entry for the full evidence.
+PIANCA_WITHIN_FILE_OVERRIDES: dict[tuple[str, str, int], str] = {
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 5): 'Levante Out (Sedia)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 6): 'Levante Out (Sgabello)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 13): 'Levante Out (Divano)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 21): 'Levante Out (Poltrona)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 22): 'Levante Out (Lettino)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 23): 'Levante Out (Lettino plus)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 24): 'Levante Out (Lettino super)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 25): 'Levante Out (Panca)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 26): 'Levante Out (Panca super)',
+}
+
 
 def slugify(name: str) -> str:
     s = name.strip().lower()
@@ -2522,9 +2551,11 @@ def main():
         source_filename = Path(pdf_path).name
         dropped_names = []
         renamed = []
+        within_file_renamed = []
         kept_ranges = []
         for item in ranges:
             key = (source_filename, item["name"])
+            within_file_key = (source_filename, item["name"], item["printed_start"])
             if key in PIANCA_INDEX_NAME_OVERRIDES:
                 override = PIANCA_INDEX_NAME_OVERRIDES[key]
                 if override is None:
@@ -2532,14 +2563,27 @@ def main():
                     continue
                 renamed.append((item["name"], override))
                 item["name"] = override
+            elif within_file_key in PIANCA_WITHIN_FILE_OVERRIDES:
+                # Checked as a separate, more specific table rather than
+                # folded into PIANCA_INDEX_NAME_OVERRIDES above -- see
+                # PIANCA_WITHIN_FILE_OVERRIDES' own comment: several raw
+                # entries can share the exact same (source_file, name) key
+                # when they collide WITHIN one file under the same
+                # in-file category, so a plain name-keyed table can't
+                # distinguish them at all; printed page number can.
+                override = PIANCA_WITHIN_FILE_OVERRIDES[within_file_key]
+                within_file_renamed.append((item["name"], item["printed_start"], override))
+                item["name"] = override
             kept_ranges.append(item)
         ranges = kept_ranges
-        if dropped_names or renamed:
+        if dropped_names or renamed or within_file_renamed:
             print(f"      -> PIANCA_INDEX_NAME_OVERRIDES applied ({source_filename}):")
             for n in dropped_names:
                 print(f"           dropped (confirmed superseded_reprint/duplicate): {n!r}")
             for old, new in renamed:
                 print(f"           renamed (confirmed cross-file collision): {old!r} -> {new!r}")
+            for old, pg, new in within_file_renamed:
+                print(f"           renamed (confirmed within-file collision, printed p.{pg}): {old!r} -> {new!r}")
 
     out_root = Path(args.out) / args.brand
     (out_root / "pages").mkdir(parents=True, exist_ok=True)
