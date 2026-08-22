@@ -189,10 +189,10 @@ const CASES: Case[] = [
     id: 'pianca-mambo-2axis-tier',
     category: 'Mambo\'s OWN 2-axis Ante-e-fianchi/Basamento grid (Pianca)',
     brand: 'Pianca',
-    query: 'Mambo materico price',
-    productName: 'Mambo',
+    query: 'Mambo (Progetti 09) materico price',
+    productName: 'Mambo (Progetti 09)',
     expectedHeader: 'FINISH',
-    note: 'Mambo\'s 2-axis grid (parse_file_pianca_mambo_2axis, real PDF pages 28-35) is structurally DIFFERENT from Norma Up\'s: asymmetric 3+1 column split ("Ante e fianchi": L.Opaco/Essenza/Lucido Sp., then "Basamento": one combined column) and a 4TH row-type ("Basamento", the leg/base accessory) that isn\'t one of the other 3 Struttura values at all -- verified via pasted values (code 00M3FE\'s 9 combinations and code 06MZE3\'s Basamento-only row all match source exactly) and an independent (code, fabric_tier) collision recompute (965 distinct keys across 998 rows, 0 conflicts) before this was considered done, same rigor as Norma Up.',
+    note: 'Mambo\'s 2-axis grid (parse_file_pianca_mambo_2axis, real PDF pages 28-35) is structurally DIFFERENT from Norma Up\'s: asymmetric 3+1 column split ("Ante e fianchi": L.Opaco/Essenza/Lucido Sp., then "Basamento": one combined column) and a 4TH row-type ("Basamento", the leg/base accessory) that isn\'t one of the other 3 Struttura values at all -- verified via pasted values (code 00M3FE\'s 9 combinations and code 06MZE3\'s Basamento-only row all match source exactly) and an independent (code, fabric_tier) collision recompute (965 distinct keys across 998 rows, 0 conflicts) before this was considered done, same rigor as Norma Up. Product renamed from bare "Mambo" to "Mambo (Progetti 09)" during Progetti di Design 06-07\'s extraction (2026-08-22) once its bare name collided with Progetti 06-07\'s own two "Mambo" entries (Tavolino/Poltrone e pouf) -- this test case was stale until that same date; running regression:full end-to-end (rather than stopping at an earlier failing gate) is what surfaced it.',
   },
   {
     id: 'pianca-eneaup-wildcard-code-tier',

@@ -263,6 +263,35 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'People'): 'People (CollezioneNotte)',
     # Progetti di Design 06-07 (Listino 01 Ottobre 2023)
     ('2023_10_Progetti_di_Design_06-07_1R +6_.pdf', 'Dedalo'): 'Dedalo (Progetti 06-07)',
+    # Mambo: parse_index_pianca's own in-file auto-qualification already
+    # separated Progetti 06-07's two Mambos by category ("Mambo
+    # (Tavolini)" = a Tavolino/small table, "Mambo (Poltrone e pouf)" = a
+    # Pouf -- confirmed via real page content back when this collision
+    # was first investigated, before extraction) -- neither string
+    # actually collides with Progetti di Design 09's already-live bare
+    # "Mambo" (its own, unrelated, much larger wardrobe/storage system),
+    # so no file/JSON overwrite risk exists here the way it did for
+    # Peonia/Cornice/Palù/etc. Renamed anyway, all 3, per the standing
+    # rule: qualify every related entry by source context consistently,
+    # don't leave one bare while the others get qualified just because
+    # the auto-qualifier's category labels happened not to collide.
+    ('2023_10_Progetti_di_Design_06-07_1R +6_.pdf', 'Mambo (Tavolini)'): 'Mambo (Progetti 06-07 Tavolino)',
+    ('2023_10_Progetti_di_Design_06-07_1R +6_.pdf', 'Mambo (Poltrone e pouf)'): 'Mambo (Progetti 06-07 Pouf)',
+    ('2025_06_Progetti_di_Design_09_1R +6_.pdf', 'Mambo'): 'Mambo (Progetti 09)',
+    # Progetti di Design 09's own long-documented missing_from_index gap
+    # (found 2026-08-21 -- see flag_triage.json's "Onda Indoor (Progetti
+    # 09)"/"Clelia (Progetti 09)" entries for the full designer-credit/
+    # SKU-code evidence that these are genuinely different products from
+    # Spazi-10's own same-named ones) got accidentally re-triggered
+    # 2026-08-22 while re-running Progetti 09 to apply the Mambo rename
+    # above (the correct --index-pages 2-7 range happens to also capture
+    # these 2 previously-missed entries). The file-write collision fix
+    # correctly protected Spazi-10's real files (redirected to
+    # "clelia_2"/"onda_indoor_2"), but the JSON metadata still needed
+    # this override to stop the plain name-match merge from re-pointing
+    # Spazi-10's entries at Progetti 09's data.
+    ('2025_06_Progetti_di_Design_09_1R +6_.pdf', 'Clelia'): 'Clelia (Progetti 09)',
+    ('2025_06_Progetti_di_Design_09_1R +6_.pdf', 'Onda Indoor'): 'Onda Indoor (Progetti 09)',
 
     # Second round, found 2026-08-22 while extracting CollezioneNotte:
     # Palù and "Mensole legno per boiserie" collided with Progetti di
