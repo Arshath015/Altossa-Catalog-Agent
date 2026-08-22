@@ -138,6 +138,35 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     "Bed-base cover for sofa bed": (120, 121),  # auto-computed 120-123; 122-123 = "Technical bed/sofa-bed section"
     "Cushions - Headrests - Fabrics and Leathers (Living & Dining)": (142, 151),  # auto-computed 142-153; 152-153 = "Marble finishes" / "Wood, glass and bonded leather finishes"
     "Outdoor cushions": (60, 63),  # auto-computed 60-65; 64-65 = "Materials | Matériels"
+    # Pianca Outdoor: the card-grid INDICE parser (2026-08-22) only lists
+    # ONE entry under the "Divani" category (this one, printed page 13),
+    # so its own range still auto-extends to (next entry's start - 1) =
+    # Nuvola's printed page 20 minus 1 = 19, same bound as before the
+    # card-grid fix. The ORIGINAL flag_triage.json note flagged this exact
+    # range as suspicious ("pages 14-19 belong to Nuvola-adjacent or other
+    # content not yet separated out") -- checked directly this time: pdf
+    # pages 15-19 (printed 13-17) are genuinely one continuous Levante Out
+    # write-up (Caratteristiche / Caratteristiche e modularità / Cuscinetti
+    # pouf e moduli / Moduli), pdf page 20 is blank (a full-bleed photo
+    # divider, no text at all), and pdf page 21 reads "POLTRONE PANCHE" --
+    # the NEXT category's own section-divider heading, not Levante Out
+    # content. The original suspicion was wrong in substance (nothing
+    # Nuvola-adjacent hiding in here) but right that the range needed a
+    # real check rather than being left alone.
+    "Levante Out (Divano)": (15, 19),  # auto-computed 15-21; 20-21 = blank divider + "POLTRONE PANCHE" section header
+    # Pianca Outdoor: Porto is the last product the card-grid parser
+    # (2026-08-22) lists on its own page (4), which -- unlike the whole
+    # file's INDICE, spread across pages 3+4 -- never sees the 3 real
+    # back-matter reference entries (Tessuti Outdoor/Avvertenze sui
+    # divani/Condizioni generali) that page 3's own coarse list-view
+    # includes and that correctly bound Porto's real range. Extracting
+    # from page 4 alone therefore has no "next entry" to bound Porto
+    # against and silently auto-extends it to end-of-document, swallowing
+    # those 3 sections' own real pages into Porto's files. Verified
+    # directly: pdf page 37 (printed 35) is genuinely Porto's own last
+    # page ("PORTO M3 Kg", a weight/volume table); pdf page 38 (printed
+    # 36) is unambiguously "TESSUTI OUTDOOR"'s own real start.
+    "Porto": (29, 37),  # auto-computed 29-42; 38-42 = Tessuti Outdoor/Avvertenze sui divani/Condizioni generali
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
@@ -338,6 +367,28 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     # vs CollezioneNotte's own comodino, code 2N2Y4) -- same resolution.
     ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Norma'): 'Norma (CollezioneGiorno)',
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Norma'): 'Norma (CollezioneNotte)',
+    # NOTE on Outdoor (card-grid parser built 2026-08-22, real pdf page
+    # 4): page 4 resolved 4 of page 3's coarse list-view groupings into
+    # their real, individually-page-numbered pieces (Levante Out x9
+    # pieces across 3 categories, Maestrale x2 -- see
+    # PIANCA_WITHIN_FILE_OVERRIDES above). Deliberately NOT using a
+    # None-drop entry here for the 4 now-superseded coarse names
+    # ('Levante Out (Sedie e sgabelli)', 'Maestrale', 'Levante Out
+    # (Divani)', 'Levante Out (Poltrone, panche)'): a plain (source_file,
+    # name) drop would share its exact key with page 4's OWN pre-rename
+    # raw name at whichever printed page happens to equal the coarse
+    # range's own start page (confirmed real: both page 3's coarse
+    # "Levante Out (Sedie e sgabelli)" range and page 4's fine "Levante
+    # Out (Sedia)" piece start at printed page 5) -- there is no way for
+    # a (source_file, name) OR (source_file, name, printed_page) key
+    # alone to tell those two apart, since printed page 5 legitimately
+    # means two different things depending on which page's parse produced
+    # it. The 4 stale coarse entries were instead removed as a one-time
+    # manual cleanup once page 4 alone (NOT page 3) became Outdoor's sole
+    # authoritative INDICE source going forward -- page 3 must not be
+    # re-run for this file; Porto's own correct end bound (which used to
+    # depend on page 3's back-matter entries existing in the same run) is
+    # now pinned directly via PAGE_RANGE_OVERRIDES instead.
 }
 
 # A second, separate class of the same problem (same pattern already hit
@@ -358,15 +409,53 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
 # and/or SKU code family), not assumed from the INDICE listing alone --
 # see flag_triage.json's "Levante Out" entry for the full evidence.
 PIANCA_WITHIN_FILE_OVERRIDES: dict[tuple[str, str, int], str] = {
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 5): 'Levante Out (Sedia)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 6): 'Levante Out (Sgabello)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 13): 'Levante Out (Divano)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 21): 'Levante Out (Poltrona)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 22): 'Levante Out (Lettino)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 23): 'Levante Out (Lettino plus)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 24): 'Levante Out (Lettino super)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 25): 'Levante Out (Panca)',
-    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out', 26): 'Levante Out (Panca super)',
+    # Lookup keys below are the name AFTER parse_index_pianca's own
+    # cross-category auto-qualification (main() checks within_file_key
+    # using item["name"], which is already qualified by then) -- NOT the
+    # bare printed label. Originally written keyed on bare 'Levante Out'
+    # under the assumption page 3's coarse list-view would supply these;
+    # in fact NEITHER page 3 (never emits per-piece page numbers for a
+    # collapsed range at all) NOR page 4's card-grid parser (built
+    # 2026-08-22; 'Levante Out' recurs under 3 categories here --
+    # 'Sedie e sgabelli', 'Divani', 'Poltrone, panche e lettini' -- so it's
+    # always category-qualified before this table is ever checked) would
+    # have matched a bare-name key. Corrected to the real post-
+    # qualification strings, confirmed via direct parser dry-run output.
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Sedie e sgabelli)', 5): 'Levante Out (Sedia)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Sedie e sgabelli)', 6): 'Levante Out (Sgabello)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Divani)', 13): 'Levante Out (Divano)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Poltrone, panche e lettini)', 21): 'Levante Out (Poltrona)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Poltrone, panche e lettini)', 22): 'Levante Out (Lettino)',
+    # Printed pages 23/24/26 are a SEPARATE mismatch from the
+    # qualification issue above: the index's own printed text already
+    # distinguishes these 3 of the 6 pieces with a trailing "plus"/"super"
+    # suffix baked directly into the label (confirmed via direct -tsv
+    # inspection: pages 21/22/25 print bare "Levante Out" with no suffix
+    # at all; 23/24/26 print "Levante Out plus"/"Levante Out super" as the
+    # literal index text) -- and since 'Levante Out plus'/'Levante Out
+    # super' each only ever appear under ONE category, they never get
+    # category-qualified at all, unlike bare 'Levante Out' above. Real
+    # per-page content (PDF pages 25/26/28, i.e. printed 23/24/26)
+    # confirms all 6 are genuinely the SAME "LEVANTE OUT" family
+    # regardless of the index's own inconsistent labeling, so the target
+    # qualified name stays uniform with the other 3.
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out plus', 23): 'Levante Out (Lettino plus)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out super', 24): 'Levante Out (Lettino super)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out (Poltrone, panche e lettini)', 25): 'Levante Out (Panca)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Levante Out super', 26): 'Levante Out (Panca super)',
+    # Found 2026-08-22 building the card-grid INDICE parser (real pdf page
+    # 4): the SAME "one bare name covers 2 pieces" pattern as Levante Out
+    # above, just not caught before now because page 3's coarse list-view
+    # only ever showed ONE "Maestrale" row (printed page 7) -- the finer
+    # card grid reveals a SECOND "Maestrale" at printed page 8 that page
+    # 3 silently collapsed away entirely (not even part of a wrong range,
+    # just absent). Verified via real page content, not just the grid's
+    # own column labels: PDF page 9 (printed 7) = "MAESTRALE ... Sedia",
+    # PDF page 10 (printed 8) = "MAESTRALE ... Sgabello" (printed->PDF
+    # mapped via build_pianca_page_map's confirmed +2 offset for this
+    # file, same convention as Progetti 09).
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Maestrale', 7): 'Maestrale (Sedia)',
+    ('2024_10_Outdoor_1R SENZA AUMENTO +10.pdf', 'Maestrale', 8): 'Maestrale (Sgabello)',
 }
 
 
@@ -1217,15 +1306,90 @@ def build_offset_fallback(page_map: dict[int, int]):
 # ("Levante (Divani)" vs "Levante (Poltrone)"), not merged or deduped.
 # ---------------------------------------------------------------------------
 
+def _pianca_index_is_noise_row(row: list[tuple[float, float, str]]) -> bool:
+    """True for a visual row that's page furniture, not real INDICE
+    content: the page's own "INDICE" self-title, or a footer matching one
+    of the SAME conventions build_pianca_page_map uses to read printed
+    page numbers (e.g. "2_OUTDOOR", "OUTDOOR_1", "Progetti di design 05").
+    Reusing those exact patterns here (rather than a position-based
+    threshold like the old CATEGORY_X_MAX approach) means this check
+    doesn't depend on assuming a fixed page layout -- it only depends on
+    the footer TEXT looking like a footer, which is already independently
+    verified machinery."""
+    text = " ".join(t for _, _, t in sorted(row, key=lambda w: w[1])).strip()
+    if text.upper() == "INDICE" or text.upper() == "INTERACTIVE":
+        return True
+    footer_patterns = (
+        r"^\d{1,4}_[A-ZÀ-Ù][A-ZÀ-Ù ]*$",
+        r"^[A-ZÀ-Ù][A-ZÀ-Ù ]*_\d{1,4}$",
+        r"^\d{1,4}\s+Progetti di design$",
+        r"^Progetti di design\s+\d{1,4}$",
+        r"^\d{1,4}\s+Spazi$",
+        r"^Spazi\s+\d{1,4}$",
+    )
+    return any(re.match(p, text, re.IGNORECASE) for p in footer_patterns)
+
+
+def _pianca_card_grid_pagenum_row(row: list[tuple[float, float, str]]) -> list[tuple[float, int]] | None:
+    """If EVERY token in this visual row decomposes into a ('p.', digits)
+    pair, returns [(column_left, page_num), ...] (one per grid column
+    present on this row); otherwise returns None. Detects the "card grid"
+    INDICE format (confirmed on Outdoor's real pdf page 4, and suspected
+    -- not yet checked -- on Progetti di Design 09 and Spazi-10): unlike
+    the "list view" format where a name and its own page number share one
+    visual row, here a product's page number sits on its OWN row directly
+    below its name, with several products side-by-side in a fixed-column
+    grid. A row of nothing but ('p.', N) pairs is a reliable, format-
+    specific signature no ordinary name/category row could produce."""
+    tokens = sorted(row, key=lambda w: w[1])
+    pairs: list[tuple[float, int]] = []
+    i = 0
+    while i < len(tokens):
+        left, text = tokens[i][1], tokens[i][2]
+        if text != "p." or i + 1 >= len(tokens):
+            return None
+        num_text = tokens[i + 1][2]
+        if not re.fullmatch(r"\d{1,4}", num_text):
+            return None
+        pairs.append((left, int(num_text)))
+        i += 2
+    return pairs if pairs else None
+
+
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
-    """Parse Pianca's INDICE page (Progetti 08 layout only -- see module
-    comment above) via -tsv coordinates: category label / product name /
-    page number sit in 3 distinct x-bands on each visual row, with the
-    category label only present on the FIRST row of its own block (later
-    rows in the same category inherit it). Returns (name, printed_page)
-    with name qualified as "Name (Category)" whenever the same bare name
-    recurs under more than one category in this index (verified needed:
-    Levante and Peonia each appear under both Divani and Poltrone)."""
+    """Parse Pianca's INDICE page(s) via -tsv coordinates. Two mutually
+    exclusive per-PAGE formats are supported (confirmed real, distinct
+    layouts -- see the module comment above and Outdoor's own
+    'index_under_resolved' flag_triage.json history for how this was
+    found):
+      1) "List view" (Progetti 08 and most other files): category label /
+         product name / page number sit in 3 distinct x-bands on the SAME
+         visual row, with the category label only present on the FIRST
+         row of its own block (later rows in the same category inherit
+         it).
+      2) "Card grid" (confirmed on Outdoor's real pdf page 4; suspected
+         but NOT YET CHECKED on Progetti di Design 09 and Spazi-10, per
+         the follow-up in Outdoor's own triage note): several products
+         arranged side-by-side in a fixed-column grid, each one's name on
+         one row and its OWN page number ("p. N") directly below on the
+         next row -- category label on its own header row above the
+         whole block, spanning potentially several grid rows.
+    Format is detected PER PAGE (not assumed for the whole file), via
+    _pianca_card_grid_pagenum_row: if any row on the page is pure
+    ('p.', N) pairs, that page is card-grid; otherwise it's list-view.
+    This means a single call can correctly mix formats across different
+    pages of the same file's index_pages range, AS LONG AS the pages
+    don't describe overlapping content (Outdoor's own list-view page 3
+    and card-grid page 4 in fact describe the SAME catalog at two
+    different granularities -- they must never both be passed in the same
+    index_pages range, or every product would be double-entered at two
+    different resolutions; the caller picks whichever single page has the
+    correct/most-granular data, exactly like every other Pianca file's
+    single correct INDICE page choice).
+    Returns (name, printed_page) with name qualified as "Name (Category)"
+    whenever the same bare name recurs under more than one category in
+    this index (verified needed: Levante and Peonia each appear under
+    both Divani and Poltrone)."""
     CATEGORY_X_MAX = 300.0
     NAME_X_MIN = 400.0
     PAGENUM_X_MIN = 530.0
@@ -1249,22 +1413,18 @@ def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int
                 continue
             if row[col["level"]] != "5":
                 continue
-            left = float(row[col["left"]])
-            if left < 200.0:
-                continue  # page furniture: "INDICE" title, "INTERACTIVE" watermark
             top = float(row[col["top"]])
             if top > 750.0:
-                # The INDICE page's OWN page-number footer (e.g. "Progetti
-                # di design 01") sits in the exact same x-columns as this
-                # page's third category block (confirmed real on Progetti
-                # 09's page 3: "Progetti"/"di"/"design" at x=483-517,
-                # "01" at x=539.77 -- indistinguishable from a real
-                # Madie/Mambo/Norma Up/Siviglia row by x-position alone).
-                # Every real INDICE row seen across both verified files
-                # sits well above top=750 (an A4 page is ~842pt tall, so
-                # this is comfortably inside the bottom margin); the
-                # footer is the only content that ever lands this low.
+                # Bottom-margin footer/disclaimer text -- confirmed safely
+                # below every real INDICE row on both formats (list-view's
+                # max real top is well under 700; card-grid's is ~684.6 on
+                # Outdoor's page 4). Kept as defense-in-depth alongside
+                # _pianca_index_is_noise_row's text-pattern check below,
+                # rather than relying solely on the coincidence that a
+                # given file's disclaimer prose happens to have no token
+                # past PAGENUM_X_MIN.
                 continue
+            left = float(row[col["left"]])
             words.append((top, left, row[col["text"]]))
         if not words:
             continue
@@ -1276,23 +1436,68 @@ def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int
                 visual_rows[-1].append(w)
             else:
                 visual_rows.append([w])
+        visual_rows = [r for r in visual_rows if not _pianca_index_is_noise_row(r)]
 
-        current_category = None
-        for row in visual_rows:
-            row = sorted(row, key=lambda w: w[1])
-            cat_tokens = [t for _, left, t in row if left < CATEGORY_X_MAX]
-            name_tokens = [t for _, left, t in row if NAME_X_MIN <= left < PAGENUM_X_MIN]
-            pagenum_tokens = [t for _, left, t in row if left >= PAGENUM_X_MIN]
-            if cat_tokens:
-                current_category = " ".join(cat_tokens).strip()
-            if not name_tokens or not pagenum_tokens:
-                continue  # e.g. a trailing back-matter line with no page number
-            if not re.fullmatch(r"\d{1,4}", pagenum_tokens[-1]):
-                continue
-            name = " ".join(name_tokens).strip()
-            page_num = int(pagenum_tokens[-1])
-            if name and current_category:
-                raw_entries.append((current_category, name, page_num))
+        is_card_grid = any(_pianca_card_grid_pagenum_row(r) is not None for r in visual_rows)
+
+        if is_card_grid:
+            current_category = None
+            i = 0
+            while i < len(visual_rows):
+                row = visual_rows[i]
+                if _pianca_card_grid_pagenum_row(row) is not None:
+                    # A page-number row with no preceding name row consumed
+                    # it below -- shouldn't happen in practice (every real
+                    # one is consumed as the "next" row by the branch
+                    # below); skip defensively rather than guess.
+                    i += 1
+                    continue
+                next_pairs = (
+                    _pianca_card_grid_pagenum_row(visual_rows[i + 1])
+                    if i + 1 < len(visual_rows) else None
+                )
+                if next_pairs is not None:
+                    # This row is a NAME row: bucket each name token into
+                    # whichever column's own left position (from the
+                    # page-number row directly below it) is the closest
+                    # one at or before that token's own left -- matches
+                    # multi-word names (e.g. "Levante" + "Out") to the
+                    # same column since neither word crosses into the
+                    # next column's start.
+                    col_lefts = sorted(c for c, _ in next_pairs)
+                    col_names: dict[float, list[str]] = {c: [] for c in col_lefts}
+                    for _, left, text in sorted(row, key=lambda w: w[1]):
+                        owning_col = max((c for c in col_lefts if c <= left + 2.0), default=None)
+                        if owning_col is not None:
+                            col_names[owning_col].append(text)
+                    for col_left, page_num in next_pairs:
+                        name = " ".join(col_names.get(col_left, [])).strip()
+                        if name and current_category:
+                            raw_entries.append((current_category, name, page_num))
+                    i += 2
+                    continue
+                # Neither this row nor the next is a page-number row ->
+                # this is prose: a category header (or, in principle,
+                # other running text -- none observed on Outdoor's page).
+                current_category = " ".join(t for _, _, t in sorted(row, key=lambda w: w[1])).strip()
+                i += 1
+        else:
+            current_category = None
+            for row in visual_rows:
+                row = sorted(row, key=lambda w: w[1])
+                cat_tokens = [t for _, left, t in row if left < CATEGORY_X_MAX]
+                name_tokens = [t for _, left, t in row if NAME_X_MIN <= left < PAGENUM_X_MIN]
+                pagenum_tokens = [t for _, left, t in row if left >= PAGENUM_X_MIN]
+                if cat_tokens:
+                    current_category = " ".join(cat_tokens).strip()
+                if not name_tokens or not pagenum_tokens:
+                    continue  # e.g. a trailing back-matter line with no page number
+                if not re.fullmatch(r"\d{1,4}", pagenum_tokens[-1]):
+                    continue
+                name = " ".join(name_tokens).strip()
+                page_num = int(pagenum_tokens[-1])
+                if name and current_category:
+                    raw_entries.append((current_category, name, page_num))
 
     # Qualify with category only for names that recur under >1 category --
     # confirmed necessary (Levante, Peonia); leaving single-category names
@@ -2585,23 +2790,29 @@ def main():
         for item in ranges:
             key = (source_filename, item["name"])
             within_file_key = (source_filename, item["name"], item["printed_start"])
-            if key in PIANCA_INDEX_NAME_OVERRIDES:
+            if within_file_key in PIANCA_WITHIN_FILE_OVERRIDES:
+                # Checked FIRST, ahead of the plain (source_file, name)
+                # table below -- more specific always wins. Found necessary
+                # 2026-08-22 building Outdoor's card-grid parser: a plain
+                # DROP entry for a category-qualified name (e.g. dropping
+                # page 3's stale coarse "Levante Out (Sedie e sgabelli)"
+                # range once page 4's card grid resolved it into individual
+                # pieces) shares its exact key with page 4's own SAME
+                # pre-rename category-qualified name at BOTH printed pages
+                # 5 and 6 (before their own within-file rename to "Levante
+                # Out (Sedia)"/"(Sgabello)" applies) -- checking the plain
+                # table first silently DROPPED both real page-4 entries
+                # instead of renaming them, since the drop matched first
+                # and the per-page rename below never got a chance to run.
+                override = PIANCA_WITHIN_FILE_OVERRIDES[within_file_key]
+                within_file_renamed.append((item["name"], item["printed_start"], override))
+                item["name"] = override
+            elif key in PIANCA_INDEX_NAME_OVERRIDES:
                 override = PIANCA_INDEX_NAME_OVERRIDES[key]
                 if override is None:
                     dropped_names.append(item["name"])
                     continue
                 renamed.append((item["name"], override))
-                item["name"] = override
-            elif within_file_key in PIANCA_WITHIN_FILE_OVERRIDES:
-                # Checked as a separate, more specific table rather than
-                # folded into PIANCA_INDEX_NAME_OVERRIDES above -- see
-                # PIANCA_WITHIN_FILE_OVERRIDES' own comment: several raw
-                # entries can share the exact same (source_file, name) key
-                # when they collide WITHIN one file under the same
-                # in-file category, so a plain name-keyed table can't
-                # distinguish them at all; printed page number can.
-                override = PIANCA_WITHIN_FILE_OVERRIDES[within_file_key]
-                within_file_renamed.append((item["name"], item["printed_start"], override))
                 item["name"] = override
             kept_ranges.append(item)
         ranges = kept_ranges
