@@ -4022,6 +4022,10 @@
     "Accessori (Personalizzazioni)": {
       "status": "known_gap",
       "note": "Batch-categorized 2026-08-22 as part of CollezioneNotte's 65-product extraction (index/mini_pdf/images/text built, real page ranges verified). Same discipline as CollezioneGiorno's own 40-product batch and Bonaldo's original 197-product seeding (see known_gap's own _status_meaning): per-product page-image verification and dedicated price-table-shape parser work for all 65 CollezioneNotte products in one pass would be a multi-session effort on its own, so extraction (this pass) and price-parsing (future dedicated passes, shape by shape) are being done as separate steps. Currently 0 rows extracted for this product -- SAFE (parse_file_pianca's existing shape parsers, none built for CollezioneNotte's table layouts yet, correctly find no recognized header and return nothing rather than guessing). Not yet individually verified against the real page image. Some of these (Materassi, Guanciali, Cuscini decorativi, Topper, Coprimaterasso, Coordinati tessili, Reti, Accessori (Pedane, pianali e scrittoi), Accessori (Personalizzazioni)) may turn out to be reference/informational or genuinely large multi-shape sections rather than simple priced products once individually checked -- not assumed either way yet."
+    },
+    "Boiserie": {
+      "status": "known_gap",
+      "note": "Batch-categorized 2026-08-22, same discipline as Gamma (CollezioneGiorno) -- 'Boiserie' has 250 real Shape A/B rows already (a normal tier table across its own real pdf pages 53-63), but the same page range also has a SECOND table with a header Shape A's scan correctly flagged as unrecognized rather than guessing at ('Le boiserie H 180/210 sono previste solo a terra... CODICI Materico Laccato Opaco Lucido Sp.', a wall-mount-height-restricted named-columns variant not yet in _PIANCA_SHAPEB_NAMED_HEADERS). 0 rows lost for the recognized table (safe); the second table's rows are currently missing, not yet individually verified against the real page image."
     }
   }
 }
