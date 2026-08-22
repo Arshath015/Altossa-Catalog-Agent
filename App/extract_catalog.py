@@ -263,6 +263,52 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'People'): 'People (CollezioneNotte)',
     # Progetti di Design 06-07 (Listino 01 Ottobre 2023)
     ('2023_10_Progetti_di_Design_06-07_1R +6_.pdf', 'Dedalo'): 'Dedalo (Progetti 06-07)',
+
+    # Second round, found 2026-08-22 while extracting CollezioneNotte:
+    # Palù and "Mensole legno per boiserie" collided with Progetti di
+    # Design 08's and Spazi-10's own already-live bare names respectively
+    # -- confirmed genuine collisions (Palù: same designer, Raffaella
+    # Mangiarotti, but Progetti 08's is a Sedia/chair vs CollezioneNotte's
+    # Comodino/nightstand; Mensole legno per boiserie: completely
+    # different SKU code families, Spazi-10's 46D-prefix vs
+    # CollezioneNotte's 46E-prefix). Per the established convention,
+    # BOTH sides get qualified, not just the newly-colliding one -- the
+    # already-live Progetti 08/Spazi-10 entries are renamed here too.
+    ('2024_10_Progetti_di_Design_08_1R +6_.pdf', 'Palù'): 'Palù (Progetti 08)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Palù'): 'Palù (CollezioneNotte)',
+    ('2026_02_Spazi-10_1R.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (Spazi-10)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (CollezioneNotte)',
+
+    # CollezioneGiorno x CollezioneNotte, found 2026-08-22: 4 more
+    # colliding names, each investigated at the code level (not text
+    # similarity -- see the standing rule in flag_triage.json's
+    # superseded_reprint _status_meaning) and confirmed to be HYBRIDS:
+    # each catalog's version is primarily its own distinct content
+    # (different products' customization/surcharge codes), but a small
+    # number of codes are genuinely universal brand-wide accessories
+    # verified IDENTICAL (same code, same price) in both -- e.g.
+    # Elettrificazione's IR system (5000IR = EUR 221, 5000IS = EUR 26,
+    # both catalogs exactly) and passacavi (5000A = EUR 15, both
+    # catalogs exactly); Lavorazioni su misura's custom-color surcharge
+    # (LSCC = EUR 364, both catalogs exactly). Not a supersede (no price
+    # delta at all on the shared codes) and not fully identical either
+    # (the bulk of each is catalog-specific) -- disambiguated like any
+    # other genuine collision. The few universal codes will legitimately
+    # appear as identical rows under both qualified entries once parsed;
+    # that's expected and harmless (same code, same price, no ambiguity),
+    # not a duplicate-data bug.
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Elettrificazione'): 'Elettrificazione (CollezioneGiorno)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Elettrificazione'): 'Elettrificazione (CollezioneNotte)',
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Lavorazioni su misura'): 'Lavorazioni su misura (CollezioneGiorno)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Lavorazioni su misura'): 'Lavorazioni su misura (CollezioneNotte)',
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Maggiorazione Ottone Anticato'): 'Maggiorazione Ottone Anticato (CollezioneGiorno)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Maggiorazione Ottone Anticato'): 'Maggiorazione Ottone Anticato (CollezioneNotte)',
+    # Norma: same hybrid shape (a shared "Basamento" leg/base wildcard-
+    # code sub-table alongside genuinely different main furniture pieces
+    # -- CollezioneGiorno's own madia, codes 0073FF/0074FF/0075FF etc.,
+    # vs CollezioneNotte's own comodino, code 2N2Y4) -- same resolution.
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Norma'): 'Norma (CollezioneGiorno)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Norma'): 'Norma (CollezioneNotte)',
 }
 
 
