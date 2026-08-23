@@ -5410,6 +5410,46 @@
     "Sipario — Moduli estraibili a ripiani": {
       "status": "known_gap",
       "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 214-217 (printed 209-212): confirmed SIPARIO-generic, the last of Moduli Speciali's own sub-categories before Accessori Interni's own already-extracted range begins. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Vista (Caratteristiche e finiture)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf pages 354-358 (printed 349-353): mostly material/hardware descriptions (binari/carrelli/ante legno/ante vetro/maniglie) and warnings, but confirmed to also contain ONE real priced line item embedded within otherwise-reference content -- 'Vista Laccatura a campione' (custom-color surcharge), code LSCC = +EUR 364, the SAME universal code already documented under 'Lavorazioni su misura'. Pages 350-353 (the remaining printed range) are confirmed pure door-width/height calculation FORMULAS (no CODICI at all) -- absorbed into this same range rather than split out, matching the established 'harmless over-inclusion of a trailing reference block' pattern (Unless's own Caratteristiche/Tipologie, Levante Out Divano's blank divider). Currently 0 rows extracted -- SAFE. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Plana — Vista (Ante, pannelli fissi e aggiustaggi)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping (full multi-heading-per-page scan). Real pdf page 359 (printed 354): style-specific, one of 2 styles found for Vista (Plana, Crystal). Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Plana — Vista (Composizioni)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 360 (printed 355). Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Crystal — Vista (Ante, pannelli fissi e aggiustaggi)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 361 (printed 356), heading 'CRYSTAL Ante, pannelli fissi e aggiustaggi' -- 'Crystal' is a previously-unseen style name, not among SIPARIO's own 12 (Plana/Amalfi/Cornice/Crea/Icona/Manhattan/Murano/Nastro/Raggio/Tratto/Milano/Verona) -- Vista evidently has its own separate 2-style palette (Plana, Crystal), not shared with SIPARIO's own. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Crystal — Vista (Composizioni)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 362 (printed 357). Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Vista — Monorotaia": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 363 (printed 358): confirmed VISTA-generic single-rail mounting hardware, no per-style variant. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Vista — Monorotaia e pannello fisso": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 364 (printed 359): confirmed VISTA-generic. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Vista — Birotaia": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf page 365 (printed 360): confirmed VISTA-generic double-rail mounting hardware. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Vista — Pannello fisso": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Vista's structural mapping. Real pdf pages 366-367 (printed 361-362): confirmed VISTA-generic, the last of Vista's own sub-categories before Accessori (SistemiNotte)'s own already-extracted range begins. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Condizioni generali / Avvertenze (SistemiNotte)": {
+      "status": "reference_content_excluded",
+      "note": "Confirmed 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 374-378 (printed 369-373), headings 'AVVERTENZE' then 'CONDIZIONI GENERALI DI VENDITA' -- read in full: legal/warranty text (consumer-information-law compliance notice, material-care instructions, then a full 16-section sales-terms-and-conditions document covering pricing/payment/delivery/complaints/liability/governing-law) and the company's own address/contact/VAT footer. Zero CODICI, zero prices anywhere in this range -- not a product at all, deliberately never added to catalog_index.json, not even as a zero-row known_gap placeholder."
     }
   }
 }

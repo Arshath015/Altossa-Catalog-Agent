@@ -255,6 +255,13 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # Verified: real content is printed 209-212 (pdf 214-217); printed 213
     # (pdf 218) is Accessori Interni's own already-correct start.
     "Sipario — Moduli estraibili a ripiani": (214, 217),  # auto-computed 214-406(end of doc); 218-406 = Accessori Interni + everything after
+    # Pianca SistemiNotte: "Vista — Pannello fisso" is the last entry in
+    # Vista's own batch --manual-entries-file run, same "no next entry"
+    # pattern -- "Accessori (SistemiNotte)" (already extracted separately)
+    # deliberately not re-included here. Verified: real content is printed
+    # 362 only (pdf 367); printed 363 (pdf 368) is "Accessori
+    # (SistemiNotte)"'s own already-correct start.
+    "Vista — Pannello fisso": (366, 367),  # auto-computed 366-406(end of doc); 368-406 = Accessori (SistemiNotte) + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
