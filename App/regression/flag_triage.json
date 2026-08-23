@@ -5342,6 +5342,74 @@
     "Elettrificazione (SistemiNotte)": {
       "status": "planned_disambiguation",
       "note": "Found 2026-08-23 embedded within SIPARIO's own 'Home Office' sub-section (real pdf pages 102-103, printed 97-98) -- a 5th instance of the Elettrificazione collision, invisible in the INDEX (not its own row at all, just 2 pages tucked inside Home Office's own range). Confirmed the same hybrid pattern via code-level check: universal codes 5000C=EUR43 and 5000D=EUR15 verified byte-identical to SistemiGiorno's own real page, plus its own Sipario-scrittoio-specific codes (5000E, 5000F, 5000R1, 5000RE). Qualified as 'Elettrificazione (SistemiNotte)', joining the now-4-strong CollezioneGiorno/CollezioneNotte/SistemiGiorno/SistemiNotte set. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "SIPARIO Divisori di collegamento (Cabina soffietto)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping (full multi-heading-per-page scan, per the fixed methodology). Real pdf page 167 (printed 162): a shared SIPARIO frame component for cabina-a-soffietto (bellows-door) configurations, same pattern as SIPARIO's own 'Fianchi e divisori' shared components for battenti/cardine/scorrevoli. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "SIPARIO Fianchi per moduli a soffietto (Cabina soffietto)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 168 (printed 163): shares its page with a second sub-heading, 'Accessori per cabina' -- both real, SIPARIO-branded shared components for cabina-a-soffietto configurations. Currently 3 real rows already extracted via Shape A; the rest of this range's own table shapes remain unrecognized and correctly skipped -- SAFE."
+    },
+    "Plana — Cabina soffietto (Moduli)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 169 (printed 164), heading 'PLANA Moduli cabina con apertura soffietto' -- shares its page with 'Cornice — Cabina soffietto (Moduli)', caught only because the fixed multi-heading-per-page scan checks every heading-like line on a page, not just the first (the same class of miss already found once this session for Pedane/Pianali). Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Cornice — Cabina soffietto (Moduli)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 169 (printed 164), heading 'CORNICE Moduli cabina con apertura soffietto' -- shares its page with 'Plana — Cabina soffietto (Moduli)' (see that entry's own note for how this was caught). Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Icona — Cabina soffietto (Moduli)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 170-172 (printed 165), heading 'ICONA Moduli cabina con apertura soffietto'. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Sovraporta": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 173-174 (printed 168-169): Caratteristiche + Moduli, confirmed a single coherent 'SOVRAPORTA'-branded product, no hidden multi-style complexity. No existing collision found elsewhere in Pianca. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Ponti": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 175-193 (printed 170-185): confirmed via full per-page header scan to be ALL 'PONTI'-branded throughout (Caratteristiche/Attrezzabilita/H64+H96 Moduli/Schienali sottoponte/Ripiani legno/Mensole/Scrittoi/Pannelli/Pannelli fissi/Pannelli porta Tv) -- one coherent product, many internal component tables, same pattern as Unless/People/Moduli a giorno. Its own embedded 'PONTI Elettrificazione' sub-table (1 page, printed 185) was deliberately folded into this same range rather than split into its own qualified entry (unlike SIPARIO's own Home Office case): it reuses codes already documented under 'Elettrificazione (SistemiNotte)' (5000R1, 5000RE) rather than introducing substantial new standalone content, and is only 1 page vs Home Office's 2-page standalone table. No existing collision found for 'Ponti' itself. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Plana — Moduli per elettrodomestici": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 194 (printed 189) only -- confirmed no Nastro (or other style) equivalent exists for this specific category. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Plana — Moduli stagionali": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 195-196 (printed 190-191) -- confirmed no other style equivalent exists for this category. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Plana — Moduli con vani a giorno": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 197-200 (printed 192-195): 'tipo A' (2 pages)/'tipo B'/'tipo C' sub-variants, treated as one entry with multiple internal size/type tables, matching how SIPARIO's own moduli tables already handle multiple L/H/P size rows within one product rather than splitting each size into its own catalog entry. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Plana — Moduli con cassettiere esterne": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 201-204 (printed 196-199): 2/4 cassetti H20 + 2 cestoni H30 sub-tables, one entry per the same size-variant-as-internal-table convention. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Nastro — Moduli con cassettiere esterne": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 205-207 (printed 200-202): confirmed Nastro ONLY has its own equivalent for this one category (cassettiere esterne), not for elettrodomestici/stagionali/vani a giorno -- consistent with the established 'not every style is available in every category' pattern already normal for SIPARIO's own style x mechanism matrix. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Sipario — Angoli opposti": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 208-209 (printed 203-204): confirmed SIPARIO-generic (no per-style variant found). Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Sipario — Terminali aperti": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 210-211 (printed 205-206): confirmed SIPARIO-generic. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Plana — Terminali a scrigno": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 212 (printed 207): style-specific, shares the same 'Terminali a scrigno' category with Cornice's own entry (see that entry's note). Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Cornice — Terminali a scrigno": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf page 213 (printed 208): style-specific, joins Plana's own entry for this category. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
+    },
+    "Sipario — Moduli estraibili a ripiani": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during Moduli Speciali's structural mapping. Real pdf pages 214-217 (printed 209-212): confirmed SIPARIO-generic, the last of Moduli Speciali's own sub-categories before Accessori Interni's own already-extracted range begins. Currently 0 rows extracted -- SAFE (same named-columns/wildcard-code shape family as SIPARIO's own style x mechanism entries, no parser built yet)."
     }
   }
 }

@@ -247,6 +247,14 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # minimal run. Verified: printed 99 (pdf 104) is unambiguously
     # "SCORREVOLE"'s own section-divider start.
     "Elettrificazione (SistemiNotte)": (102, 103),  # auto-computed 102-406(end of doc); 104-406 = SIPARIO's own Armadi scorrevoli cluster + everything after
+    # Pianca SistemiNotte: "Sipario — Moduli estraibili a ripiani" is the
+    # last entry in Moduli Speciali's own batch --manual-entries-file run
+    # (Divisori di collegamento through Moduli estraibili a ripiani), same
+    # "no next entry" pattern -- Accessori Interni (already extracted in
+    # an earlier, separate run) was deliberately not re-included here.
+    # Verified: real content is printed 209-212 (pdf 214-217); printed 213
+    # (pdf 218) is Accessori Interni's own already-correct start.
+    "Sipario — Moduli estraibili a ripiani": (214, 217),  # auto-computed 214-406(end of doc); 218-406 = Accessori Interni + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
