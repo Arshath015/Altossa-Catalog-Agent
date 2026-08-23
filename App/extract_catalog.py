@@ -276,6 +276,32 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # byte-identical duplicate of the existing CollezioneNotte entry, not
     # re-extracted here).
     "Spazio (SistemiGiorno)": (121, 187),  # auto-computed 121-406(end of doc); 188-406 = Spazio Composto/Grafico (both confirmed duplicates, not re-extracted) + everything after
+    # Pianca SistemiGiorno: remaining Personalizzazioni pieces + Ottone
+    # Anticato, batched in one --manual-entries-file run. "Sistema audio
+    # integrato" auto-computed to pdf 323-325 (bounded by "Gadgets"'s own
+    # start), which wrongly swallowed pdf pages 324-325 -- those are
+    # "LAVORAZIONI SU MISURA Spazioteca" / "LAVORAZIONI SU MISURA Moduli,
+    # pedane, mensole, panche e consolle", already correctly extracted
+    # under the pre-existing "Lavorazioni su misura (SistemiGiorno)" entry
+    # (pdf 324-325). Verified via direct pdftotext dump of pdf 323-326:
+    # "SISTEMA AUDIO INTEGRATO" content is real pdf page 323 only.
+    "Sistema audio integrato": (323, 323),  # auto-computed 323-325(Gadgets' own start-1, WRONG -- would swallow Lavorazioni su misura's own 324-325); 324-325 = Lavorazioni su misura (SistemiGiorno) (already extracted separately)
+    # "Accessori
+    # (SistemiGiorno)" would otherwise auto-extend across Composizioni
+    # Catalogo's own already-extracted 184-entry range (a huge, separate
+    # run) since it's not re-included here -- pinned directly instead.
+    # Verified: real content is printed 323-326 (pdf 328-331); printed 327
+    # (pdf 332) is Composizioni Catalogo's own already-correct start.
+    "Accessori (SistemiGiorno)": (328, 331),  # auto-computed 328-395(Maggiorazione Ottone Anticato's own start-1, WRONG -- would swallow all of Composizioni Catalogo); 332-395 = Composizioni Catalogo (already extracted separately) + everything after
+    # "Maggiorazione Ottone Anticato (SistemiGiorno)" is the last entry in
+    # this same batch, same "no next entry" pattern. Verified: real
+    # content is printed 396 only (pdf 401, includes an embedded
+    # "PERSONALIZZAZIONI" surcharge sub-table on the same single page);
+    # printed 397 (pdf 402) is unambiguously "AVVERTENZE"'s own start
+    # (confirmed pure legal/warranty text through the end of the
+    # document -- the one '€' hit in that range is a late-payment penalty
+    # clause, not a product price).
+    "Maggiorazione Ottone Anticato (SistemiGiorno)": (401, 401),  # auto-computed 401-406(end of doc); 402-406 = Avvertenze/Condizioni generali (legal text, correctly excluded)
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
