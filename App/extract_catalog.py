@@ -167,6 +167,30 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # page ("PORTO M3 Kg", a weight/volume table); pdf page 38 (printed
     # 36) is unambiguously "TESSUTI OUTDOOR"'s own real start.
     "Porto": (29, 37),  # auto-computed 29-42; 38-42 = Tessuti Outdoor/Avvertenze sui divani/Condizioni generali
+    # Pianca SistemiNotte: same "last entry in a --manual-entries-file run
+    # has no next entry to bound it" failure as every prior last-entry-in-
+    # the-index case, but here it's the last entry of a SCOPED SUB-RANGE
+    # (SIPARIO's own manual-entries extraction only covers printed 39-158;
+    # SistemiNotte's remaining ~210 pages of other systems were deliberately
+    # out of scope for this run) rather than the whole file's real last
+    # product -- auto-extended to printed 371 (end of document), silently
+    # swallowing all of MODULI SPECIALI/ACCESSORI INTERNI/LAVORAZIONI SU
+    # MISURA/CABINE/ACCESSORI/OTTONE ANTICATO/CONDIZIONI GENERALI. Verified
+    # directly: pdf page 163 (printed 158) is genuinely Verona's own single
+    # real page; pdf page 164 (printed 159) is unambiguously "MODULI
+    # SPECIALI"'s own section-divider heading, the start of the next system.
+    "Verona — Armadi complanari (Composizioni)": (163, 163),  # auto-computed 163-376; 164-376 = rest of SistemiNotte's other systems
+    # Pianca SistemiGiorno: same "last entry in a --manual-entries-file
+    # sub-range has no next entry to bound it" pattern as SistemiNotte's
+    # Verona case above -- Composizioni Catalogo's own manual-entries scan
+    # (built 2026-08-23, 184 individually-coded composition bundles) only
+    # covers real pdf pages 333-400 (printed 328-395); the file's remaining
+    # "Ottone Anticato"/"Personalizzazioni"/"Condizioni generali" systems
+    # were deliberately out of scope for this run. Verified directly: pdf
+    # page 400 (printed 395) is genuinely TOT101/TOT102/TOT103's own shared
+    # last page; pdf page 401 (printed 396) is unambiguously "MAGGIORAZIONE
+    # OTTONE ANTICATO Calcolo del prezzo"'s own real start.
+    "Composizione TOT103 (Designbook 2022)": (400, 400),  # auto-computed 400-406(end of doc); 401-406 = Ottone Anticato/Personalizzazioni/Condizioni generali
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
@@ -2680,6 +2704,29 @@ def main():
                           "file (printed page 1 to the last page an actual "
                           "footer maps to) as one product with this name. "
                           "--index-pages is not required/used in this mode.")
+    ap.add_argument("--manual-entries-file", default=None,
+                     help="For --style pianca ONLY: path to a JSON file "
+                          "containing a flat list of [name, printed_page] "
+                          "pairs, sorted by printed_page, to use INSTEAD of "
+                          "parsing an INDICE page. Built for SistemiGiorno/"
+                          "SistemiNotte's nested INDICE structure (2026-08-23):"
+                          " a single INDICE row can hide dozens of "
+                          "independently-SKU-coded real products (e.g. "
+                          "SIPARIO's 'Struttura e ante' row alone covers "
+                          "~40+ style x mechanism-type product lines with no "
+                          "sub-level INDICE entries of their own at all), so "
+                          "parse_index_pianca's INDICE-driven entries list "
+                          "can't be trusted as complete for these 2 files --"
+                          " each entry here must instead come from direct "
+                          "page-header scanning, individually verified "
+                          "against real page content (not guessed from a "
+                          "naming pattern). Reuses every downstream step "
+                          "(page-footer mapping, compute_ranges, "
+                          "PIANCA_INDEX_NAME_OVERRIDES/"
+                          "PIANCA_WITHIN_FILE_OVERRIDES, collision-safe file "
+                          "writing) exactly as the INDICE-driven path does --"
+                          " only step [1/5] differs. --index-pages is not "
+                          "required/used in this mode.")
     args = ap.parse_args()
 
     pdf_path = args.pdf
@@ -2689,9 +2736,10 @@ def main():
         run_varaschini(pdf_path, args.brand, out_root)
         return
 
-    if not args.index_pages and not args.single_product:
+    if not args.index_pages and not args.single_product and not args.manual_entries_file:
         print("ERROR: --index-pages is required for --style "
-              f"{args.style!r} (only 'varaschini' and --single-product can omit it).")
+              f"{args.style!r} (only 'varaschini', --single-product, and "
+              "--manual-entries-file can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
@@ -2703,6 +2751,14 @@ def main():
             sys.exit(1)
         print(f"[1/5] Skipping index parsing (--single-product {args.single_product!r})...")
         entries = [(args.single_product, 1)]
+    elif args.manual_entries_file:
+        if args.style != "pianca":
+            print("ERROR: --manual-entries-file is only supported for --style pianca.")
+            sys.exit(1)
+        print(f"[1/5] Skipping index parsing (--manual-entries-file {args.manual_entries_file!r})...")
+        with open(args.manual_entries_file, "r", encoding="utf-8") as f:
+            raw_entries = json.load(f)
+        entries = [(name, int(pg)) for name, pg in raw_entries]
     else:
         lo, hi = (int(x) for x in args.index_pages.split("-"))
         index_pages = range(lo, hi + 1)
