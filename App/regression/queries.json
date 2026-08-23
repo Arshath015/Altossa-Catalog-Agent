@@ -674,7 +674,9 @@
     "brand": "Ditre Italia",
     "query": "Claire (Tables) diameter 140 natural price",
     "note": "Ditre Shape 2 (named material-finish-code grid), disambiguated against Claire (Night)/Claire mix -- all 4 finish colors at this size share the same price, so this returns multiple_options rather than narrowing to 1 row",
-    "expect_prices": ["4.319,00"]
+    "expect_prices": [
+      "4.319,00"
+    ]
   },
   {
     "id": 73,
@@ -682,7 +684,10 @@
     "brand": "Ditre Italia",
     "query": "Cali (Sofa) 2-er sofa category a and Cali (Armchairs) armchair category a",
     "note": "3 distinct real products (Sofa/Armchairs/Chairs) share the bare name Cali -- naming two disambiguated forms together must resolve and isolate both",
-    "expect_prices": ["2.706,00", "1.837,00"]
+    "expect_prices": [
+      "2.706,00",
+      "1.837,00"
+    ]
   },
   {
     "id": 74,
@@ -730,7 +735,10 @@
     "brand": "Pianca",
     "query": "give me all prices for Levante (Divani) and Levante (Poltrone)",
     "note": "Levante and Peonia are each both a Divani (sofa) AND a Poltrone (armchair) line in Progetti di Design 08, sharing one bare printed name in the INDICE -- same collision family as Ditre's Cali (id 73). Naming two disambiguated forms together must resolve and isolate both.",
-    "expect_prices": ["2.647", "1.643"]
+    "expect_prices": [
+      "2.647",
+      "1.643"
+    ]
   },
   {
     "id": 80,
@@ -739,5 +747,38 @@
     "query": "Lina Frassino Nero category a price",
     "note": "Lina's own printed order code (01121) is identical across all 3 leg-finish variants (Frassino Nero/Essenza/Laccato Opaco), each with its own distinct price -- the shared cross-brand ambiguous-row check (keyed on product+code+tier, deliberately not widened to include model_variant, see App/regression/flag_triage.json's Pianca entry for why) correctly can't disambiguate purely from (code, tier), so it falls back to the safe ambiguous_price status with the real page image rather than guessing.",
     "expect_status": "ambiguous_price"
+  },
+  {
+    "id": 81,
+    "cat": "product_code_match",
+    "brand": "Pianca",
+    "query": "give me the price for Composizione 9201",
+    "note": "Regression guard for a real bug found+fixed 2026-08-23: Composizioni Catalogo's 184 entries are identified primarily by their bundle code (e.g. \"9201\"), which lives in catalog_index.json's index_heading field but was never copied into art_code -- the field findProductsByCode actually indexes. Before the fix, this query fell through to generic name-token matching and returned all 184 tied on the shared word \"Composizione\" instead of narrowing to one product. Must resolve to exactly the one matching entry, honestly reporting no price data (known_gap, 0 rows), not a clarify_product list.",
+    "expect_status": "no_price_data",
+    "expect_product": [
+      "Composizione 9201 (Spazioteca)"
+    ]
+  },
+  {
+    "id": 82,
+    "cat": "product_code_match",
+    "brand": "Pianca",
+    "query": "Composizione S501 price",
+    "note": "Same regression guard as id 81, a different code prefix/style (Spazio's own S-prefix bundles) and a terser query phrasing (no \"give me the price for\").",
+    "expect_status": "no_price_data",
+    "expect_product": [
+      "Composizione S501 (Spazio)"
+    ]
+  },
+  {
+    "id": 83,
+    "cat": "product_code_match",
+    "brand": "Pianca",
+    "query": "give me the price for Composizione TOT101",
+    "note": "Same regression guard as id 81, a 3rd code family (Designbook 2022's own TOT-prefix bundles) to cover more than one of the 184 entries' naming sub-patterns.",
+    "expect_status": "no_price_data",
+    "expect_product": [
+      "Composizione TOT101 (Designbook 2022)"
+    ]
   }
 ]
