@@ -5266,6 +5266,18 @@
     "Moduli a giorno": {
       "status": "known_gap",
       "note": "Individually verified 2026-08-23 during SistemiGiorno's structural mapping. Real pdf pages 255-275 (printed 250-270): Caratteristiche/Ripiani legno/Divisori legno/Contenitori in Cuoio Rigenerato intro pages, then H20 through H150 size-variant open-shelf-module tables (some with a backlit-glass-shelf 'con ripiano vetro retroilluminato' variant) -- structurally the SAME 'one coherent product, many internal size-variant tables' pattern as Unless and People (SistemiGiorno), not a hidden-multi-brand cluster like SIPARIO. No existing collision found elsewhere in Pianca. Currently 0 rows extracted -- SAFE (new named-columns/size-variant shape family, no parser built yet)."
+    },
+    "Spazioteca (Spazi-10)": {
+      "status": "planned_disambiguation",
+      "note": "Found 2026-08-23 during SistemiGiorno's structural mapping. Spazi-10's own bare 'Spazioteca' (3 pages, real pdf pages 43-45) is a narrow door-passage configuration guide (using Spazioteca-compatible parts) -- confirmed via code-level check to be genuinely different from SistemiGiorno's own comprehensive 98-page Spazioteca system (zero code overlap either direction: Spazi-10's own codes like 47MXP9 don't appear anywhere in SistemiGiorno's own Spazioteca text). Qualified as 'Spazioteca (Spazi-10)', joining the new 'Spazioteca (SistemiGiorno)' entry."
+    },
+    "Spazioteca (SistemiGiorno)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiGiorno's structural mapping. Real pdf pages 22-119 (printed 17-114): SistemiGiorno's own comprehensive Spazioteca modular shelving system -- reference/spec intro pages ('8 cose da sapere'/Caratteristiche/Finiture/Modularita/Esempio compositivo/Sezione strutturale/Calcolo del prezzo, already separately logged as reference_content_excluded -- see 'SIPARIO Struttura e ante...' entry's sibling note for the same pattern) followed by dozens of real, differently-shaped price tables (Struttura/Angolo/Bifaccialita/Ante battenti/Ante scorrevoli/Schienali TV/Colonne H183 through H303, etc.) -- confirmed via full per-page header scan to be ALL still 'SPAZIOTECA'-branded throughout (one coherent product with many internal size-variant tables, structurally like Unless/People/Moduli a giorno, NOT like SIPARIO's independently-branded siblings). Qualified as 'Spazioteca (SistemiGiorno)' due to a genuine, code-confirmed collision against Spazi-10's own much narrower 'Spazioteca' entry (see that entry's own note). Currently 0 rows extracted -- SAFE (dozens of distinct named-columns/size-variant table shapes, none built yet)."
+    },
+    "Spazio (CollezioneNotte)": {
+      "status": "planned_disambiguation",
+      "note": "Found 2026-08-23 during SistemiGiorno's structural mapping. CollezioneNotte's own bare 'Spazio' (13 pages) confirmed genuinely different from SistemiGiorno's own comprehensive Spazio system via code-level check: zero code overlap (CollezioneNotte's own codes are 1M5/1M6/1M7-family; SistemiGiorno's own are wildcard 4*128/4*228/4*328-family). Qualified as 'Spazio (CollezioneNotte)', joining the SistemiGiorno version once it's extracted (not yet done -- SistemiGiorno's own Spazio range, printed 115 onward through Spazio Composto/Grafico, still needs its own full structural verification before extraction, same discipline as Spazioteca just got)."
     }
   }
 }

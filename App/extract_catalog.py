@@ -218,6 +218,15 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # variant tables); printed 271 (pdf 276) is unambiguously "BOISERIE"'s
     # own section-divider start.
     "Moduli a giorno": (255, 275),  # auto-computed 255-406(end of doc, no next entry in this minimal run); 276-406 = Boiserie e mensole + everything after
+    # Pianca SistemiGiorno: "Spazioteca (SistemiGiorno)" is the sole entry
+    # in its own minimal --manual-entries-file run, same "no next entry"
+    # pattern as every prior minimal-run case above. Verified: real content
+    # is printed 17-114 (pdf 22-119: '8 cose da sapere' through dozens of
+    # Ante/Struttura/Colonne size-variant tables, confirmed via full
+    # per-page header scan -- no independently-branded sibling products
+    # hiding inside, unlike SIPARIO); printed 115 (pdf 120) is unambiguously
+    # "SPAZIO"'s own section-divider start.
+    "Spazioteca (SistemiGiorno)": (22, 119),  # auto-computed 22-406(end of doc, no next entry in this minimal run); 120-406 = Spazio + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
@@ -387,6 +396,21 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Palù'): 'Palù (CollezioneNotte)',
     ('2026_02_Spazi-10_1R.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (Spazi-10)',
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (CollezioneNotte)',
+    # Found 2026-08-23 during SistemiGiorno's structural mapping: both
+    # "Spazioteca" and "Spazio" are SistemiGiorno's own comprehensive,
+    # ~70-100-page systems (dozens of internal size-variant Colonne/Ante/
+    # Moduli tables), genuinely colliding with two much narrower existing
+    # entries that turned out to be context-specific sub-applications, not
+    # subsets or duplicates -- confirmed via code-level check (zero code
+    # overlap either direction, not just a size difference): Spazi-10's
+    # own bare "Spazioteca" (3 pages) is a door-passage configuration
+    # guide using Spazioteca-compatible parts (codes like 47MXP9, not
+    # found anywhere in SistemiGiorno's own 98-page Spazioteca text), and
+    # CollezioneNotte's own bare "Spazio" (13 pages) uses an entirely
+    # different code family (1M5/1M6/... vs SistemiGiorno's own wildcard
+    # 4*128/4*228/... codes, zero overlap).
+    ('2026_02_Spazi-10_1R.pdf', 'Spazioteca'): 'Spazioteca (Spazi-10)',
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Spazio'): 'Spazio (CollezioneNotte)',
 
     # CollezioneGiorno x CollezioneNotte, found 2026-08-22: 4 more
     # colliding names, each investigated at the code level (not text
