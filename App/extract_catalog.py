@@ -262,6 +262,20 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # 362 only (pdf 367); printed 363 (pdf 368) is "Accessori
     # (SistemiNotte)"'s own already-correct start.
     "Vista — Pannello fisso": (366, 367),  # auto-computed 366-406(end of doc); 368-406 = Accessori (SistemiNotte) + everything after
+    # Pianca SistemiGiorno: "Spazio (SistemiGiorno)" is the sole entry in
+    # its own minimal --manual-entries-file run, same "no next entry"
+    # pattern as Spazioteca's own extraction. Verified: real content is
+    # printed 116-182 (pdf 121-187), confirmed via full per-page header
+    # scan to be ALL 'SPAZIO'-branded throughout (Caratteristiche/
+    # Finiture/Ante e cassetti/Moduli battenti/cassetto/ribalta/
+    # cassettone across heights H20-H210, including a 'Milano' finish
+    # variant embedded within Spazio's own product, not an independent
+    # style like SIPARIO's own -- same conclusion as Home Office's own
+    # 'Moduli con anta Amalfi/Milano'); printed 183 (pdf 188) is
+    # unambiguously "SPAZIO COMPOSTO"'s own start (a separate, confirmed
+    # byte-identical duplicate of the existing CollezioneNotte entry, not
+    # re-extracted here).
+    "Spazio (SistemiGiorno)": (121, 187),  # auto-computed 121-406(end of doc); 188-406 = Spazio Composto/Grafico (both confirmed duplicates, not re-extracted) + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their

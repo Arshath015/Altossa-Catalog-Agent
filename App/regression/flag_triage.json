@@ -5450,6 +5450,18 @@
     "Condizioni generali / Avvertenze (SistemiNotte)": {
       "status": "reference_content_excluded",
       "note": "Confirmed 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 374-378 (printed 369-373), headings 'AVVERTENZE' then 'CONDIZIONI GENERALI DI VENDITA' -- read in full: legal/warranty text (consumer-information-law compliance notice, material-care instructions, then a full 16-section sales-terms-and-conditions document covering pricing/payment/delivery/complaints/liability/governing-law) and the company's own address/contact/VAT footer. Zero CODICI, zero prices anywhere in this range -- not a product at all, deliberately never added to catalog_index.json, not even as a zero-row known_gap placeholder."
+    },
+    "Spazio (SistemiGiorno)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiGiorno's structural mapping. Real pdf pages 121-187 (printed 116-182): confirmed via full per-page header scan to be ALL 'SPAZIO'-branded throughout (Caratteristiche/Finiture/Ante e cassetti/Moduli battenti/cassetto/ribalta/cassettone across heights H20 through H210), the same 'one coherent product, many internal size-variant tables' pattern as People (SistemiGiorno) -- 'Moduli battente Milano' is a finish variant embedded within Spazio's own product (same conclusion as Home Office's own Amalfi/Milano finish options), not an independently-branded style like SIPARIO's own door-front styles. Qualified as 'Spazio (SistemiGiorno)' due to the already-confirmed genuine collision against CollezioneNotte's own much narrower 'Spazio (CollezioneNotte)' entry. Currently 0 rows extracted -- SAFE (dozens of distinct named-columns/size-variant table shapes, none built yet)."
+    },
+    "Spazio Composto (SistemiGiorno duplicate)": {
+      "status": "shared_content_deduplicated",
+      "note": "Found 2026-08-23 during SistemiGiorno's structural mapping. SistemiGiorno's own 'Spazio Composto' (real pdf pages 188-192, printed 183-187) is 100% byte-identical to the already-live 'Spazio Composto' entry (bare, CollezioneNotte) -- confirmed via direct code/price comparison: 465C2/465C3/465C4/465C5/465F2 match exactly. Canonical home: CollezioneNotte (already live). SistemiGiorno's copy deliberately NOT given its own catalog_index.json entry."
+    },
+    "Grafico (SistemiGiorno duplicate)": {
+      "status": "shared_content_deduplicated",
+      "note": "Found 2026-08-23 during SistemiGiorno's structural mapping. SistemiGiorno's own 'Grafico' (real pdf pages 193-194, printed 188-189) is 100% byte-identical to the already-live 'Grafico' entry (bare, CollezioneNotte) -- confirmed via direct code/price comparison: 46Q13/46Q14/46Q15/46Q23/46Q24 match exactly. Canonical home: CollezioneNotte (already live). SistemiGiorno's copy deliberately NOT given its own catalog_index.json entry."
     }
   }
 }
