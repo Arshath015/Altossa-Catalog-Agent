@@ -5278,6 +5278,62 @@
     "Spazio (CollezioneNotte)": {
       "status": "planned_disambiguation",
       "note": "Found 2026-08-23 during SistemiGiorno's structural mapping. CollezioneNotte's own bare 'Spazio' (13 pages) confirmed genuinely different from SistemiGiorno's own comprehensive Spazio system via code-level check: zero code overlap (CollezioneNotte's own codes are 1M5/1M6/1M7-family; SistemiGiorno's own are wildcard 4*128/4*228/4*328-family). Qualified as 'Spazio (CollezioneNotte)', joining the SistemiGiorno version once it's extracted (not yet done -- SistemiGiorno's own Spazio range, printed 115 onward through Spazio Composto/Grafico, still needs its own full structural verification before extraction, same discipline as Spazioteca just got)."
+    },
+    "Moduli Speciali (SistemiNotte, coarse -- sub-mapping deferred)": {
+      "status": "known_gap",
+      "note": "Coarse-but-safe placeholder, same pattern as Outdoor's/Home Office's own deferred resolutions -- real pdf pages 166-217 (printed 161-212), covering a MIX of structures confirmed via full per-page header scan: some sub-categories are single coherent products (Sovraporta, Ponti -- many internal component tables but all one bare brand), others are style-specific clusters matching SIPARIO's own product model (Soffietto has Plana/Icona cabin-door variants; the 'per elettrodomestici/stagionali/vani a giorno/cassettiere esterne' cluster has Plana- and Nastro-specific tables; 'Terminali a scrigno' has Plana/Cornice-specific tables). NOT yet individually mapped into its own real sub-products the way SIPARIO was -- deliberately deferred as its own follow-up rather than guessed at inline, same discipline as Home Office. Currently 43 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Accessori Interni (SistemiNotte)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 218-249 (printed 213-244): confirmed via full per-page header scan to be ALL 'SIPARIO'-branded throughout (shelves, shoe racks, coat rods, LED lights, drawer/cassettiere units, extractable frames) -- one coherent product with many internal component-type tables, NOT a hidden multi-brand cluster. Own codes (62AXPx-family) confirmed distinct from the smaller, separately-named 'Accessori (SistemiNotte)' section found later in the same file (62V/62W-family, zero overlap despite both containing an internal 'Accessori Interni' sub-heading -- checked directly, genuinely different content, not a duplicate). Currently 19 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Lavorazioni su misura (SistemiNotte)": {
+      "status": "planned_disambiguation",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 250-261 (printed 245-256): SIPARIO-specific dimensional-reduction/customization content (width/height reductions, depth changes, tamponamenti, centrostanza panels). Confirmed via direct code check this is NOT the same hybrid pattern as the CollezioneGiorno/CollezioneNotte/SistemiGiorno trio -- no LSCC universal code found anywhere in this range; codes here (6FA10, HA1E50, HAZL0, etc) are entirely SIPARIO-specific with zero overlap against any of the 3 existing 'Lavorazioni su misura' entries. Qualified as 'Lavorazioni su misura (SistemiNotte)', a 4th genuinely non-overlapping entry, joining the existing trio. Currently 26 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Sipario (Cabina)": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 262-269 (printed 257-264): 'Moduli senza telai'/'Moduli con telai' -- confirmed ALL 'SIPARIO'-branded, resolving the earlier structural-survey open question about a within-file Sipario name duplicate (CABINE's own 'Sipario' sub-item vs SIPARIO's own top-level system): this is simply MORE Sipario-branded content organized under CABINE's own top-level grouping (configuring Sipario components into walk-in-closet layouts), not a separate colliding product. Qualified as 'Sipario (Cabina)' purely to distinguish it from SIPARIO's own style x mechanism-type entries (Cornice — Armadi battenti etc), which this content doesn't fit the shape of. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Anteprima": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 270-278 (printed 265-273): a walk-in-closet/dressing-room system, confirmed via full per-page header scan to be ALL 'ANTEPRIMA'-branded throughout (Caratteristiche/Cornici/Tamponamenti/Schienali Vetro/Montanti/Ripiani/Aste appendiabiti) -- one coherent product, no hidden multi-brand complexity. No existing collision found elsewhere in Pianca. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Anteprima accessori": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 279-299 (printed 274-294): Anteprima's own cassettiere (Standard/Metallo, various mount styles) and lavorazioni su misura sub-section -- confirmed ALL 'ANTEPRIMA'-branded, same coherent-product pattern as 'Anteprima' above. No existing collision found. Currently 7 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Teatro": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 300-316 (printed 295-311): another walk-in-closet system, confirmed ALL 'TEATRO'-branded throughout (Introduzione/Caratteristiche/Sezione strutturale/3 Tipologia compositiva variants -- a parete/centrostanza/speciale/Unione moduli Teatro con moduli Sipario/Fianchi e divisori/Moduli con schiena legno-vetro-senza schiena/Anta Murano) -- one coherent product. No existing collision found. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Teatro accessori": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 317-339 (printed 312-334): Teatro's own ripiani/aste/LED/cassettiere (Standard/Metallo)/lavorazioni su misura sub-sections -- confirmed ALL 'TEATRO'-branded, same coherent-product pattern as 'Teatro' above. No existing collision found. Currently 19 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Island up": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 340-348 (printed 335-343): a free-standing island/room-divider wardrobe system, confirmed ALL 'ISLAND UP'-branded (Caratteristiche strutturali/Struttura esterna H85/Moduli con cassettiere/Cassetti con vassoio/Caratteristiche panca/Modulo panca) -- one coherent product. No existing collision found. Currently 54 real rows already extracted via Shape A (some sub-topics within this range use the already-supported tier-grid shape); the rest of this range's own distinct table shapes remain unrecognized and correctly skipped -- SAFE, not a partial/wrong extraction."
+    },
+    "Snake": {
+      "status": "known_gap",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 349-353 (printed 344-348): a modular room-divider/screen system, confirmed ALL 'SNAKE'-branded (Caratteristiche e finiture/Schienali/Tubi e connessioni) -- one coherent product, notably small. No existing collision found. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Vista (SistemiNotte, coarse -- sub-mapping deferred)": {
+      "status": "known_gap",
+      "note": "Coarse-but-safe placeholder, same pattern as Moduli Speciali/Home Office above. Real pdf pages 354-368 (printed 349-363): a sliding-mirror-door wardrobe system, confirmed via full per-page header scan to hide its own style-specific cluster -- 'PLANA Ante, pannelli fissi e aggiustaggi'/'PLANA Composizioni' AND 'CRYSTAL Ante, pannelli fissi e aggiustaggi'/'CRYSTAL Composizioni'. 'Crystal' is a previously-unseen style name, not among SIPARIO's own 12 (Plana/Amalfi/Cornice/Crea/Icona/Manhattan/Murano/Nastro/Raggio/Tratto/Milano/Verona) -- Vista evidently has its own separate style palette. NOT yet individually mapped -- deliberately deferred rather than guessed at inline. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Accessori (SistemiNotte)": {
+      "status": "planned_disambiguation",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf pages 369-372 (printed 364-367): small wooden interior accessories (boxes, drawer-interior items). Confirmed a genuine, non-overlapping collision against CollezioneGiorno's own bare 'Accessori' via code-level check (CollezioneGiorno's own codes are 060H4x-family; this section's own are 62V/62W-family, zero overlap) -- CollezioneGiorno's entry renamed to 'Accessori (CollezioneGiorno)' to match, per the standing qualify-every-colliding-entry convention. Distinct from this same file's own much larger 'Accessori Interni (SistemiNotte)' section (checked directly, no code overlap despite both containing an 'Accessori Interni' sub-heading internally). Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Maggiorazione Ottone Anticato (SistemiNotte)": {
+      "status": "planned_disambiguation",
+      "note": "Individually verified 2026-08-23 during SistemiNotte's structural mapping. Real pdf page 373 (printed 368) only: a genuine, real (not a worked-example) per-style handle-finish surcharge table (LSOA51/53/54/55=Plana handles A/L/Y/Q, LSOA57=Amalfi, LSOA58=Icona, LSOA59=Manhattan, LSOA56=Nastro+Raggio, LSOA60=Vista, all EUR 36). Confirmed via code-level check a clean, non-overlapping collision against the existing CollezioneGiorno/CollezioneNotte pair (their own codes run LSOA01-23 for entirely different products) -- the whole brand shares one sequential LSOA numbering pool across catalogs, each catalog's own entry just lists the surcharges relevant to its own products, zero actual duplication risk. Currently 0 rows extracted -- SAFE (no parser built for this range's own table shape(s) yet)."
+    },
+    "Accessori (CollezioneGiorno)": {
+      "status": "known_gap",
+      "note": "Renamed 2026-08-23 from bare 'Accessori' (see that entry's own note for the original 2026-08-21 batch-seeding history) once SistemiNotte's own 'Accessori' section was confirmed a genuine, non-overlapping collision (060H4x-family codes here vs SistemiNotte's own 62V/62W-family, zero overlap) -- qualified per the standing convention. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
     }
   }
 }

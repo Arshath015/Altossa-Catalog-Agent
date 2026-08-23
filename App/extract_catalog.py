@@ -227,6 +227,26 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # hiding inside, unlike SIPARIO); printed 115 (pdf 120) is unambiguously
     # "SPAZIO"'s own section-divider start.
     "Spazioteca (SistemiGiorno)": (22, 119),  # auto-computed 22-406(end of doc, no next entry in this minimal run); 120-406 = Spazio + everything after
+    # Pianca SistemiNotte: "Maggiorazione Ottone Anticato (SistemiNotte)"
+    # is the last entry in its own batch --manual-entries-file run (Moduli
+    # Speciali through Ottone Anticato), same "no next entry" pattern.
+    # Verified: real content is printed 368 only (pdf 373, a single-page
+    # per-style handle surcharge table); printed 369 (pdf 374) is
+    # unambiguously "AVVERTENZE"/"CONDIZIONI GENERALI DI VENDITA"'s own
+    # start -- pure legal/warranty text, confirmed reference_content_excluded.
+    "Maggiorazione Ottone Anticato (SistemiNotte)": (373, 373),  # auto-computed 373-406(end of doc); 374-406 = Avvertenze/Condizioni generali (legal text, correctly excluded)
+    # Pianca SistemiNotte: Home Office's own resolution -- replaces the
+    # earlier coarse placeholder ("Home Office (SIPARIO, coarse -- sub-
+    # mapping deferred)") once individually verified: confirmed a single
+    # coherent 'HOME OFFICE'-branded product throughout (Moduli con anta
+    # Amalfi/Milano are finish options, not independently-branded style
+    # siblings, unlike SIPARIO's own door-front styles). "Elettrificazione
+    # (SistemiNotte)" is its own separate, small embedded sub-section
+    # (real pdf pages 102-103, printed 97-98) -- last entry in this
+    # minimal 2-entry run, same "no next entry" pattern as every prior
+    # minimal run. Verified: printed 99 (pdf 104) is unambiguously
+    # "SCORREVOLE"'s own section-divider start.
+    "Elettrificazione (SistemiNotte)": (102, 103),  # auto-computed 102-406(end of doc); 104-406 = SIPARIO's own Armadi scorrevoli cluster + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
@@ -411,6 +431,18 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
     # 4*128/4*228/... codes, zero overlap).
     ('2026_02_Spazi-10_1R.pdf', 'Spazioteca'): 'Spazioteca (Spazi-10)',
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Spazio'): 'Spazio (CollezioneNotte)',
+    # Found 2026-08-23 during SistemiNotte's structural mapping: its own
+    # "Accessori" (real pdf pages 369-372, small wooden interior
+    # accessories -- boxes, drawer-interior items) confirmed a genuine,
+    # non-overlapping collision against CollezioneGiorno's own bare
+    # "Accessori" via code-level check (CollezioneGiorno's own codes are
+    # 060H4x-family; SistemiNotte's own are 62V/62W-family, zero overlap).
+    # Per the standing convention, CollezioneGiorno's already-live bare
+    # entry is qualified here too, joining the new SistemiNotte entry --
+    # not to be confused with CollezioneNotte's own already-qualified
+    # 'Accessori (Pedane, pianali e scrittoi)'/'Accessori
+    # (Personalizzazioni)' pair, which are unrelated to this collision.
+    ('2023_09_CollezioneGiorno_1R_+10_.pdf', 'Accessori'): 'Accessori (CollezioneGiorno)',
 
     # CollezioneGiorno x CollezioneNotte, found 2026-08-22: 4 more
     # colliding names, each investigated at the code level (not text
