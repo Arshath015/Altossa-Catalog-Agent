@@ -191,6 +191,33 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # last page; pdf page 401 (printed 396) is unambiguously "MAGGIORAZIONE
     # OTTONE ANTICATO Calcolo del prezzo"'s own real start.
     "Composizione TOT103 (Designbook 2022)": (400, 400),  # auto-computed 400-406(end of doc); 401-406 = Ottone Anticato/Personalizzazioni/Condizioni generali
+    # Pianca SistemiGiorno: "Elettrificazione"/"Lavorazioni su misura"
+    # extracted as single qualified entries (2026-08-23, confirmed hybrid
+    # collision against the existing CollezioneGiorno/CollezioneNotte pair
+    # -- shares the exact same universal codes 5000IR/5000IS/5000A/LSCC).
+    # Fed as a minimal 2-entry --manual-entries-file run with no boundary
+    # marker in between (Elettrificazione's own next INDEX entry, "Sistema
+    # audio integrato" at printed 318, was deliberately not included as a
+    # real entry since it hasn't been individually verified yet) -- both
+    # ranges pinned directly here instead. Verified: Elettrificazione's own
+    # real content is printed 312-317 (pdf 317-322: Spazioteca/Sistema IR/
+    # illuminazione LED/Scatole elettriche e passacavi/Spazio e People
+    # sub-topics); printed 318 (pdf 323) is unambiguously "SISTEMA AUDIO
+    # INTEGRATO"'s own start. Lavorazioni su misura's own real content is
+    # printed 319-320 (pdf 324-325: Spazioteca/Moduli-pedane-mensole-
+    # panche-consolle sub-topics); printed 321 (pdf 326) is unambiguously
+    # "GADGETS"'s own start.
+    "Elettrificazione (SistemiGiorno)": (317, 322),  # auto-computed 317-323(next entry's start-1); 323 = Sistema audio integrato
+    "Lavorazioni su misura (SistemiGiorno)": (324, 325),  # auto-computed 324-406(end of doc, no next entry in this minimal run); 326-406 = Gadgets + everything after
+    # Pianca SistemiGiorno: "Moduli a giorno" is the LAST entry in a
+    # minimal 3-entry (People/Venere/Moduli a giorno) --manual-entries-file
+    # run -- same "last entry has no next entry to bound it" pattern as
+    # every prior minimal-run case above. Verified: real content is printed
+    # 250-270 (pdf 255-275: Caratteristiche/Ripiani legno/Divisori legno/
+    # Contenitori in Cuoio Rigenerato intro pages, then H20-H150 size-
+    # variant tables); printed 271 (pdf 276) is unambiguously "BOISERIE"'s
+    # own section-divider start.
+    "Moduli a giorno": (255, 275),  # auto-computed 255-406(end of doc, no next entry in this minimal run); 276-406 = Boiserie e mensole + everything after
 }
 
 # Bonaldo: products whose literal printed page heading doesn't match their
