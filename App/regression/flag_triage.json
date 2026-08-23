@@ -5334,6 +5334,14 @@
     "Accessori (CollezioneGiorno)": {
       "status": "known_gap",
       "note": "Renamed 2026-08-23 from bare 'Accessori' (see that entry's own note for the original 2026-08-21 batch-seeding history) once SistemiNotte's own 'Accessori' section was confirmed a genuine, non-overlapping collision (060H4x-family codes here vs SistemiNotte's own 62V/62W-family, zero overlap) -- qualified per the standing convention. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
+    },
+    "Home Office (SIPARIO)": {
+      "status": "known_gap",
+      "note": "Resolved 2026-08-23 from the earlier coarse placeholder ('Home Office (SIPARIO, coarse -- sub-mapping deferred)', see SIPARIO's own commit history) once individually mapped: real pdf pages 93-101 (printed 88-96), confirmed via full per-page header scan to be ALL 'HOME OFFICE'-branded throughout (Caratteristiche/Attrezzabilita/Fianchi/Scrittoi/Moduli a giorno/Mensole e divisori/Luci LED) -- 'Moduli con anta Amalfi'/'Moduli con anta Milano' are finish OPTIONS within Home Office's own product, not independently-branded style siblings like SIPARIO's own door-front styles, so no further style x mechanism-type split is needed here. The embedded 'Elettrificazione' sub-section immediately after it (real pdf pages 102-103) was split out into its own entry -- see 'Elettrificazione (SistemiNotte)'. Currently 5 real rows already extracted via Shape A; the rest of this range's own table shapes remain unrecognized and correctly skipped -- SAFE."
+    },
+    "Elettrificazione (SistemiNotte)": {
+      "status": "planned_disambiguation",
+      "note": "Found 2026-08-23 embedded within SIPARIO's own 'Home Office' sub-section (real pdf pages 102-103, printed 97-98) -- a 5th instance of the Elettrificazione collision, invisible in the INDEX (not its own row at all, just 2 pages tucked inside Home Office's own range). Confirmed the same hybrid pattern via code-level check: universal codes 5000C=EUR43 and 5000D=EUR15 verified byte-identical to SistemiGiorno's own real page, plus its own Sipario-scrittoio-specific codes (5000E, 5000F, 5000R1, 5000RE). Qualified as 'Elettrificazione (SistemiNotte)', joining the now-4-strong CollezioneGiorno/CollezioneNotte/SistemiGiorno/SistemiNotte set. Currently 0 rows extracted -- SAFE (same named-columns shape family, no parser built yet)."
     }
   }
 }
