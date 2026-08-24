@@ -10,7 +10,7 @@ const BRANDS: Brand[] = [
   { name: 'Bonaldo', status: 'ready', productCount: 300 },
   { name: 'Varaschini', status: 'ready', productCount: 1294 },
   { name: 'Ditre Italia', status: 'ready', productCount: 197 },
-  { name: 'Pianca', status: 'soon', productCount: 0 },
+  { name: 'Pianca', status: 'ready', productCount: 499 },
 ];
 
 export default function BrandSidebar({
