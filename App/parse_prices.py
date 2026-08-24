@@ -5206,6 +5206,146 @@ def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None
 
 
 # ---------------------------------------------------------------------------
+# Pianca Shape A, "+ Anilina/Essenza" mixed variant -- Cora (CollezioneGiorno
+# Sedie) only, verified against real PDF page 10. Structurally the SAME
+# base Shape A tier grid (A/B/C/H/P/Q) with 2 EXTRA leading named-finish
+# columns (Anilina, Essenza) -- same "extra flat column(s) tacked onto the
+# base 6-tier signature" shape as Mambo's own "+ Pelle Sint." variant just
+# above, only Cora's 2 extra columns sit BEFORE the tier letters (header
+# reads "Anilina Essenza A B C H P Q") rather than after, and are used
+# MUTUALLY EXCLUSIVELY per row rather than always-populated: confirmed on
+# both of Cora's own row-type pairs (art. 01173/01174 "seduta legno" rows
+# populate ONLY the 2 named columns, dash-filling all 6 tier cells; art.
+# 01198/01199 "seduta rivestita" rows populate ONLY the 6 tier cells,
+# dash-filling both named columns) -- the shared trailing-N-token/dash
+# convention this whole file's Shape A family already relies on handles
+# this correctly with no extra logic: whichever group is genuinely priced
+# simply has real digits, the other group's cells are '-' and get skipped
+# by the same "cell == '-': continue" check every other Shape A variant
+# already uses.
+#
+# Kept as its own function, not a widening of the base Shape A/Pelle
+# checks, for the same reason as every other Shape A variant in this file:
+# confirmed Cora-only so far (checked every other CollezioneGiorno Sedie
+# product -- Alunna/Emi/Esse/Gamma/Inari -- individually against their own
+# real source pages before building this, none of them have this shape;
+# see the base Shape A comment for why touching that function's own check
+# is the wrong place for a not-yet-confirmed-general pattern).
+#
+# One real structural difference from the Pelle variant that DOES need
+# its own header check (not just a widened token count): Cora's own
+# header line does NOT contain the literal word "CODICI" at all -- on
+# this page, "CODICI" prints on a SEPARATE physical line ("L H P CODICI
+# ... Seduta") from the actual tier-letter header row ("Anilina Essenza
+# A B C H P Q"), confirmed via direct line-by-line inspection of the
+# stored text. Every other Shape A variant's own header check requires
+# 'CODICI' on the SAME line specifically because that's how each of
+# THEIR OWN real headers actually print -- it was never a hard invariant
+# of the shape family itself, just what happened to be true for the
+# shapes seen before this one. The row-level correctness (a real code
+# token, real price cells) doesn't depend on where "CODICI" printed at
+# all, so this check is safely narrower without it.
+# ---------------------------------------------------------------------------
+
+_PIANCA_CORA_TIERS = ['Anilina', 'Essenza', 'A', 'B', 'C', 'H', 'P', 'Q']
+
+
+def _pianca_is_cora_header(line: str) -> bool:
+    tokens = line.split()
+    return tokens[-8:] == ['Anilina', 'Essenza', 'A', 'B', 'C', 'H', 'P', 'Q']
+
+
+def parse_file_pianca_cora(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not _pianca_is_cora_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _pianca_is_cora_header(raw):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-8:]
+            if len(tokens) < 9 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-8]
+            code = None
+            label_tokens = []
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                    label_tokens = list(pre_tokens[:-2])
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+                    label_tokens = list(pre_tokens[:-1])
+
+            if code is None:
+                i += 1
+                continue
+
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                label_tokens.pop()
+            label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
+            label = ' '.join(label_tokens).strip() or None
+
+            any_price = False
+            for letter, cell in zip(_PIANCA_CORA_TIERS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": label,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": letter,
+                    "tier_label": "Category",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape B, Siviglia's OWN symmetric 4x4 finish MATRIX -- Siviglia
 # (Progetti di Design 09) only, verified against real PDF pages 71-77. A
 # third distinct 2-axis variant: unlike Norma Up (6 cols/2 groups, 3 row-
@@ -5585,6 +5725,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_shape_b_named,
         parse_file_pianca_flat_price,
         parse_file_pianca_shape_a_pelle,
+        parse_file_pianca_cora,
         parse_file_pianca_siviglia_matrix,
         parse_file_pianca_primo_dim_labeled,
     ]

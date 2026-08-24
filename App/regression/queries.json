@@ -804,5 +804,17 @@
     "expect_product": [
       "Gamma"
     ]
+  },
+  {
+    "id": 86,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Cora",
+    "note": "Regression guard for a real bug found via live testing 2026-08-24: Cora (CollezioneGiorno Sedie) has a mixed price-table shape no prior parser recognized -- some rows ('seduta legno') use 2 flat named-finish columns (Anilina/Essenza), other rows on the SAME table ('seduta rivestita') switch to the standard A/B/C/H/P/Q tier columns, decided per-row, across 2 real variant_context categories (Sedia con gambe / Sedia con slitta). Built parse_file_pianca_cora to handle it -- verified all 16 rows byte-exact against the real source page (art. 01173/01174 Anilina/Essenza pairs, art. 01198/01199 full tier ladders). Checked every other CollezioneGiorno Sedie product (Alunna/Emi/Esse/Gamma/Inari) individually against source before building this -- none of them share this exact shape, so it's scoped narrowly as its own parser rather than a widened Shape A check.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 16,
+    "expect_product": [
+      "Cora"
+    ]
   }
 ]
