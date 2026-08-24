@@ -567,71 +567,109 @@ function PriceGrid({ rows }: { rows: PriceRow[] }) {
   );
 }
 
+/** One (model_variant, variant_context) combo's own rows + a display
+ * header. Grouping by model_variant ALONE (the previous behavior) silently
+ * merged different variant_context categories that happen to share a
+ * model_variant label -- e.g. Pianca's Esse (CollezioneGiorno Sedie) has
+ * "non sfoderabile"/"sfoderabile"/"rivestimento" repeated across THREE
+ * real categories ("Sedia con gambe", "Poltroncina con gambe", "Poltrona
+ * con base girevole"), so grouping on model_variant alone put all 3
+ * categories' rows in ONE table, and the (tier, size) cell lookup then
+ * returned only the FIRST matching row per cell -- silently dropping the
+ * other 2 categories' prices entirely. Confirmed via live testing
+ * 2026-08-24 (found live, not synthetic) -- same shape affects Gamma too,
+ * any product with 2+ real variant_context values sharing model_variant
+ * labels. For the common case (a single variant_context value, or none),
+ * this reduces to exactly the old model_variant-only grouping and the old
+ * single-dimension header -- zero behavior change there. */
+interface VariantGroup {
+  key: string;
+  header: string;
+  rows: PriceRow[];
+}
+
+function buildVariantGroups(rows: PriceRow[]): VariantGroup[] {
+  const hasMultipleContexts = new Set(rows.map(r => r.variant_context).filter(Boolean)).size > 1;
+  const keyOf = (r: PriceRow) => `${r.model_variant || '—'}::${r.variant_context || ''}`;
+  const keys = [...new Set(rows.map(keyOf))];
+  return keys.map(key => {
+    const groupRows = rows.filter(r => keyOf(r) === key);
+    const modelVariant = groupRows[0].model_variant || '—';
+    const variantContext = groupRows[0].variant_context;
+    const header = hasMultipleContexts && variantContext
+      ? (modelVariant !== '—' ? `${variantContext} — ${modelVariant}` : variantContext)
+      : modelVariant;
+    return { key, header, rows: groupRows };
+  });
+}
+
+function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: boolean }) {
+  const tiers = [...new Set(group.rows.map(r => r.fabric_tier))].sort(
+    (a, b) => tierSortKey(a) - tierSortKey(b)
+  );
+  const sizes = [...new Set(group.rows.map(r => r.size))].sort(
+    (a, b) => sizeSortKey(a) - sizeSortKey(b)
+  );
+  const cell = (tier: string | null, size: string | null) =>
+    group.rows.find(r => r.fabric_tier === tier && r.size === size);
+
+  return (
+    <div className="border-2 border-[var(--riso-line)] overflow-hidden">
+      {showHeader && (
+        <div className="px-3 py-1.5 bg-[var(--riso-pink)] text-[#131217] font-display font-bold text-xs">
+          {group.header}
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full font-data text-xs">
+          <thead className="bg-[var(--riso-surface)] text-stone-400">
+            <tr>
+              <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(group.rows)}</th>
+              {sizes.map(s => (
+                <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
+                  {s || '—'}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map(tier => (
+              <tr key={tier || 'na'} className="border-t border-[var(--riso-line)]">
+                <td className="px-3 py-1.5 font-medium text-stone-300 sticky left-0 bg-[var(--riso-bg)] whitespace-nowrap">
+                  {tier || '—'}
+                </td>
+                {sizes.map(s => {
+                  const r = cell(tier, s);
+                  return (
+                    <td key={s || 'na'} className="px-3 py-1.5 text-right text-[var(--riso-yellow)] whitespace-nowrap">
+                      {r ? `€${r.price_eur}` : '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PriceGridSingleProduct({ rows }: { rows: PriceRow[] }) {
   const [expanded, setExpanded] = useState(false);
-  const variants = [...new Set(rows.map(r => r.model_variant || '—'))];
+  const groups = buildVariantGroups(rows);
+  const showHeader = groups.length > 1;
   const VISIBLE_COUNT = 2;
-  const isBulky = variants.length > VISIBLE_COUNT;
-  const hiddenCount = variants.length - VISIBLE_COUNT;
+  const isBulky = groups.length > VISIBLE_COUNT;
+  const hiddenCount = groups.length - VISIBLE_COUNT;
+  const visibleGroups = groups.slice(0, VISIBLE_COUNT);
+  const restGroups = groups.slice(VISIBLE_COUNT);
 
   return (
     <div className="space-y-4">
-      {variants.map((variant, i) => {
-        const variantRows = rows.filter(r => (r.model_variant || '—') === variant);
-        const tiers = [...new Set(variantRows.map(r => r.fabric_tier))].sort(
-          (a, b) => tierSortKey(a) - tierSortKey(b)
-        );
-        const sizes = [...new Set(variantRows.map(r => r.size))].sort(
-          (a, b) => sizeSortKey(a) - sizeSortKey(b)
-        );
-        const cell = (tier: string | null, size: string | null) =>
-          variantRows.find(r => r.fabric_tier === tier && r.size === size);
-
-        const table = (
-          <div key={variant} className="border-2 border-[var(--riso-line)] overflow-hidden">
-            {variants.length > 1 && (
-              <div className="px-3 py-1.5 bg-[var(--riso-pink)] text-[#131217] font-display font-bold text-xs">
-                {variant}
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full font-data text-xs">
-                <thead className="bg-[var(--riso-surface)] text-stone-400">
-                  <tr>
-                    <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(variantRows)}</th>
-                    {sizes.map(s => (
-                      <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
-                        {s || '—'}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tiers.map(tier => (
-                    <tr key={tier || 'na'} className="border-t border-[var(--riso-line)]">
-                      <td className="px-3 py-1.5 font-medium text-stone-300 sticky left-0 bg-[var(--riso-bg)] whitespace-nowrap">
-                        {tier || '—'}
-                      </td>
-                      {sizes.map(s => {
-                        const r = cell(tier, s);
-                        return (
-                          <td key={s || 'na'} className="px-3 py-1.5 text-right text-[var(--riso-yellow)] whitespace-nowrap">
-                            {r ? `€${r.price_eur}` : '—'}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-
-        // First VISIBLE_COUNT tables always render normally. Anything
-        // past that gets wrapped in the collapsible region below instead.
-        return i < VISIBLE_COUNT ? table : null;
-      })}
+      {visibleGroups.map(group => (
+        <VariantTable key={group.key} group={group} showHeader={showHeader} />
+      ))}
 
       {isBulky && (
         <div className="relative">
@@ -640,55 +678,9 @@ function PriceGridSingleProduct({ rows }: { rows: PriceRow[] }) {
             style={{ maxHeight: expanded ? '10000px' : '0px' }}
           >
             <div className="space-y-4 pt-1">
-              {variants.slice(VISIBLE_COUNT).map(variant => {
-                const variantRows = rows.filter(r => (r.model_variant || '—') === variant);
-                const tiers = [...new Set(variantRows.map(r => r.fabric_tier))].sort(
-                  (a, b) => tierSortKey(a) - tierSortKey(b)
-                );
-                const sizes = [...new Set(variantRows.map(r => r.size))].sort(
-                  (a, b) => sizeSortKey(a) - sizeSortKey(b)
-                );
-                const cell = (tier: string | null, size: string | null) =>
-                  variantRows.find(r => r.fabric_tier === tier && r.size === size);
-                return (
-                  <div key={variant} className="border-2 border-[var(--riso-line)] overflow-hidden">
-                    <div className="px-3 py-1.5 bg-[var(--riso-pink)] text-[#131217] font-display font-bold text-xs">
-                      {variant}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full font-data text-xs">
-                        <thead className="bg-[var(--riso-surface)] text-stone-400">
-                          <tr>
-                            <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(variantRows)}</th>
-                            {sizes.map(s => (
-                              <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
-                                {s || '—'}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tiers.map(tier => (
-                            <tr key={tier || 'na'} className="border-t border-[var(--riso-line)]">
-                              <td className="px-3 py-1.5 font-medium text-stone-300 sticky left-0 bg-[var(--riso-bg)] whitespace-nowrap">
-                                {tier || '—'}
-                              </td>
-                              {sizes.map(s => {
-                                const r = cell(tier, s);
-                                return (
-                                  <td key={s || 'na'} className="px-3 py-1.5 text-right text-[var(--riso-yellow)] whitespace-nowrap">
-                                    {r ? `€${r.price_eur}` : '—'}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })}
+              {restGroups.map(group => (
+                <VariantTable key={group.key} group={group} showHeader={showHeader} />
+              ))}
             </div>
           </div>
 

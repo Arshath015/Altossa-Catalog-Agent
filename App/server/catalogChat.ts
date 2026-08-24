@@ -3390,9 +3390,33 @@ export class CatalogChat {
     // genuine tie into a wrong price, and it applies uniformly to every
     // brand/product that ever reaches this point with 2+ distinct
     // variants, not just this one Ditre shape.
-    const variantsNote = remainingVariants.length > 1
-      ? ` (Matches ${remainingVariants.length} distinct variants: "${remainingVariants.join('", "')}".)`
-      : '';
+    // When 2+ real variant_context CATEGORIES exist alongside shared
+    // model_variant labels (e.g. Pianca's Esse: "non sfoderabile"/
+    // "sfoderabile"/"rivestimento" repeated across 5 real category combos
+    // -- "Sedia con gambe"/"Poltroncina con gambe"/"Poltrona con base
+    // girevole" x leg-material), describing only remainingVariants.length
+    // undercounts (says "3 distinct variants" when 5 real price sets
+    // exist) and never names the category at all -- confirmed real via
+    // live testing 2026-08-24, matching a UI bug in the same shape (see
+    // CatalogChatWidget.tsx's buildVariantGroups). Only takes this path
+    // when variant_context actually varies; the far more common single-
+    // or-no-context case (e.g. Ditre's "2-er sofa"/"2-er central element"
+    // tie, which this note was originally built for) is untouched.
+    const remainingContexts = [...new Set(rows.map(r => r.variant_context).filter((x): x is string => !!x))];
+    const variantsNote = remainingContexts.length > 1
+      ? (() => {
+          const groupKeys = [...new Set(rows.map(r => `${r.model_variant || ''}::${r.variant_context || ''}`))];
+          const groupLabels = groupKeys
+            .map(k => {
+              const [mv, vc] = k.split('::');
+              return vc ? (mv ? `${vc} — ${mv}` : vc) : mv;
+            })
+            .filter(Boolean);
+          return ` (Matches ${groupLabels.length} distinct variants across ${remainingContexts.length} categories: "${groupLabels.join('", "')}".)`;
+        })()
+      : remainingVariants.length > 1
+        ? ` (Matches ${remainingVariants.length} distinct variants: "${remainingVariants.join('", "')}".)`
+        : '';
 
     // If the user explicitly asked for the full/complete price list, return
     // everything with a distinct status so the UI renders a proper

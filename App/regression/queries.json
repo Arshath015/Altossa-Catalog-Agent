@@ -780,5 +780,29 @@
     "expect_product": [
       "Composizione TOT101 (Designbook 2022)"
     ]
+  },
+  {
+    "id": 84,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Esse",
+    "note": "Regression guard for a real bug found via live testing 2026-08-24: Esse (CollezioneGiorno Sedie) has 3 model_variant labels ('non sfoderabile'/'sfoderabile'/'rivestimento') repeated across 5 real variant_context categories (Sedia con gambe x2 leg-finish, Poltroncina con gambe x2 leg-finish, Poltrona con base girevole) -- 9 real (model_variant, variant_context) combinations, 70 total rows. Before the fix, CatalogChatWidget.tsx's PriceGridSingleProduct grouped by model_variant ALONE, silently merging different categories into one table and dropping all but the first-matching row per (tier,size) cell -- this query's own API response was already correct (rows were always complete), so this guard is about total row count staying at 70, not shrinking if the grouping/filtering logic ever regresses upstream of the UI.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 70,
+    "expect_product": [
+      "Esse"
+    ]
+  },
+  {
+    "id": 85,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Gamma",
+    "note": "Same regression guard as id 84, a second CollezioneGiorno Sedie product hitting the identical shape (3 model_variant labels x 3 variant_context categories -- Laccato Opaco/Finiture Metallo/Essenza -- 54 total rows), found while checking the rest of the category for the same failure shape rather than assuming Esse was isolated.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 54,
+    "expect_product": [
+      "Gamma"
+    ]
   }
 ]
