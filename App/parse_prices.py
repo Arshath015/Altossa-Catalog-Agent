@@ -2274,6 +2274,28 @@ VARASCHINI_ART_PREFIX = re.compile(r"\bart\.?\s+([0-9]{3,6}[0-9A-Z]{0,6})\b", re
 # coordinates, not a text-prefix trigger.
 VARASCHINI_9C5_CODE_TOKEN = re.compile(r"^9C5[0-9]{2,4}[A-Z]?$")
 VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b", re.IGNORECASE)
+# Some outdoor products (confirmed 2026-08-23: Emma's whole 236M-code
+# family, every product type -- sofas, chairs, daybeds, bergeres, all
+# checked individually against real source pages, not assumed uniform from
+# one sample) offer a structural-material choice (Aluminium vs Iroko/Legno
+# wood) CROSSED with the usual 5 fabric "cat." tiers, printed as a 2-column
+# sub-table: each tier row has 2 prices side by side instead of 1, under a
+# repeated-prefix header line ("STRUTTURA ALLUMINIO    STRUTTURA IROKO" for
+# sofas, "GAMBE ALLUMINIO    GAMBE LEGNO" for chairs/daybeds -- confirmed
+# both wordings, real prefix varies by product type but the pattern is
+# always PREFIX ALLUMINIO ... (same)PREFIX (IROKO|LEGNO)). Requires the
+# SAME prefix word to repeat before both material names -- normal single-
+# space label wording either side (PREFIX ALLUMINIO, PREFIX IROKO/LEGNO),
+# but the real COLUMN GAP between the two labels is 2+ spaces (confirmed:
+# "STRUTTURA ALLUMINIO" then 4 spaces then "STRUTTURA IROKO"), which is
+# what actually distinguishes this from this catalog's own prose
+# "alluminio"/"iroko" in single-spaced running text with no repeated
+# prefix word immediately before "iroko" -- confirmed: matches 0 times
+# against every Emma product's own descriptive paragraph, only against the
+# real column-header line.
+VARASCHINI_DUAL_MATERIAL_HEADER_RE = re.compile(
+    r"(\S+)\s+ALLUMINIO\b\s{2,}\1\s+(IROKO|LEGNO)\b", re.IGNORECASE
+)
 # A "frame only" (no cushion) flat-price option that sits ALONGSIDE the 5
 # "cat." fabric tiers in the SAME block on upholstered items (confirmed
 # widespread: 32 pages, e.g. Barcode p22's "2180E"). Its own price must be
@@ -2283,6 +2305,20 @@ VARASCHINI_TIER_LABEL_RE = re.compile(r"\bcat\.\s*(B\s*-\s*COM|C|D|E|Luxury)\b",
 # as its own row rather than just discarded.
 VARASCHINI_FRAME_ONLY_RE = re.compile(
     r"(?:solo\s+scocca|only\s+frame)[^\d€]{0,80}€[\s\x00-\x1f]*([\d][\d.,]*)",
+    re.IGNORECASE)
+# Belt/Belt Air's own replacement-cover accessory ("2212C ... OUTFIT COVER
+# ... € 462") -- same "real, separately purchasable extra, captured as its
+# own row rather than counted as a 6th cat.-tier price" pattern as
+# VARASCHINI_FRAME_ONLY_RE above. Previously left IN the tier-price scan
+# (a prior version of this file's own comment, now corrected, claimed it
+# was always a lone unclaimed price with no tier labels alongside it in
+# the same block -- true for the 10 occurrences checked at the time, all
+# on pages 61/72/129/130/131) -- confirmed 2026-08-23 that's no longer
+# true once Belt's page-anchor fix made p104/105/etc. reachable: "OUTFIT
+# COVER" there sits in the SAME block as 5 real cat.-tier prices,
+# producing a 5-vs-6 mismatch that silently dropped every real row.
+VARASCHINI_OUTFIT_COVER_RE = re.compile(
+    r"outfit\s+cover[^\d€]{0,80}€[\s\x00-\x1f]*([\d][\d.,]*)",
     re.IGNORECASE)
 # Cuscini e Tessuti's tier labels have NO "cat." prefix at all and use
 # periods ("B - C.O.M." not "B - COM"), confirmed on p571's raw text. A
@@ -2563,6 +2599,21 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 "source_pdf_page": page_num,
             })
 
+        outfit_cover_m = VARASCHINI_OUTFIT_COVER_RE.search(block_text)
+        if outfit_cover_m:
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": product_name,
+                "variant_context": None,
+                "size": size,
+                "fabric_tier": "Outfit Cover",
+                "tier_label": "Imbottitura/Rivestimento",
+                "code": code,
+                "price_eur": outfit_cover_m.group(1),
+                "source_pdf_page": page_num,
+            })
+
         # Tier label and its price are USUALLY on the same physical line,
         # but not always -- confirmed on Bali p16's "2384": "cat. B - COM"
         # sits on one line (interrupted by a "Teak" structure-color name
@@ -2599,18 +2650,13 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # 5-labels/5-prices match into a 5-vs-7 mismatch that
                 # silently dropped all 5 real rows.
                 # "solo scocca"/"only frame" (see VARASCHINI_FRAME_ONLY_RE)
-                # is captured separately below, not as a cat.-tier price.
-                # "outfit cover" is an exception to the "cover" exclusion --
-                # confirmed (grepped every occurrence, 10 total across
-                # Belt/Belt Air's p61/72/129/130/131) it's always THIS
-                # product's own single price ("249C2C ... OUTFIT COVER ...
-                # €1.210"), never a "cover - art. XXXX" cross-reference
-                # mention embedded in a DIFFERENT product's block -- the
-                # bare "cover" check below exists to exclude the latter,
-                # not this.
+                # and "outfit cover" (see VARASCHINI_OUTFIT_COVER_RE) are
+                # both captured separately above, not as cat.-tier prices --
+                # see VARASCHINI_OUTFIT_COVER_RE's own comment for why
+                # "outfit cover" moved from an explicit exception here to an
+                # exclusion, matching solo scocca/only frame's treatment.
                 prefix = low[:m.start()]
-                if "outfit cover" not in prefix and (
-                        "cover" in prefix or re.search(r"-\s*art\.?\s", prefix)
+                if ("cover" in prefix or re.search(r"-\s*art\.?\s", prefix)
                         or "solo scocca" in prefix or "only frame" in prefix):
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
@@ -2633,7 +2679,33 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
         tier_rows = []
         if labels_found:
             if len(labels_found) == len(prices_found):
-                tier_rows = [(lab, pr) for (_, _, lab), (_, _, pr) in zip(labels_found, prices_found)]
+                tier_rows = [(lab, pr, None) for (_, _, lab), (_, _, pr) in zip(labels_found, prices_found)]
+            elif len(prices_found) == 2 * len(labels_found):
+                # Structural-material choice (Aluminium vs Iroko/Legno wood)
+                # crossed with the usual 5 fabric tiers -- see
+                # VARASCHINI_DUAL_MATERIAL_HEADER_RE. Each tier's 2 prices
+                # sit on the SAME physical line as each other (sorted
+                # left-to-right, Aluminium's column always first/left in
+                # every case checked), so the existing "order of
+                # appearance across the whole block" pairing (see the
+                # 1:1 branch above) extends cleanly to 2:1 by taking
+                # consecutive PAIRS from prices_found rather than single
+                # prices -- same principle, wider stride.
+                dual_m = VARASCHINI_DUAL_MATERIAL_HEADER_RE.search(block_text)
+                if dual_m:
+                    prefix = dual_m.group(1).strip().title()
+                    variant_a = f"{prefix} Alluminio"
+                    variant_b = f"{prefix} {dual_m.group(2).title()}"
+                    for (_, _, lab), (_, _, pr_a), (_, _, pr_b) in zip(
+                        labels_found, prices_found[0::2], prices_found[1::2]
+                    ):
+                        tier_rows.append((lab, pr_a, variant_a))
+                        tier_rows.append((lab, pr_b, variant_b))
+                else:
+                    flags.append((page_num, product_name,
+                                   f"tier label/price count mismatch for art_code {code}: "
+                                   f"{len(labels_found)} labels vs {len(prices_found)} prices -- skipped rather than guessing a pairing"))
+                    continue
             else:
                 flags.append((page_num, product_name,
                                f"tier label/price count mismatch for art_code {code}: "
@@ -2641,12 +2713,12 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 continue
 
         if tier_rows:
-            for tier_label, price in tier_rows:
+            for tier_label, price, material in tier_rows:
                 rows.append({
                     "brand": brand,
                     "product_name": product_name,
                     "model_variant": product_name,
-                    "variant_context": None,
+                    "variant_context": material,
                     "size": size,
                     "fabric_tier": f"cat. {tier_label}",
                     "tier_label": "Imbottitura/Rivestimento",
@@ -2678,7 +2750,17 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                     "source_pdf_page": page_num,
                 })
             elif len(candidates) == 0:
-                flags.append((page_num, product_name, f"no price found in block for art_code {code}"))
+                # Not a real gap if frame_only_m/outfit_cover_m already
+                # produced this code's own row above -- confirmed
+                # 2026-08-23 on Belt/Belt Air's 249C4C: a standalone
+                # "OUTFIT COVER" accessory with no cat.-tier prices of its
+                # own at all, correctly captured via outfit_cover_m, but
+                # this branch used to fire anyway (0 candidates left once
+                # outfit-cover prices are excluded from the tier scan) and
+                # flag a misleading "no price found" for a code that
+                # already had a real row.
+                if not (frame_only_m or outfit_cover_m):
+                    flags.append((page_num, product_name, f"no price found in block for art_code {code}"))
             else:
                 top_tiers = _varaschini_classify_top_tiers(block_lines, prices_found)
                 if top_tiers:
@@ -5712,6 +5794,8 @@ def main():
         # shape->parser map can't express this (both collections share the
         # shape "A" key but need different block_finder arguments), hence
         # this second, more specific lookup checked first.
+        belt_all_codes = {p["art_code"] for p in products if p["collection"] == "Belt / Belt Air"}
+
         COLLECTION_PARSER_OVERRIDES = {
             "Cuscini e Tessuti": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
                 path, page_num, entries, brand,
@@ -5753,17 +5837,48 @@ def main():
             # exact cat. B-COM/C/D/E/Luxury tier price table as Shape A --
             # only the BLOCK-BOUNDARY detection needs to differ (see
             # _varaschini_find_belt_composition_blocks), not the tier-
-            # extraction logic itself. Applied to the WHOLE collection
-            # (not just pages 129-131): the other ~141 module/diagram-only
-            # codes (pages 55-128) have no price anywhere on their own
-            # recorded page either way, so they correctly fall through to
-            # a "not found" flag under this override exactly like they
-            # would under the default -- no special-casing needed to keep
-            # them safe.
+            # extraction logic itself.
+            #
+            # target_codes is deliberately EVERY Belt/Belt Air art_code in
+            # the whole collection, not just `entries` (this page's own
+            # catalog_index.json-anchored subset) -- confirmed 2026-08-23:
+            # many Belt pages hold 2 products (e.g. p104: 2492 then 2493)
+            # sharing ONE "art ." trigger between them, so only the FIRST
+            # product ever gets its own catalog_index.json entry pointed at
+            # that page (see extract_catalog.py's own page-anchor fix and
+            # its documented, deliberately-NOT-fixed-here sibling gap: a
+            # bare second code with no trigger of its own is invisible to
+            # discovery). Scoping target_codes to `entries` alone means the
+            # block finder never even LOOKS for "2493" on page 104, so
+            # 2492's own block still ran to end-of-page, silently absorbing
+            # 2493's entire price ladder plus 2 stray "OUTFIT COVER"
+            # accessory prices (confirmed exact match: 5 real tier labels +
+            # 5 bled-in ones = 10, 5+5+2 stray prices = 12 -- exactly the
+            # "10 labels vs 12 prices" mismatch this was flagged as).
+            # Widening to the full collection fixes this without touching
+            # discovery at all: the block finder just needs to KNOW 2493 is
+            # a real code so it can split on it wherever it happens to
+            # appear as the first token of its own line -- it doesn't need
+            # catalog_index.json to already agree that's this page's entry.
+            # NOT widened on pages 129-131 (the composition-summary pages
+            # this function was originally built for) -- confirmed
+            # 2026-08-23: those pages list, for each composition, which
+            # OTHER codes it's assembled from ("249C5", "2494", "2493", ...
+            # as a bare ingredient list), not a new product's own price
+            # block starting. Widening target_codes there let an
+            # unrelated-but-real Belt code appearing mid-ingredient-list
+            # look like a fresh block boundary, truncating 249C4C/249C5C's
+            # own block before it ever reached its own real price line --
+            # a regression this exact page range's own dedicated
+            # entries_for_page scoping (the ORIGINAL, correct behavior)
+            # never had, since it only ever considers the small set of
+            # codes actually discovered as compositions on THIS page.
             "Belt / Belt Air": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
                 path, page_num, entries, brand,
                 block_finder=lambda lines: _varaschini_find_belt_composition_blocks(
-                    lines, {e["art_code"] for e in entries})),
+                    lines,
+                    {e["art_code"] for e in entries} if 129 <= page_num <= 131 else belt_all_codes,
+                )),
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike

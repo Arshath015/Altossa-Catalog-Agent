@@ -2540,6 +2540,25 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
     print(f"      -> {len(page_text)} pages of text (expect {total_pages - 1}, "
           f"page 1 is the footerless TOC cover)")
 
+    # Some collections (confirmed: Emma, Belt/Belt Air) print a legend/
+    # diagram page ahead of their real per-product price pages -- a single
+    # picture-grid page listing MANY article codes as labels with zero
+    # prices anywhere on it, before each code's own dedicated price-table
+    # page later in the section. "art. <code>" still matches on the legend
+    # page, so without this, a code's EARLIEST page (used for BOTH asset
+    # generation and the only file parse_prices.py's Shape A path ever
+    # reads) can land on the price-less legend page instead of its real
+    # price page -- confirmed 2026-08-23 as the root cause of Emma Sofa's
+    # and Belt/Belt Air's "extraction_gap_confirmed" flags: pages 258-259
+    # (Emma) and 56-57/102-103 (Belt) have ZERO '€' anywhere on them, while
+    # every real price page checked has 10+. Whole-page presence, not a
+    # line-proximity window (unlike _varaschini_find_records_flat's 3-line
+    # window, which answers a different question -- "is this token really
+    # a code" -- not "which of a code's several pages is its real one"):
+    # confirmed clean on both collections, no page mixes legend-only
+    # content with a real price table.
+    pages_with_price = {p for p, txt in page_text.items() if "€" in txt}
+
     print(f"[2/6] Walking {len(VARASCHINI_SECTIONS)} sections, discovering articles...")
     catalog: list[dict] = []
     for name, start, end, shape, category, _note in VARASCHINI_SECTIONS:
@@ -2563,7 +2582,13 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         # that layout-driven decision independent of the shape label.
         tsv_only_pages = VARASCHINI_TSV_ONLY_PAGES.get(name, set())
         extra_patterns = VARASCHINI_EXTRA_CODE_PATTERNS.get(name)
-        section_records: dict[str, list] = {}  # code -> [p_first, p_last, name]
+        # code -> [p_first_any, p_last, name_first_any, p_first_priced, name_first_priced]
+        # The "_any" pair preserves the OLD behavior (first page/name seen,
+        # regardless of whether it's a legend or a real price page) as a
+        # fallback for codes that never turn up on any priced page at all
+        # (e.g. a pure cross-reference with no dedicated price table of its
+        # own) -- the "_priced" pair, once populated, always wins below.
+        section_records: dict[str, list] = {}
         for p in range(start, end + 1):
             if p in tsv_only_pages:
                 continue  # handled separately below (TSV-based, not per-line)
@@ -2594,14 +2619,99 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
                 if shape in ("D", "E"):
                     recs += _varaschini_find_records_flat(p, text)
             for code, page, nm in recs:
+                priced = page in pages_with_price
                 if code not in section_records:
-                    section_records[code] = [page, page, nm]
+                    section_records[code] = [
+                        page, page, nm,
+                        page if priced else None, nm if priced else None,
+                    ]
                 else:
-                    section_records[code][1] = max(section_records[code][1], page)
-                    if not section_records[code][2] and nm:
-                        section_records[code][2] = nm
+                    rec = section_records[code]
+                    rec[1] = max(rec[1], page)
+                    if not rec[2] and nm:
+                        rec[2] = nm
+                    if priced and rec[3] is None:
+                        rec[3] = page
+                        rec[4] = nm
 
-        for code, (p_start, p_end, nm) in sorted(section_records.items()):
+        if name == "Belt / Belt Air":
+            # Second-pass fallback for codes that share a page with
+            # ANOTHER product but have no "art." trigger of their own --
+            # confirmed 2026-08-23 on p104: "2493" (Poltrona 90) sits as a
+            # bare first-token line, well after "2492"'s own single
+            # "art ." trigger (the whole page's only one), with no trigger
+            # of its own -- the main loop above never discovers it here at
+            # all, only via its OWN legend-page mention. Matching parser-
+            # side half of this fix: parse_prices.py's Belt block finder
+            # now also gets the FULL Belt code set, not just this page's
+            # already-anchored entries, so once 2493 is correctly anchored
+            # here, its own block gets split from 2492's correctly too.
+            #
+            # Restricted to codes ALREADY confirmed real via the normal
+            # "art." pass above (section_records.keys()) -- this can only
+            # RELOCATE a known code, never invent a new one, so it carries
+            # none of a general bare-code/€-window detector's false-
+            # positive risk (accessory cross-reference codes like "2212C"
+            # or a stray price number like "462" are never in
+            # section_records to begin with, since nothing ever finds them
+            # via a real "art." trigger).
+            known_codes = set(section_records.keys())
+            for p in range(start, end + 1):
+                if p not in pages_with_price:
+                    continue
+                text = page_text.get(p, "")
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    first_tok = stripped.split()[0] if stripped else ""
+                    if first_tok in known_codes:
+                        rec = section_records[first_tok]
+                        # Deliberately does NOT touch rec[1] (p_end) here --
+                        # confirmed 2026-08-23: doing so let a LATER,
+                        # unrelated bare mention of "2493" on Belt's own
+                        # composition-summary pages (129-131, listing which
+                        # codes a bundle includes) inflate printed_page_end
+                        # to 131, which then tripped parse_prices.py's
+                        # OWN "skip multi-page products" filter
+                        # (printed_page_start != printed_page_end) and
+                        # excluded 2493 from parsing entirely -- the fix
+                        # regressing the very code it was meant to help.
+                        # p_end still correctly reflects the real span from
+                        # the main "art." pass above; this fallback only
+                        # ever needs to relocate the PRICED-page anchor.
+                        if rec[3] is None:
+                            rec[3] = p
+                            rec[4] = ""
+
+        for code, (p_first_any, p_end, nm_any, p_priced, nm_priced) in sorted(section_records.items()):
+            if p_priced is not None:
+                # Once a real price page is known for this code, trust ONLY
+                # what that page itself yielded for the name -- even if
+                # that's empty (some layouts, confirmed on Belt/Belt Air's
+                # own price pages, print the code alone on its own line
+                # with the real description several lines further down,
+                # outside this capture's reach). Deliberately does NOT fall
+                # back to nm_any here: nm_any at this point can only have
+                # come from a DIFFERENT (non-priced, i.e. legend/diagram)
+                # page, and confirmed on both Emma and Belt/Belt Air, that
+                # text is cross-reference noise ("art. 2493 art. 24906
+                # art. 24907"), not a real name -- using it would be worse
+                # than the plain "{name} {code}" fallback below, not better.
+                p_start, nm = p_priced, nm_priced
+                # p_end (from the main "art." pass) can be EARLIER than the
+                # priced page chosen above -- confirmed on Belt/Belt Air's
+                # 2493: only ever found via its own legend-page mention
+                # (page 102) in the main pass, so p_end was 102 until the
+                # Belt-specific second pass (see above) separately located
+                # its real price page at 104. Without this max(), the
+                # final entry would claim printed_page_start=104,
+                # printed_page_end=102 -- an inverted range that ALSO trips
+                # parse_prices.py's "skip multi-page products" filter
+                # (start != end), just via a different path than the
+                # p_end-inflation bug already fixed above. Never lowers a
+                # genuinely wider end already known from the main pass.
+                p_end = max(p_end, p_priced)
+            else:
+                p_start, nm = p_first_any, nm_any
             product_name = f"{name} {nm}".strip() if nm else f"{name} {code}"
             catalog.append({
                 "brand": brand,
@@ -2776,7 +2886,13 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         )
     for f in (out_root / "images").glob("_tmp-*.jpg"):
         page_num = int(f.stem.split("-")[-1])
-        f.rename(out_root / "images" / f"p{page_num:03d}.jpg")
+        # .replace(), not .rename(): rename() raises FileExistsError on
+        # Windows (unlike POSIX, which silently overwrites) whenever a
+        # prior run's own image for this page is still on disk -- the
+        # normal case for any re-extraction that doesn't start from an
+        # empty output dir. .replace() is the atomic-overwrite equivalent
+        # on every platform.
+        f.replace(out_root / "images" / f"p{page_num:03d}.jpg")
 
     catalog_path = out_root / "catalog_index.json"
     catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
