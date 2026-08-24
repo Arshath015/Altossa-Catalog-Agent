@@ -816,5 +816,77 @@
     "expect_product": [
       "Cora"
     ]
+  },
+  {
+    "id": 87,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Inari (Sedie)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Inari (Sedie) itself was ALREADY correctly indexed/qualified (a pre-existing name collision against Inari (Tavoli consolle) already resolved before this session) and already had real rows -- included here as the confirmed-unaffected control alongside its own colliding sibling below.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Inari (Sedie)"
+    ]
+  },
+  {
+    "id": 88,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Inari (Tavoli consolle)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Verified all 26 rows byte-exact against source pdf page 39 (T0N14F/T0N10M-W/T0N11M-W).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 26,
+    "expect_product": [
+      "Inari (Tavoli consolle)"
+    ]
+  },
+  {
+    "id": 89,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Fushimi (Tavoli consolle)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Verified all 12 rows byte-exact against source pdf page 38 (T0L3D/T0L3G/T0K3D/T0K3G).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Fushimi (Tavoli consolle)"
+    ]
+  },
+  {
+    "id": 90,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Fushimi (Tavolini)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Verified all 12 rows byte-exact against source pdf page 26 (T0L72/T0L73/T0K72/T0K73).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Fushimi (Tavolini)"
+    ]
+  },
+  {
+    "id": 91,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Mono (Tavolini)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Verified all 62 rows byte-exact against source pdf pages 29-30 (31 codes x 2 Laccato Opaco/Corten columns) -- this is also the specific product the diagram-caption noise bug ('40 / 50' bleeding into 24MCC4/24MEE6/24MPC4/24MPF4's own rows as a fake model_variant) was found and fixed on.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 62,
+    "expect_product": [
+      "Mono (Tavolini)"
+    ]
+  },
+  {
+    "id": 92,
+    "cat": "multi_category_grid",
+    "brand": "Pianca",
+    "query": "give me all prices for Mono (Tavoli consolle)",
+    "note": "Regression guard for a real gap found via live testing 2026-08-24: this collection's Tavoli consolle/Tavolini price tables (size-rows x 2-3 top/structure-material columns, per-row group headers like 'Tavolo rettangolare P 100'/'L 30') had no recognized parser -- correctly 0 rows/known_gap, not fabrication, but real priced data was invisible. Built parse_file_pianca_tavoli_piano (3-column top-material shape, Fushimi+Inari) and parse_file_pianca_tavoli_metallo (2-column structure-finish shape, Mono) to handle it, plus a diagram-caption noise fix (dimension-option captions like '40 / 50' bleeding onto a price row's own line via -layout linearization, confirmed on Mono's own page). Verified all 18 rows byte-exact against source pdf page 41 (9 codes x 2 columns).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 18,
+    "expect_product": [
+      "Mono (Tavoli consolle)"
+    ]
   }
 ]

@@ -5346,6 +5346,207 @@ def parse_file_pianca_cora(path, product_name, brand, all_headings=None, heading
 
 
 # ---------------------------------------------------------------------------
+# Pianca "Tavoli consolle" family -- found 2026-08-24 while resolving the
+# Inari name collision (see extract_catalog.py's own PIANCA_INDEX_NAME_
+# OVERRIDES history: "Inari (Sedie)" and "Inari (Tavoli consolle)" were
+# ALREADY correctly disambiguated at extraction time; only their PRICE
+# tables were never parsed). Verified real content/codes on 3 products
+# (Fushimi, Inari, Mono) across both their "Tavolini" and "Tavoli
+# consolle" pages before building anything -- 2 genuinely distinct table
+# shapes recur across this whole product family, not just Inari:
+#
+#   1) A 3-column TOP-material grid ("...CODICI ... Piano" header,
+#      confirmed on Fushimi's own 2 pages AND Inari's own page) --
+#      Fushimi/Inari, wood-or-glass-top tables.
+#   2) A 2-column STRUCTURE-finish grid ("...CODICI Laccato Opaco Corten"
+#      header, confirmed on Mono's own 2 pages) -- Mono, metal-only
+#      tables (no wood/glass top option at all, hence no "Piano" split).
+#
+# Row-scan/code-detection/dash-skip logic is the SAME base-Shape-A
+# convention as every other variant in this file. Sub-heading lines
+# ("Tavolo quadrato" / "Consolle" / "In massello di noce Canaletto" /
+# "L 30" etc.) carry the real distinguishing category via the SAME
+# shared variant_context mechanism every Pianca parser already uses --
+# confirmed real (e.g. Fushimi's own 2 "Consolle" sub-groups, one per
+# wood species, are only distinguishable via this text, not the row
+# itself). One narrow, LOCAL addition on top of the shared pattern: a
+# candidate variant_context line is rejected if it contains '€' --
+# confirmed real without this, a trailing surcharge note several lines
+# into Fushimi's own wrapped multi-line description ("Maggiorazione per
+# struttura Laccato Lucido + € 865") would otherwise win the "last short
+# line before the data row" race and become the displayed category
+# instead of the real one. Scoped to these 2 new functions only, not the
+# shared _PIANCA_SHAPEB_HEADING_RE-based check other Pianca parsers
+# already rely on -- touching that shared check risks changing already-
+# verified behavior across every other Pianca product using it.
+#
+# Tier labels are deliberately POSITIONAL ("Top 1"/"Top 2"/"Top 3") for
+# the 3-column shape, not the exact printed material names -- confirmed
+# via direct inspection that -layout linearization wraps those names
+# across 2 physical lines with prose text bleeding in from the LEFT
+# column on the same lines (e.g. Fushimi's own header: "Laccato Opaco /
+# Lucido Sp. / Marmo" on one line, "Essenza / Terrazzo" wrapping below --
+# genuinely ambiguous which wrapped fragment belongs to which column
+# without risking a guess). PRICE VALUES and their COLUMN POSITIONS are
+# fully unambiguous and verified exact; only the column's own display
+# NAME is deliberately generic rather than guessed. Mono's own 2 column
+# names ("Laccato Opaco", "Corten") ARE unambiguous -- both print cleanly
+# on one line with no wrapping -- so those use the real printed names.
+# ---------------------------------------------------------------------------
+
+_PIANCA_TAVOLI_PIANO_TIERS = ['Top 1', 'Top 2', 'Top 3']
+_PIANCA_TAVOLI_METALLO_TIERS = ['Laccato Opaco', 'Corten']
+
+
+def _pianca_is_tavoli_piano_header(line: str) -> bool:
+    tokens = line.split()
+    return tokens[-2:] == ['CODICI', 'Piano']
+
+
+def _pianca_is_tavoli_metallo_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    tail = line.split('CODICI', 1)[1].split()
+    return tuple(tail) == ('Laccato', 'Opaco', 'Corten')
+
+
+_PIANCA_TAVOLI_L_HEADING_RE = re.compile(r'^L\s+\d+$')
+
+
+def _pianca_tavoli_variant_context_candidate(stripped: str) -> bool:
+    # Mono's own size-family sub-headings are bare "L 30"/"L 50"/"L 80"/
+    # "L 100"/"L 130" (confirmed via direct inspection of the stored
+    # text, always exactly this shape) -- rejected by the shared
+    # _PIANCA_SHAPEB_HEADING_RE (requires 3+ leading letters; "L" alone
+    # is only 1), which silently left every Mono row's variant_context as
+    # None. Added as its own narrow, LOCAL exception rather than widening
+    # the shared regex every other Pianca parser also relies on.
+    if _PIANCA_TAVOLI_L_HEADING_RE.match(stripped):
+        return True
+    return 2 < len(stripped) <= 60 and '€' not in stripped and bool(_PIANCA_SHAPEB_HEADING_RE.match(stripped))
+
+
+def _parse_file_pianca_tavoli_shared(path, product_name, brand, is_header, trailing_count, tiers, tier_label):
+    """Shared row-scan for both Tavoli consolle/Tavolini shapes -- see
+    module comment above for why they need their own header checks but
+    otherwise reuse the exact same base Shape A convention as every other
+    variant in this file."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not is_header(line):
+            i += 1
+            continue
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if is_header(raw):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-trailing_count:]
+            if len(tokens) < trailing_count + 1 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if _pianca_tavoli_variant_context_candidate(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-trailing_count]
+            code = None
+            label_tokens = []
+            if pre_tokens and _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                code = pre_tokens[-1]
+                label_tokens = list(pre_tokens[:-1])
+
+            if code is None:
+                i += 1
+                continue
+
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                label_tokens.pop()
+            label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
+            # A dimension-diagram caption (a "/"-separated list of
+            # alternate depth/height options, e.g. "40 / 50" or "20 / 30
+            # / 40 / 50 / 60 / 75") routinely bleeds onto the SAME
+            # physical line as a real price row via -layout linearization
+            # -- confirmed on Mono's own page 29/30 (e.g. "24MCC4"'s real
+            # row shares a line with the "40 / 50" caption for a NEARBY
+            # diagram, unrelated to this row's own dimensions). The
+            # existing numeric-tail strip above removes the trailing
+            # digit run but can't remove digits interleaved with "/"
+            # separators, leaving a stray "/" or "/ 30 / 40 / 50 / 60 /"
+            # masquerading as a real label. Safe to discard outright: a
+            # genuine label for this shape always contains real
+            # descriptive words (confirmed across every row checked), so
+            # leftover tokens that are ENTIRELY digits/slashes/dots can
+            # only be exactly this noise, never a real label.
+            if label_tokens and all(re.match(r'^[\d./]+$', t) for t in label_tokens):
+                label_tokens = []
+            label = ' '.join(label_tokens).strip() or None
+
+            any_price = False
+            for col, cell in zip(tiers, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": label,
+                    "variant_context": variant_context,
+                    "size": None,
+                    "fabric_tier": col,
+                    "tier_label": tier_label,
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+def parse_file_pianca_tavoli_piano(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_tavoli_shared(
+        path, product_name, brand,
+        _pianca_is_tavoli_piano_header, 3, _PIANCA_TAVOLI_PIANO_TIERS, "Piano")
+
+
+def parse_file_pianca_tavoli_metallo(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_tavoli_shared(
+        path, product_name, brand,
+        _pianca_is_tavoli_metallo_header, 2, _PIANCA_TAVOLI_METALLO_TIERS, "Struttura")
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape B, Siviglia's OWN symmetric 4x4 finish MATRIX -- Siviglia
 # (Progetti di Design 09) only, verified against real PDF pages 71-77. A
 # third distinct 2-axis variant: unlike Norma Up (6 cols/2 groups, 3 row-
@@ -5726,6 +5927,8 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_flat_price,
         parse_file_pianca_shape_a_pelle,
         parse_file_pianca_cora,
+        parse_file_pianca_tavoli_piano,
+        parse_file_pianca_tavoli_metallo,
         parse_file_pianca_siviglia_matrix,
         parse_file_pianca_primo_dim_labeled,
     ]
