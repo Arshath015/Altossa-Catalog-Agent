@@ -4691,11 +4691,14 @@ def parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings=Non
 
             pre_tokens = tokens[:-6]
             code = None
+            remaining = None
             if pre_tokens:
                 if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
                     code = f"{pre_tokens[-2]} D/S"
+                    remaining = list(pre_tokens[:-2])
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]
+                    remaining = list(pre_tokens[:-1])
 
             if code is None:
                 i += 1
@@ -4704,6 +4707,27 @@ def parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings=Non
             found_finish = _pianca_2axis_struttura_finish(pre_tokens)
             if found_finish is not None:
                 struttura_finish = found_finish
+
+            # H/P dimension capture -- confirmed via direct pixel-level
+            # inspection of Siviglia's real page image (siviglia_p71-71.jpg,
+            # the same "L [gap] H P CODICI" header convention as this
+            # shape): the section-level heading number ("81"/"162" etc,
+            # captured separately as variant_context) is L, and the 2
+            # inline numbers on each row's own line (e.g. "129 49" before
+            # 00J4G8) are H then P, in that reading order -- NOT an L/P
+            # pair as an earlier comment in this file loosely assumed
+            # without checking column alignment. L itself is never
+            # captured into `size` here since it never appears on the
+            # row's own line, same class of limitation as Mambo's Pelle
+            # Sint. shape leaving an externally-wrapped L uncaptured.
+            dims = []
+            if remaining:
+                while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                    popped = remaining.pop()
+                    if len(dims) < 3:
+                        dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
 
             # Both axes are folded into fabric_tier (not split across
             # fabric_tier + model_variant) because main()'s cross-brand
@@ -4732,7 +4756,7 @@ def parse_file_pianca_norma_up_2axis(path, product_name, brand, all_headings=Non
                     "product_name": product_name,
                     "model_variant": None,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": tier,
                     "tier_label": "Finish",
                     "code": code,
@@ -4907,6 +4931,7 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
 
             pre_tokens = tokens[:-n_cols]
             code = None
+            remaining = None
             if pre_tokens:
                 # Wildcard-legend code (Enea Up, real PDF page 12: "T0E *
                 # 09M") -- the literal printed order-code string has a
@@ -4928,14 +4953,42 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                         and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])
                         and re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1])):
                     code = f"{pre_tokens[-3]} * {pre_tokens[-1]}"
+                    remaining = list(pre_tokens[:-3])
                 elif len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
                     code = f"{pre_tokens[-2]} D/S"
+                    remaining = list(pre_tokens[:-2])
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]
+                    remaining = list(pre_tokens[:-1])
 
             if code is None:
                 i += 1
                 continue
+
+            # Dimension columns before CODICI aren't uniform across this
+            # shape's whole registry -- unlike base Shape A, some tables
+            # here have 3 (Elide/Onda Indoor: "L H P CODICI"), some have 2
+            # (Soffio Up: "L H CODICI", confirmed to genuinely be a
+            # chiuso/aperto extended-length PAIR on its "con allunga"
+            # rows, not L/H at all -- e.g. "110 170 T0SA08C" = 110cm
+            # closed, 170cm open), some have 1 (Mensole legno per
+            # boiserie: just "H CODICI" or "L CODICI" depending on page),
+            # and some have 0 (e.g. Struttura e frontali, Enea Up's
+            # wildcard rows). The same generic capture (whatever real
+            # numeric tokens sit closest to the code, capped at 3, in
+            # their original left-to-right order) handles all of these
+            # correctly without needing a per-registry-entry column count,
+            # since it only ever records values that are genuinely present
+            # on the row's own line -- verified byte-exact against Elide
+            # (3-dim), Soffio Up (2-dim pair), and Mensole legno (1-dim).
+            dims = []
+            if remaining:
+                while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                    popped = remaining.pop()
+                    if len(dims) < 3:
+                        dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
 
             any_price = False
             for column_label, cell in zip(columns, trailing):
@@ -4947,7 +5000,7 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                     "product_name": product_name,
                     "model_variant": None,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": column_label,
                     "tier_label": "Finish",
                     "code": code,
@@ -5072,11 +5125,14 @@ def parse_file_pianca_mambo_2axis(path, product_name, brand, all_headings=None, 
 
             pre_tokens = tokens[:-4]
             code = None
+            remaining = None
             if pre_tokens:
                 if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
                     code = f"{pre_tokens[-2]} D/S"
+                    remaining = list(pre_tokens[:-2])
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]
+                    remaining = list(pre_tokens[:-1])
 
             if code is None:
                 i += 1
@@ -5085,6 +5141,19 @@ def parse_file_pianca_mambo_2axis(path, product_name, brand, all_headings=None, 
             found_type = _pianca_mambo_2axis_row_type(pre_tokens)
             if found_type is not None:
                 row_type = found_type
+
+            # H/P capture -- same "L [gap] H P CODICI" convention and same
+            # confirmed H,P-inline/L-external mapping as Norma Up's own
+            # 2-axis grid (see its own comment; verified via Siviglia's
+            # real page image, the 3rd sibling in this family).
+            dims = []
+            if remaining:
+                while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                    popped = remaining.pop()
+                    if len(dims) < 3:
+                        dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
 
             any_price = False
             for column_label, cell in zip(_PIANCA_MAMBO_2AXIS_COLUMNS, trailing):
@@ -5097,7 +5166,7 @@ def parse_file_pianca_mambo_2axis(path, product_name, brand, all_headings=None, 
                     "product_name": product_name,
                     "model_variant": None,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": tier,
                     "tier_label": "Finish",
                     "code": code,
@@ -5196,8 +5265,18 @@ def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None
                 i += 1
                 continue
 
+            # Same L/H/P capture as base Shape A -- see its own comment
+            # for the full rationale (prefix-of-[L,H,P] rule, verified
+            # against Duo's real page image). Ported unchanged since this
+            # is the exact same row convention with only the trailing
+            # tier-column count differing (7 vs 6).
+            dims = []
             while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
-                label_tokens.pop()
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
             # Same leading-diagram-noise risk as the base Shape A parser
             # (see _pianca_strip_leading_diagram_noise) -- this variant
             # never had ANY leading-noise protection at all. Not yet
@@ -5219,7 +5298,7 @@ def parse_file_pianca_shape_a_pelle(path, product_name, brand, all_headings=None
                     "product_name": product_name,
                     "model_variant": label,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": letter,
                     "tier_label": "Category",
                     "code": code,
@@ -5344,8 +5423,19 @@ def parse_file_pianca_cora(path, product_name, brand, all_headings=None, heading
                 i += 1
                 continue
 
+            # Same L/H/P capture as base Shape A -- see its own comment for
+            # the full rationale. Confirmed clean 3-token L/H/P on both of
+            # Cora's own row types (source cora.txt: "seduta legno 45 80
+            # 50 01173 ..." and "seduta rivestita 45 80 50 01198 ...") --
+            # this is purely the tier-column handling that differs from
+            # base Shape A, not the dimension-column convention.
+            dims = []
             while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
-                label_tokens.pop()
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
             label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
             label = ' '.join(label_tokens).strip() or None
 
@@ -5359,7 +5449,7 @@ def parse_file_pianca_cora(path, product_name, brand, all_headings=None, heading
                     "product_name": product_name,
                     "model_variant": label,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": letter,
                     "tier_label": "Category",
                     "code": code,
@@ -5514,8 +5604,22 @@ def _parse_file_pianca_tavoli_shared(path, product_name, brand, is_header, trail
                 i += 1
                 continue
 
+            # Same L/H/P capture as base Shape A -- see its own comment for
+            # the full rationale. The FIRST 3 pops (nearest the code) are
+            # the real dimension columns -- confirmed against Mono's own
+            # page 29/30 24MCC4 row ("40 / 50 ... 30 40 30 24MCC4 460
+            # 506"): the "40 / 50" fragment is a NEARBY diagram caption
+            # that bleeds onto this line from further left, so it's always
+            # further from the code than the row's own real L/H/P, and the
+            # cap-at-3 rule already excludes it the same way it excludes
+            # any extra noise on the base Shape A parser.
+            dims = []
             while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
-                label_tokens.pop()
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
             label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
             # A dimension-diagram caption (a "/"-separated list of
             # alternate depth/height options, e.g. "40 / 50" or "20 / 30
@@ -5546,7 +5650,7 @@ def _parse_file_pianca_tavoli_shared(path, product_name, brand, is_header, trail
                     "product_name": product_name,
                     "model_variant": label,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": col,
                     "tier_label": tier_label,
                     "code": code,
@@ -5667,11 +5771,14 @@ def parse_file_pianca_siviglia_matrix(path, product_name, brand, all_headings=No
 
             pre_tokens = tokens[:-4]
             code = None
+            remaining = None
             if pre_tokens:
                 if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
                     code = f"{pre_tokens[-2]} D/S"
+                    remaining = list(pre_tokens[:-2])
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]
+                    remaining = list(pre_tokens[:-1])
 
             if code is None:
                 i += 1
@@ -5680,6 +5787,22 @@ def parse_file_pianca_siviglia_matrix(path, product_name, brand, all_headings=No
             found_type = _pianca_siviglia_matrix_row_type(pre_tokens)
             if found_type is not None:
                 row_type = found_type
+
+            # H/P capture -- confirmed via direct pixel-level inspection
+            # of this exact product's own real page image
+            # (siviglia_p71-71.jpg): the section-level heading number
+            # ("81"/"162" etc, captured separately as variant_context) is
+            # L, and the 2 inline numbers on each row's own line (e.g.
+            # "129 49" before 00J4G8) are H then P -- L itself never
+            # appears on the row's own line so it's never captured here.
+            dims = []
+            if remaining:
+                while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                    popped = remaining.pop()
+                    if len(dims) < 3:
+                        dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
 
             any_price = False
             for column_label, cell in zip(_PIANCA_SIVIGLIA_MATRIX_COLUMNS, trailing):
@@ -5692,7 +5815,7 @@ def parse_file_pianca_siviglia_matrix(path, product_name, brand, all_headings=No
                     "product_name": product_name,
                     "model_variant": None,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": tier,
                     "tier_label": "Finish",
                     "code": code,
@@ -5779,6 +5902,23 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
                 continue
 
             label_tokens = list(pre_tokens[:-1])
+            # Dimension columns before CODICI aren't uniform here either
+            # (some flat-price tables have "L H P CODICI Prezzo", e.g.
+            # Geometrika; some have a single "L CODICI Prezzo", e.g. Luce
+            # Illumia; some have none at all, just "CODICI Prezzo") -- same
+            # generic capped capture as shape_b_named. This ALSO fixes a
+            # real pre-existing bug found while adding this: with no
+            # digit-stripping at all before, Geometrika's own label was
+            # silently polluted with its trailing dimension digits (e.g.
+            # "con luce LED 7.7 W 80 70 2.6" instead of the real "con luce
+            # LED 7.7 W"), not just missing a size value.
+            dims = []
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
             label = ' '.join(label_tokens).strip() or None
 
             rows.append({
@@ -5786,7 +5926,7 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
                 "product_name": product_name,
                 "model_variant": label,
                 "variant_context": variant_context,
-                "size": None,
+                "size": size,
                 "fabric_tier": None,
                 "tier_label": None,
                 "code": code,
