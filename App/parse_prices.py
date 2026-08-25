@@ -5835,6 +5835,24 @@ def parse_file_pianca_siviglia_matrix(path, product_name, brand, all_headings=No
 # tables. Verified on Mambo (kit-luce accessories, real PDF page 35) and
 # structurally the simplest possible Pianca shape: one label, one code,
 # one price, no finish dimension at all.
+#
+# ALSO matches a bare "CODICI" tail with NOTHING after it on the same line
+# (2026-08-25, found via the full known_gap shape inventory: 121 products,
+# confirmed via direct row inspection to always carry exactly one trailing
+# price cell per row -- e.g. Contralto (CollezioneGiorno): "38 65 38 35LTA
+# ... 773"). This is deliberately NOT the same signature as a genuinely
+# wider table whose OWN column labels simply wrapped onto a different
+# physical line (confirmed real and structurally different: Icaro's own
+# "L H P CODICI" line is also bare on its own line, but its real 2 column
+# names print on the NEXT line, and its rows carry 2 trailing prices, not
+# 1) -- the header text alone cannot tell these apart, since both print
+# nothing after CODICI on that exact line. Safety is enforced in the row
+# scan below instead, not the header check: a row is only ever accepted
+# here if it has EXACTLY ONE trailing price-cell token, never more --
+# widening the header without this would have silently glommed a genuine
+# 2nd+ price value into the label as text on every Icaro-shaped table
+# sharing this header signature, corrupting real price data rather than
+# just leaving it correctly unrecognized.
 # ---------------------------------------------------------------------------
 
 _PIANCA_FLAT_PRICE_HEADER = ('Prezzo',)
@@ -5844,7 +5862,7 @@ def _pianca_is_flat_price_header(line: str) -> bool:
     if 'CODICI' not in line:
         return False
     tail = line.split('CODICI', 1)[1].split()
-    return tuple(tail) == _PIANCA_FLAT_PRICE_HEADER
+    return tuple(tail) == _PIANCA_FLAT_PRICE_HEADER or len(tail) == 0
 
 
 def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, heading_text=None):
@@ -5889,6 +5907,23 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
             if len(tokens) < 2 or not _PIANCA_PRICE_CELL_RE.match(tokens[-1]) or tokens[-1] == '-':
                 if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
                     variant_context = stripped
+                i += 1
+                continue
+
+            # Reject anything but a GENUINE single-price row -- see the
+            # module comment above for why (distinguishes this shape from
+            # a wider table sharing the same bare-CODICI header text).
+            # Checked by LENGTH, not just shape: a bare-digit token right
+            # before the price could legitimately be the row's own CODE
+            # (confirmed real and already live: Mambo/Siviglia's own
+            # "con telecomando"/"con applicazione" accessories use plain
+            # 5-digit numeric codes -- 47100/47101/47102 -- which would
+            # otherwise be wrongly rejected here as if they were a 2nd
+            # price). _PIANCA_CODE_RE requires 4-10 chars, so anything
+            # SHORTER than that immediately before the price cannot be a
+            # valid code under this file's own convention -- it can only
+            # be a genuine second price value, safe to reject on.
+            if len(tokens) >= 2 and _PIANCA_PRICE_CELL_RE.match(tokens[-2]) and len(tokens[-2]) < 4:
                 i += 1
                 continue
 
