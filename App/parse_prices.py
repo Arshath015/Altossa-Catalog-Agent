@@ -4450,10 +4450,39 @@ def parse_file_pianca_shape_a(path, product_name, brand, all_headings=None, head
                 continue
 
             # Dimension columns (L, H, P) are plain numbers immediately
-            # preceding the code -- strip up to 3 trailing numeric tokens
-            # so they don't get glued into the model_variant label.
+            # preceding the code -- strip trailing numeric tokens so they
+            # don't get glued into the model_variant label, but capture
+            # the first 3 popped (read right-to-left, i.e. nearest the
+            # code first) as the real L/H/P values instead of discarding
+            # them outright.
+            #
+            # These 3 columns aren't always all present on a given row --
+            # confirmed real via Duo's own page 151 image: Cuscinetti rows
+            # (round cushions) print only L and H ("60 35 99DU735 ..."),
+            # leaving P visibly BLANK in the source table, not just an
+            # extraction gap. Since pdftotext -layout only omits the
+            # token for a genuinely empty cell (it doesn't insert a
+            # placeholder), a missing column always drops OFF THE RIGHT
+            # end of this token run -- P is dropped before H, H before L
+            # -- so popped tokens are captured in pop order (nearest-code
+            # first: P, then H, then L) and reversed back to source L/H/P
+            # order. Confirmed NOT the reverse (i.e. NOT that a short run
+            # keeps the LAST-N header columns) directly against the real
+            # page image, not assumed.
+            #
+            # Capped at 3 pops for the dimension capture itself -- any
+            # further trailing numeric token beyond that (never confirmed
+            # to occur, but the loop below still strips it exactly as
+            # before) is genuinely unidentified noise, not a 4th
+            # dimension column, so it's discarded rather than folded into
+            # size.
+            dims = []
             while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
-                label_tokens.pop()
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
 
             # LEADING noise confirmed real on Levante (Divani): pdftotext
             # -layout sometimes glues a stray diagram annotation onto the
@@ -4481,7 +4510,7 @@ def parse_file_pianca_shape_a(path, product_name, brand, all_headings=None, head
                     "product_name": product_name,
                     "model_variant": label,
                     "variant_context": variant_context,
-                    "size": None,
+                    "size": size,
                     "fabric_tier": letter,
                     "tier_label": "Category",
                     "code": code,
