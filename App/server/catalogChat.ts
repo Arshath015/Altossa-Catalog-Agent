@@ -187,6 +187,26 @@ const CONVERSATIONAL_FILLER_WORDS = new Set([
   'show', 'tell', 'please', 'how', 'much', 'do', 'you', 'have', 'can', 'i',
   'get', 'price', 'prices', 'pricing', 'cost', 'costs', 'all', 'full',
   'complete', 'every', 'list', 'in', 'about', 'and', 'then',
+  // Italian prepositions -- confirmed real bug live: "give for poltronica
+  // con gambe" (a typo'd query right after an Esse turn) fell to a
+  // completely unrelated 5-candidate clarify_product ("Plana — Moduli con
+  // cassettiere esterne", "Nastro — Armadi scorrevoli con anta Tv", etc.)
+  // instead of anchoring back to Esse, because similarity()'s overlap-
+  // classification (just below) never recognized "con" as filler the way
+  // it already does its English equivalent "with" (via RISKY_SIZE_CODE_
+  // WORDS) -- so a query sharing ONLY the word "con" with 11 real, wholly
+  // UNRELATED Pianca product names (verified via catalog_index.json: any
+  // "... con ..." collection name) scored a nonzero diluted-overlap match
+  // against every one of them. "con"/"di"/"per" (with/of/for) are the
+  // direct Italian equivalents of English words already on this exact
+  // list -- checked first against every brand's real tier values AND
+  // every Pianca product name for a bare-word collision (none found)
+  // before adding, same discipline as every other word on this list.
+  // Deliberately NOT adding "e" (and) alongside these -- it already has a
+  // documented tier-letter collision history elsewhere in this file
+  // (Varaschini's bare "E" tier vs "Cuscini e Tessuti"), and wasn't
+  // needed for this confirmed repro, so left out rather than assumed safe.
+  'con', 'di', 'per',
 ]);
 
 /** Splits into tokens on any non-alphanumeric character (not just
@@ -2117,9 +2137,19 @@ export class CatalogChat {
       return m ? m[1] : null;
     };
     const npn = normalize(productName);
-    const realVariantValues = [...new Set(
-      productRows.map(r => r.model_variant).filter((v): v is string => !!v)
-    )];
+    // Both model_variant AND variant_context -- confirmed real gap live:
+    // "give for poltronica con gambe" (a typo'd "Poltroncina", right after
+    // an Esse turn) still failed even after the con/di/per filler fix
+    // above, because "Poltroncina con gambe" is Esse's real variant_
+    // CONTEXT value ("Con gambe legno/metallo" is the closest real one),
+    // not a model_variant -- this loop only ever read model_variant
+    // before, so an anchor product's own real CATEGORY names (as opposed
+    // to its finish/upholstery variants) were never part of anchorVocab
+    // at all, regardless of how exactly the user typed them.
+    const realVariantValues = [...new Set([
+      ...productRows.map(r => r.model_variant).filter((v): v is string => !!v),
+      ...productRows.map(r => r.variant_context).filter((v): v is string => !!v),
+    ])];
     const anchorVocab = new Set<string>();
     for (const v of realVariantValues) {
       const nv = normalize(v);
@@ -2146,12 +2176,37 @@ export class CatalogChat {
       }
     }
 
+    // Typo tolerance against anchorVocab -- confirmed real gap live: "give
+    // for poltronica con gambe" still failed after the fixes above,
+    // because "poltronica" is a typo of Esse's real "Poltroncina con
+    // gambe" category (distance 2, an inserted 'n' + a swapped letter),
+    // and this deterministic path otherwise has none (documented
+    // elsewhere in this file as an intentional LLM-vs-deterministic
+    // capability gap -- the LLM path tolerates typos freely, this one
+    // didn't at all). Reuses the SAME levenshtein() + scaled-distance
+    // convention already proven in fuzzyMatchProducts (short words <=4
+    // letters need distance<=1, longer words allow <=2) rather than
+    // inventing a new tolerance rule -- deliberately narrow: only checked
+    // against THIS anchor's own already-verified-real vocabulary, never
+    // against the whole catalog, so it can't misfire into resolving an
+    // unrelated product the way a catalog-wide fuzzy match could.
+    const fuzzyMatchesAnchorVocab = (t: string): boolean => {
+      if (t.length < 4) return false; // too short for a meaningful typo signal, same floor as fuzzyMatchProducts
+      const maxDist = t.length <= 4 ? 1 : 2;
+      for (const v of anchorVocab) {
+        if (Math.abs(t.length - v.length) > maxDist) continue;
+        if (this.levenshtein(t, v) <= maxDist) return true;
+      }
+      return false;
+    };
+
     const leftover = tokens.filter(t => {
       if (CONVERSATIONAL_FILLER_WORDS.has(t) || RISKY_SIZE_CODE_WORDS.has(t) || GENERIC_CATEGORY_WORDS.has(t)) return false;
       if (tierWords.has(t) || /^\d+x\d+/.test(t) || /^\d+$/.test(t)) return false;
       if (anchorVocab.has(t)) return false;
       const d = leadingDigits(t);
-      return !(d && anchorVocab.has(d));
+      if (d && anchorVocab.has(d)) return false;
+      return !fuzzyMatchesAnchorVocab(t);
     });
     return leftover.length === 0;
   }
