@@ -5913,17 +5913,28 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
             # Reject anything but a GENUINE single-price row -- see the
             # module comment above for why (distinguishes this shape from
             # a wider table sharing the same bare-CODICI header text).
-            # Checked by LENGTH, not just shape: a bare-digit token right
-            # before the price could legitimately be the row's own CODE
-            # (confirmed real and already live: Mambo/Siviglia's own
-            # "con telecomando"/"con applicazione" accessories use plain
-            # 5-digit numeric codes -- 47100/47101/47102 -- which would
-            # otherwise be wrongly rejected here as if they were a 2nd
-            # price). _PIANCA_CODE_RE requires 4-10 chars, so anything
-            # SHORTER than that immediately before the price cannot be a
-            # valid code under this file's own convention -- it can only
-            # be a genuine second price value, safe to reject on.
-            if len(tokens) >= 2 and _PIANCA_PRICE_CELL_RE.match(tokens[-2]) and len(tokens[-2]) < 4:
+            # Checked via _PIANCA_CODE_RE directly, not a hand-rolled
+            # length floor: an EARLIER version of this check rejected only
+            # tokens shorter than 4 characters, reasoning that a valid
+            # code can never be that short -- true, but incomplete, and
+            # confirmed to have shipped a real data-corruption bug: Amante
+            # (a real 6-tier "Letti" bed product, code WAAW35S, prices
+            # like "3.710") was being partially captured by THIS shape
+            # too, because "3.710" is 5 characters -- long enough to slip
+            # past the old length check even though it's obviously a
+            # price, not a code (real codes in this catalog, confirmed
+            # across every example seen, NEVER contain the "." thousands-
+            # separator punctuation Italian price formatting always uses
+            # once a value reaches 1.000+). Fixed by reusing
+            # _PIANCA_CODE_RE directly instead of reimplementing its own
+            # length rule: anything that's price-shaped AND fails real
+            # code validation (whether because it's too short, like a
+            # bare "72", or because it contains a "." a code can never
+            # have, like "3.710") is unambiguously a genuine second price,
+            # never a code -- safe to reject either way. Still correctly
+            # preserves Mambo/Siviglia's own real numeric codes (47101 etc
+            # -- pure digits, no period, 5 chars, passes CODE_RE cleanly).
+            if len(tokens) >= 2 and _PIANCA_PRICE_CELL_RE.match(tokens[-2]) and not _PIANCA_CODE_RE.match(tokens[-2]):
                 i += 1
                 continue
 
@@ -5954,6 +5965,36 @@ def parse_file_pianca_flat_price(path, product_name, brand, all_headings=None, h
                     dims.append(popped)
             dims.reverse()
             size = '×'.join(dims) if dims else None
+
+            # Bed-style "WxH" nominal size (e.g. "160x200") and its own
+            # "min/max" range companion (e.g. "176/218") aren't pure-digit
+            # tokens, so the strip above leaves them stuck in the label --
+            # confirmed real on Amante's own "plissé" surcharge table
+            # (its own separate, single-price sub-table alongside the
+            # main 6-tier one parse_file_pianca_letti_tier already
+            # handles): label was coming out as "105 160x200 176/218"
+            # instead of a clean None, with the real size hidden in the
+            # label text. Same WxH pattern/precedent as
+            # parse_file_pianca_letti_tier -- prefer it over the plain
+            # dims-derived size when both are present, since it's the
+            # customer-recognizable nominal size ("give me the 160x200
+            # price") that extractSize() in catalogChat.ts already
+            # matches, not an internal manufacturing figure.
+            wxh = None
+            for t in label_tokens:
+                if _PIANCA_WXH_SIZE_RE.match(t):
+                    wxh = t
+                    break
+            if wxh:
+                size = wxh
+            # Any leftover token that's ENTIRELY digits/slashes/dots (the
+            # WxH match itself, plus its own range companion and any bare
+            # group-heading number bleeding in from a nearby diagram) is
+            # noise once a real WxH size has been found -- same "no real
+            # label is ever just digits and slashes" reasoning already
+            # proven for the Tavoli shape's own caption-noise fix.
+            if wxh:
+                label_tokens = [t for t in label_tokens if not re.match(r'^[\d./x]+$', t)]
             label = ' '.join(label_tokens).strip() or None
 
             rows.append({
@@ -6106,6 +6147,185 @@ def parse_file_pianca_primo_dim_labeled(path, product_name, brand, all_headings=
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca "Letti" (beds) tier-ladder shape -- found 2026-08-25 during the
+# full known_gap inventory pass, verified on 9 real bed products (Beta up
+# (Letti), Beta up trasformabile (Letti), Embrace (Letti), Rialto (Letti),
+# Bricola (Letti), Filo, Fushimi, Piumotto, Rada, Dioniso). Structurally
+# the SAME A/B/C/H/P/Q tier ladder as base Shape A -- same tier letters,
+# same code+dash-skip convention -- but blocked by two things Shape A's
+# own header/row scan doesn't handle:
+#
+#   1. Header order is REVERSED: the tier letters print on their own line
+#      ABOVE the "L P CODICI" line (confirmed via Beta up (Letti)'s real
+#      page 12), not on the same line as CODICI the way every other Shape
+#      A table in this file does. Base Shape A's own header check requires
+#      the tier letters as the LAST tokens of the SAME line as CODICI, so
+#      it never recognizes this and correctly declines rather than
+#      guessing (confirmed: 0 rows lost from Shape A for any of these 9).
+#   2. The tier count varies per product -- NOT always the full 6 (Beta
+#      up/Embrace/Rialto/Filo/Fushimi/Piumotto/Rada/Dioniso show all 6;
+#      Bricola (Letti) shows only 4, "A B C H", confirmed via its own real
+#      page: "A B C H" then rows with exactly 4 trailing prices) -- so the
+#      tier letters actually present are read from whatever real line is
+#      found above CODICI, not assumed to always be the full ladder.
+#   3. Row sizing is bed-specific: a leading NOMINAL "WxH" label (e.g.
+#      "153x190", matching how a customer would actually ask for a bed
+#      size) followed by the row's own internal L/P manufacturing
+#      dimensions, which are sometimes a plain number and sometimes a
+#      "min/max" range (e.g. "163/179", confirmed real on Embrace).
+#      `size` is set to JUST the nominal WxH label -- deliberately NOT
+#      combined with the internal L/P figures, so it stays byte-identical
+#      to what extractSize() in catalogChat.ts already recognizes from a
+#      customer query ("give me the 160x200 price"), rather than risking
+#      an exact-match lookup miss against a longer combined string.
+#
+# NOT the same family as Alfa (Letti)/Alfa (Tatami) -- those use a
+# DIFFERENT shape entirely (4 flat NAMED columns -- Materico/Laccato/
+# Essenza/Cuoio, confirmed via direct page inspection, not a tier ladder
+# at all) with wildcard order codes ("WAF * 03S"), correctly left
+# unrecognized here and deferred to their own follow-up investigation
+# rather than assumed to match this shape just because they're also beds.
+# ---------------------------------------------------------------------------
+
+_PIANCA_LETTI_HEADER_RE = re.compile(r'^L\s+P\s+CODICI$|^L\s+H\s+P\s+CODICI$')
+
+
+def _pianca_letti_tier_letters_above(lines, header_idx, lookback=12):
+    """Searches UP TO `lookback` lines above the header for a line whose
+    own tokens are a real prefix of _PIANCA_TIER_LETTERS (['A','B','C',
+    'H','P','Q']) -- e.g. the full 6, or a shorter real subset like
+    Bricola (Letti)'s own ['A','B','C','H']. Returns None if no such line
+    is found within the window (safe -- the caller then correctly leaves
+    this header unrecognized rather than guessing)."""
+    for k in range(1, lookback + 1):
+        idx = header_idx - k
+        if idx < 0:
+            break
+        tokens = lines[idx].strip().split()
+        if not tokens:
+            continue
+        if tokens == _PIANCA_TIER_LETTERS[:len(tokens)] and len(tokens) >= 1:
+            return tokens
+    return None
+
+
+_PIANCA_WXH_SIZE_RE = re.compile(r'^\d{2,3}x\d{2,3}$')
+
+
+def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped_header = line.strip()
+        if not _PIANCA_LETTI_HEADER_RE.match(stripped_header):
+            i += 1
+            continue
+        tier_letters = _pianca_letti_tier_letters_above(lines, i)
+        if tier_letters is None:
+            i += 1
+            continue
+        n_cols = len(tier_letters)
+
+        i += 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if _PIANCA_LETTI_HEADER_RE.match(stripped):
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+            if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-n_cols]
+            code = None
+            if pre_tokens:
+                # Wildcard-legend code -- same convention as Enea Up
+                # (shape_b_named's own comment): preserve the literal
+                # printed "<prefix> * <suffix>" text, never resolve the
+                # letter. Checked first, before the single-token check,
+                # for the same reason as there.
+                if (len(pre_tokens) >= 3 and pre_tokens[-2] == '*'
+                        and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])
+                        and re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1])):
+                    code = f"{pre_tokens[-3]} * {pre_tokens[-1]}"
+                    pre_tokens = pre_tokens[:-3]
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+                    pre_tokens = pre_tokens[:-1]
+
+            if code is None:
+                i += 1
+                continue
+
+            # The nominal WxH size (e.g. "153x190") is whichever remaining
+            # pre-code token matches that shape -- confirmed always
+            # present and always the SAME token position (immediately
+            # after the size range/dim values, working backward) across
+            # every sampled row, but found by shape rather than position
+            # to stay robust to a row missing its P value (same class of
+            # real gap already confirmed elsewhere in this file, e.g.
+            # Duo's Cuscinetti rows). The internal L/P manufacturing
+            # dims (plain numbers or "163/179"-style ranges) are
+            # deliberately NOT captured into size -- see module comment.
+            size = None
+            for t in reversed(pre_tokens):
+                if _PIANCA_WXH_SIZE_RE.match(t):
+                    size = t
+                    break
+
+            any_price = False
+            for letter, cell in zip(tier_letters, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": size,
+                    "fabric_tier": letter,
+                    "tier_label": "Category",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
@@ -6135,6 +6355,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_tavoli_metallo,
         parse_file_pianca_siviglia_matrix,
         parse_file_pianca_primo_dim_labeled,
+        parse_file_pianca_letti_tier,
     ]
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
     rows_a, flags_a = results[0]
