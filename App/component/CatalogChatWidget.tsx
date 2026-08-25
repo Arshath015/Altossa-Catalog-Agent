@@ -641,8 +641,19 @@ function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: 
                 {sizes.map(s => {
                   const r = cell(tier, s);
                   return (
-                    <td key={s || 'na'} className="px-3 py-1.5 text-right text-[var(--riso-yellow)] whitespace-nowrap">
-                      {r ? `€${r.price_eur}` : '—'}
+                    <td key={s || 'na'} className="px-3 py-1.5 text-right whitespace-nowrap">
+                      {r ? (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-[var(--riso-yellow)]">€{r.price_eur}</span>
+                          {/* Shown per-cell, not once per group -- confirmed
+                              real on Primo that code can vary by SIZE within
+                              an otherwise-identical tier/variant group
+                              (AA701 @ 238.5 vs AA801 @ 257.7), so a single
+                              group-level code would silently show the wrong
+                              order code for every other cell. */}
+                          {r.code && <span className="text-stone-500 text-[10px]">{r.code}</span>}
+                        </div>
+                      ) : '—'}
                     </td>
                   );
                 })}
