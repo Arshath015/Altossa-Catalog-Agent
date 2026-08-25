@@ -6348,6 +6348,154 @@ def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, h
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca "Composizione <code> (<context>)" bundle family (Spazioteca/Spazio/
+# People/Designbook's own composition-photo pages, 124 products, found
+# during the 2026-08-25 known_gap sweep). Each composition prints a
+# component-by-component breakdown (own L/H/P dims, own code, own 2
+# finish-tier prices per component) ending in a single "totale" row -- THAT
+# row is the composition's own sellable price (2 finish tiers: "Finitura
+# base" and a specific catalog finish name read per-page, e.g. "Materico"/
+# "Laccato Opaco", never hardcoded), not the component rows, which price
+# separately-orderable parts.
+#
+# Multiple sibling compositions almost always share ONE physical page
+# (confirmed: composizione_9201_spazioteca.txt and
+# composizione_9202_spazioteca.txt are byte-identical files, both
+# containing 9201's AND 9202's own blocks) -- so this can't just take "the"
+# totale row, it must find the ONE matching THIS product's own code,
+# extracted from product_name itself (the only per-entry signal available,
+# since the shared file's content is identical either way).
+#
+# NOT the same family as the already-live "(Designbook 2022)" Composizione
+# products (IOT0xx/TOT0xx, dims+1 batch) -- those share the same "L H P
+# CODICI" header text but are a single bare-CODICI flat-price row each (no
+# "totale" keyword, no "Finitura base" column at all, confirmed via direct
+# check across all 60 of that family's own text files) -- excluded here by
+# construction, not a special case, since this parser only fires when BOTH
+# "Finitura base" and "Finiture catalogo" appear together on one line.
+#
+# Real, confirmed exception found while verifying all 124 before building:
+# "Composizione COP061 (Designbook)" and "Composizione COP081 (Designbook)"
+# -- the page's own section heading reads "...- COP061"/"...- COP081"
+# (matching the catalog entry's own name, extracted from that same heading
+# text at index time) but that composition's own totale row is printed
+# "COS061"/"COS082" instead (every sibling on the same page, e.g. COS062/
+# COS063, has its heading and totale code matching normally) -- a genuine
+# single-letter P/S inconsistency in Pianca's own source PDF, confirmed by
+# direct page inspection, not an extraction bug (logged in
+# flag_triage.json). Handled with a fallback: if no totale row's code
+# exactly matches, look for exactly one totale row whose own code shares
+# the same TRAILING DIGITS (e.g. both end "061"), which resolves both real
+# cases without hardcoding either -- and stays safe generally, since it
+# still requires a unique match.
+# ---------------------------------------------------------------------------
+
+_PIANCA_COMPOSIZIONE_NAME_RE = re.compile(r'^Composizione\s+(\S+)\s*\(')
+_PIANCA_COMPOSIZIONE_HEADER_RE = re.compile(r'L\s+H\s+P\s+CODICI\s*$')
+_PIANCA_COMPOSIZIONE_TIER2_LABEL_RE = re.compile(r'([A-ZÀ-Ý][a-zà-ÿ]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ]+)?)\s*$')
+
+
+def parse_file_pianca_composizione_bundle(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    m = _PIANCA_COMPOSIZIONE_NAME_RE.match(product_name)
+    if not m:
+        return [], []
+    entry_code = m.group(1)
+
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        pm = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if pm:
+            current_page = int(pm.group(1))
+        page_of_line[idx] = current_page
+
+    if not any(_PIANCA_COMPOSIZIONE_HEADER_RE.search(ln) for ln in lines):
+        return [], []
+
+    tier2_name = None
+    for idx, ln in enumerate(lines[:15]):
+        if 'Finitura base' in ln and 'Finiture catalogo' in ln:
+            for nxt in lines[idx + 1:idx + 3]:
+                nm = _PIANCA_COMPOSIZIONE_TIER2_LABEL_RE.search(nxt.strip())
+                if nm:
+                    tier2_name = nm.group(1)
+                    break
+            break
+    if tier2_name is None:
+        return [], []
+
+    totale_lines = [(idx, ln) for idx, ln in enumerate(lines) if re.match(r'^\s*totale\b', ln)]
+    if not totale_lines:
+        return [], []
+
+    exact_matches = [
+        (idx, ln.strip().split()) for idx, ln in totale_lines
+        if entry_code in ln.strip().split()
+    ]
+    if len(exact_matches) == 1:
+        idx, tokens = exact_matches[0]
+        real_code = entry_code
+    elif len(exact_matches) == 0:
+        suffix_m = re.search(r'\d+$', entry_code)
+        fallback_matches = []
+        if suffix_m:
+            suffix = suffix_m.group(0)
+            for fidx, fln in totale_lines:
+                ftokens = fln.strip().split()
+                for tok in ftokens:
+                    if tok != entry_code and _PIANCA_CODE_RE.match(tok) and tok.endswith(suffix):
+                        fallback_matches.append((fidx, ftokens, tok))
+        if len(fallback_matches) != 1:
+            return [], [(None, product_name,
+                          f"composizione bundle: no unique totale row found for code {entry_code}")]
+        idx, tokens, real_code = fallback_matches[0]
+    else:
+        return [], [(None, product_name,
+                      f"composizione bundle: ambiguous totale rows for code {entry_code}")]
+
+    if tokens[0] != 'totale':
+        return [], [(page_of_line[idx], product_name,
+                      "composizione bundle: totale row shape not recognized")]
+    code_idx = tokens.index(real_code)
+    dims_tokens = tokens[1:code_idx]
+    trailing = tokens[code_idx + 1:]
+
+    if len(dims_tokens) != 3 or len(trailing) != 2 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing):
+        return [], [(page_of_line[idx], product_name,
+                      "composizione bundle: totale row shape not recognized")]
+
+    size = '×'.join(dims_tokens)
+    columns = ['Finitura base', tier2_name]
+
+    rows = []
+    any_price = False
+    for column_label, cell in zip(columns, trailing):
+        if cell == '-':
+            continue
+        any_price = True
+        rows.append({
+            "brand": brand,
+            "product_name": product_name,
+            "model_variant": None,
+            "variant_context": None,
+            "size": size,
+            "fabric_tier": column_label,
+            "tier_label": "Finish",
+            "code": real_code,
+            "price_eur": cell,
+            "source_pdf_page": page_of_line[idx],
+        })
+    flags = []
+    if not any_price:
+        flags.append((page_of_line[idx], product_name, f"no price rows found for code {real_code}"))
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
@@ -6378,6 +6526,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_siviglia_matrix,
         parse_file_pianca_primo_dim_labeled,
         parse_file_pianca_letti_tier,
+        parse_file_pianca_composizione_bundle,
     ]
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
     rows_a, flags_a = results[0]
