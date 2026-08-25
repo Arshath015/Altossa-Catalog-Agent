@@ -2097,23 +2097,49 @@ export class CatalogChat {
   private queryOnlySpecifiesAnchorProductDetails(rawQuery: string, productName: string): boolean {
     const stripped = stripNameFromQuery(normalize(rawQuery), normalize(productName));
     const tokens = tokenizeLoose(stripped);
-    const tierWords = new Set(this.realTierPhrases.flatMap(t => tokenizeLoose(t)));
+    const productRows = this.prices.filter(r => r.product_name === productName);
+    // Real tier VALUES (e.g. Pianca Esse's "A"/"B"/"C") plus this specific
+    // anchor's own real tier_label WORD (e.g. "Category", "Finish") --
+    // confirmed real gap live: "give category a price" against anchor
+    // "Esse" failed even though "CATEGORY" is the literal column header
+    // this product's own price grid displays (tierColumnHeader() in
+    // CatalogChatWidget.tsx), because only bare tier VALUES fed
+    // realTierPhrases, never the label word itself. Scoped to THIS
+    // anchor's own real tier_label (not a global word), same discipline
+    // as anchorVocab below.
+    const tierLabelWords = [...new Set(
+      productRows.map(r => r.tier_label).filter((v): v is string => !!v)
+    )].flatMap(t => tokenizeLoose(t));
+    const tierWords = new Set([...this.realTierPhrases.flatMap(t => tokenizeLoose(t)), ...tierLabelWords]);
 
-    const isDistinguishingWord = (w: string) => w.length >= 4 || /\d/.test(w);
     const leadingDigits = (w: string): string | null => {
       const m = w.match(/^(\d+)/);
       return m ? m[1] : null;
     };
     const npn = normalize(productName);
     const realVariantValues = [...new Set(
-      this.prices.filter(r => r.product_name === productName).map(r => r.model_variant).filter((v): v is string => !!v)
+      productRows.map(r => r.model_variant).filter((v): v is string => !!v)
     )];
     const anchorVocab = new Set<string>();
     for (const v of realVariantValues) {
       const nv = normalize(v);
       const suffix = nv.includes(npn) ? nv.split(npn).join('').trim() : (npn.includes(nv) ? '' : nv);
       if (!suffix) continue;
-      for (const w of suffix.split(/[^a-z0-9]+/).filter(isDistinguishingWord)) {
+      // EVERY word of the suffix, not just "distinguishing" (>=4 chars or
+      // digit-bearing) ones -- confirmed real gap live: Esse's own real
+      // model_variant "non sfoderabile" typed back VERBATIM ("non
+      // sfoderabile price") still failed, because "non" is only 3
+      // characters and never made it into anchorVocab, leaving it as
+      // unexplained leftover despite the FULL phrase being an exact,
+      // complete, real value for this exact product. Safe to include
+      // short words here specifically because this loop only ever adds
+      // words that are already part of a verified real variant string for
+      // THIS anchor -- unlike other short-word filters in this file
+      // (e.g. lookupForProduct's own tie-break scoring) that guard against
+      // matching arbitrary short noise, there's no equivalent noise risk
+      // here since the source is a known-real, complete phrase, not a
+      // loose token pulled from free text.
+      for (const w of suffix.split(/[^a-z0-9]+/).filter(Boolean)) {
         anchorVocab.add(w);
         const d = leadingDigits(w);
         if (d) anchorVocab.add(d);
@@ -2766,6 +2792,60 @@ export class CatalogChat {
         product_name: productName,
         image_urls: this.getImageUrls(productName, brand),
       };
+    }
+
+    // CATEGORY (variant_context) narrowing -- runs BEFORE the model_variant
+    // narrowing below, on purpose: some products (confirmed real, found
+    // live 2026-08-24 on Pianca's Esse) repeat the SAME model_variant
+    // labels ("non sfoderabile"/"sfoderabile"/"rivestimento") across
+    // several real variant_context categories ("Con gambe legno/metallo"/
+    // "Con gambe rivestite"/"Poltrona con base girevole"), so a query
+    // naming only the CATEGORY ("Esse sedia con gambe price") has ZERO
+    // model_variant signal to narrow on at all -- it used to fall all the
+    // way through to "show every variant of the whole product" (70 rows
+    // across all 9 combinations), even though "gambe" is real, present,
+    // narrowing signal the response simply never looked at.
+    //
+    // Deliberately a SEPARATE, much simpler mechanism than the
+    // model_variant block below, not a port of it -- that block's compact-
+    // match/height-code-extraction/code-suffix-tie-break machinery is
+    // built for model_variant's own specific data shapes (h.NN codes, a
+    // "0"-ending base-vs-modified code convention) that don't exist for
+    // variant_context. This is plain word-overlap scoring: narrow to
+    // whichever variant_context value(s) share the MOST query words,
+    // never to a single arbitrary pick when several tie. Runs first so it
+    // narrows `rows` before distinctVariants below is computed, letting
+    // the two dimensions compose naturally when a query names both.
+    //
+    // Gated to only ever narrow, never guess: only activates when 2+
+    // distinct variant_context values exist among the CURRENT rows (zero
+    // effect on every product, in every brand, where variant_context
+    // doesn't vary or is null -- confirmed the overwhelming majority),
+    // and only narrows when the top-scoring tier is a STRICT subset of
+    // all contexts present (a query with no real overlap, or one that
+    // ties everything, changes nothing). Rows with no variant_context at
+    // all are always kept regardless -- there's no basis to exclude them.
+    const distinctContextsForNarrowing = [...new Set(rows.map(r => r.variant_context).filter((x): x is string => !!x))];
+    if (distinctContextsForNarrowing.length > 1 && rawQueryHint) {
+      const isDistinguishingCtxWord = (w: string) => w.length >= 4 || /\d/.test(w);
+      const qWordsCtx = new Set(
+        normalize(rawQueryHint).replace(normalize(productName), '')
+          .split(/[^a-z0-9]+/).filter(isDistinguishingCtxWord)
+      );
+      if (qWordsCtx.size > 0) {
+        const scoredContexts = distinctContextsForNarrowing.map(ctx => {
+          const ctxWords = normalize(ctx).split(/[^a-z0-9]+/).filter(isDistinguishingCtxWord);
+          const shared = ctxWords.filter(w => qWordsCtx.has(w)).length;
+          return { ctx, shared };
+        });
+        const maxCtxShared = Math.max(...scoredContexts.map(s => s.shared));
+        if (maxCtxShared > 0) {
+          const topContexts = scoredContexts.filter(s => s.shared === maxCtxShared).map(s => s.ctx);
+          if (topContexts.length < distinctContextsForNarrowing.length) {
+            rows = rows.filter(r => !r.variant_context || topContexts.includes(r.variant_context));
+          }
+        }
+      }
     }
 
     // If multiple rows remain and they span more than one distinct MODEL
