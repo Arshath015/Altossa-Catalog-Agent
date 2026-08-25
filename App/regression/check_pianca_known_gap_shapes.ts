@@ -62,6 +62,22 @@
  * size text, never price or code, via a full-dataset diff (0 real
  * regressions, 27 label-only corrections).
  *
+ * Batch 1c -- 2 small fixes found while spot-checking the rest of the
+ * Letti family for completeness:
+ *   1. Filo (one of the 9 Letti products) was STILL 0 rows even with
+ *      parse_file_pianca_letti_tier built -- its own tier-letter line has
+ *      a leading "Piedi" (feet/leg-style) word glued onto the SAME
+ *      physical line as the tier letters ("Piedi ... A B C H P Q"),
+ *      unlike Beta up (Letti)'s version of the identical convention
+ *      where "Piedi" prints on its own separate line just above. Fixed
+ *      by checking the TRAILING tokens of the tier-letter line instead
+ *      of requiring the whole line to be just the tier letters -- capped
+ *      at a floor of 2 tiers (not 1) so a coincidental lone trailing "A"
+ *      elsewhere in the lookback window can't false-fire.
+ *   2. Woody and Fushimi Lounge -- 2 simple single-named-column tables
+ *      (shape_b_named family) needing only a registry entry each
+ *      ('Essenza'; 'Cuoio'), no new logic.
+ *
  * RUN WITH: npm run check-pianca-known-gap-shapes
  * Requires the dev server running (npm run dev:server).
  */
@@ -161,6 +177,33 @@ const CASES: Case[] = [
     expectedPrice: '3.441',
     expectedSize: '160x200',
     note: 'The genuine SEPARATE flat_price sub-table on Amante\'s own page (a "plissé" surcharge variant, single price, different codes than the tier-ladder rows) -- confirms flat_price\'s own label-cleanup now correctly extracts "160x200" into size instead of leaving it polluting the label as "105 160x200 176/218".',
+  },
+  {
+    id: 'letti-filo-trailing-tier-match',
+    query: 'Filo price',
+    productName: 'Filo',
+    code: 'WFMH03S',
+    expectedPrice: '1.695',
+    expectedSize: '90x190',
+    note: 'Regression case for the Filo-specific fix: its tier-letter line has a leading "Piedi" word glued onto the SAME physical line as "A B C H P Q" (unlike Beta up (Letti), where "Piedi" sits on its own separate line). _pianca_letti_tier_letters_above now matches the TRAILING tokens of the line instead of requiring whole-line equality, floored at n>1 tiers to avoid a coincidental lone trailing "A" false-firing elsewhere in the lookback window.',
+  },
+  {
+    id: 'dims2-woody-shapeb-named',
+    query: 'Woody price',
+    productName: 'Woody',
+    code: 'T0W00M',
+    expectedPrice: '2.779',
+    expectedSize: '120×180',
+    note: 'New shape_b_named registry entry (\'Essenza\',): [\'Essenza\'] -- simplest possible instance of this shape, a single named finish column after "L min L max CODICI".',
+  },
+  {
+    id: 'dims2-fushimi-lounge-shapeb-named',
+    query: 'Fushimi Lounge price',
+    productName: 'Fushimi Lounge',
+    code: 'D9FL060',
+    expectedPrice: '752',
+    expectedSize: '60×40×49',
+    note: 'New shape_b_named registry entry (\'Cuoio\',): [\'Cuoio\'] -- same single-named-column shape as Woody, different real header word ("L H P CODICI Cuoio").',
   },
 ];
 

@@ -4849,6 +4849,13 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # exactly once, no row-type-axis repeat.
     ('Materico', 'L.', 'Opaco', 'Lucido', 'Sp.'):
         ['Materico', 'L. Opaco / Essenza', 'Lucido Sp. / L. Metallico'],
+    # Woody, real pdf page (header "L min L max CODICI Essenza") -- a
+    # single named column, simplest possible instance of this shape.
+    # Found 2026-08-25 during the full known_gap inventory pass.
+    ('Essenza',): ['Essenza'],
+    # Fushimi Lounge, real pdf page (header "L H P CODICI Cuoio") -- same
+    # single-named-column shape, different real word. Found 2026-08-25.
+    ('Cuoio',): ['Cuoio'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
@@ -6193,11 +6200,19 @@ _PIANCA_LETTI_HEADER_RE = re.compile(r'^L\s+P\s+CODICI$|^L\s+H\s+P\s+CODICI$')
 
 def _pianca_letti_tier_letters_above(lines, header_idx, lookback=12):
     """Searches UP TO `lookback` lines above the header for a line whose
-    own tokens are a real prefix of _PIANCA_TIER_LETTERS (['A','B','C',
-    'H','P','Q']) -- e.g. the full 6, or a shorter real subset like
-    Bricola (Letti)'s own ['A','B','C','H']. Returns None if no such line
-    is found within the window (safe -- the caller then correctly leaves
-    this header unrecognized rather than guessing)."""
+    TRAILING tokens are a real prefix of _PIANCA_TIER_LETTERS (['A','B',
+    'C','H','P','Q']) -- e.g. the full 6, or a shorter real subset like
+    Bricola (Letti)'s own ['A','B','C','H']. Checked by TRAILING tokens,
+    not requiring the whole line to be just the tier letters -- confirmed
+    real and necessary: Filo's own tier line has a leading "Piedi" (feet/
+    leg-style selector) word glued onto the SAME physical line as the
+    tier letters ("Piedi ... A B C H P Q"), unlike Beta up (Letti)'s
+    version of the identical convention, where "Piedi" prints on its OWN
+    separate line just above -- same class of pdftotext -layout
+    linearization inconsistency already seen throughout this file.
+    Returns None if no such line is found within the window (safe -- the
+    caller then correctly leaves this header unrecognized rather than
+    guessing)."""
     for k in range(1, lookback + 1):
         idx = header_idx - k
         if idx < 0:
@@ -6205,8 +6220,15 @@ def _pianca_letti_tier_letters_above(lines, header_idx, lookback=12):
         tokens = lines[idx].strip().split()
         if not tokens:
             continue
-        if tokens == _PIANCA_TIER_LETTERS[:len(tokens)] and len(tokens) >= 1:
-            return tokens
+        # Floor of 2 (not 1) -- a lone trailing "A" is common enough as
+        # ordinary Italian text (an article, an abbreviation) that a
+        # single-letter match risks false-firing on some unrelated
+        # table's own nearby text within the lookback window; every real
+        # confirmed case this shape covers has at least 2 real tiers, so
+        # this costs nothing against the actual data.
+        for n in range(min(len(_PIANCA_TIER_LETTERS), len(tokens)), 1, -1):
+            if tokens[-n:] == _PIANCA_TIER_LETTERS[:n]:
+                return tokens[-n:]
     return None
 
 
