@@ -467,6 +467,46 @@ const CASES: Case[] = [
     expectedTier: 'Materico',
     note: 'Root-cause guard for a real similarity() bug found while writing THIS file\'s own regression cases (fixed in catalogChat.ts, 2026-08-26, unrelated to the parser itself): the em-dash in Pianca\'s own disambiguation naming convention ("Cornice — Armadi battenti (Moduli)") was never stripped the way parens already are, so it survived as a stray standalone token no real user ever types -- permanently capping every em-dash-qualified name (84 across this catalog) below the full containment-match score tier. Confirmed live: this exact PLAIN phrasing (no em-dash typed) reproducibly lost to the unrelated, pre-existing bare "Cornice" collision (Spazi-10, already correctly disambiguated at the data level) in degraded/non-LLM mode, 4 of 5 repeated identical calls, while non-degraded mode was unaffected (the LLM path doesn\'t use this scorer) -- same "only visible in degraded mode" shape as the earlier con/di/per and poltronica-typo anchor bugs. Fixed by stripping em/en-dash the same way as parens in similarity()\'s own tokenizer.',
   },
+  {
+    id: 'armadi-fianchi-e-divisori-5col-no-l',
+    query: 'SIPARIO Fianchi e divisori (Armadi battenti) price',
+    productName: 'SIPARIO Fianchi e divisori (Armadi battenti)',
+    code: '62FB7 D/S',
+    expectedPrice: '115',
+    expectedSize: '238.5×59',
+    expectedTier: 'Materico',
+    note: 'New registry entry for the adjacent SIPARIO Fianchi/Anta Tv family (verified and added right after the main Armadi Moduli/Composizioni batch, same shape family). This shape has NO L row-group value at all -- side panels aren\'t sized by a printed width the way wardrobe modules are -- confirming size gracefully degrades to just "H×depth" when no L is ever carried, instead of erroring.',
+  },
+  {
+    id: 'armadi-fianchi-e-divisori-materico-interno-column',
+    query: 'SIPARIO Fianchi e divisori (Armadi battenti) price',
+    productName: 'SIPARIO Fianchi e divisori (Armadi battenti)',
+    code: '62DA72',
+    expectedPrice: '106',
+    expectedSize: '238.5×59',
+    expectedTier: 'Materico Interno',
+    note: 'The Divisorio Sp 2.2 row group populates ONLY the 5th column ("Materico Interno") and leaves the other 4 as "-" -- confirms the per-cell "-" skip works correctly regardless of WHICH columns are populated, not just the usual "last column empty" pattern.',
+  },
+  {
+    id: 'armadi-fianchi-di-finitura-5col-3line-wrap',
+    query: 'SIPARIO Fianchi di finitura (Armadi battenti) price',
+    productName: 'SIPARIO Fianchi di finitura (Armadi battenti)',
+    code: '63FB7 D/S',
+    expectedPrice: '650',
+    expectedSize: '238.5×59',
+    expectedTier: 'V. Marmo',
+    note: 'A DIFFERENT 5-column shape from its "Fianchi e divisori" sibling, with its own 3-physical-line wrap (same class as Cornice\'s own Armadi Moduli 6-column shape) -- verified via direct image, not assumed from the sibling.',
+  },
+  {
+    id: 'armadi-anta-tv-frame-component-2col-no-wrap',
+    query: 'SIPARIO Anta Tv Moduli scorrevoli (frame component) price',
+    productName: 'SIPARIO Anta Tv Moduli scorrevoli (frame component)',
+    code: '4TV770',
+    expectedPrice: '1.615',
+    expectedSize: '97.8×238.5×59',
+    expectedTier: 'Opaco Base',
+    note: 'A 2-column shape with NO wrap continuation word at all (sub_wrap is genuinely empty) -- this page also has a SECOND, unrelated "L CODICI ... Accessori" LED-accessory table with no H column, deliberately left unrecognized (out of scope, not force-fit into this registry).',
+  },
 ];
 
 interface RejectCase {
@@ -490,11 +530,6 @@ const REJECT_CASES: RejectCase[] = [
     id: 'guard-pedane-not-corrupted',
     productName: 'Pedane',
     note: 'Same class of guard as Icaro -- Pedane is a real 3-column table. Must stay at 0 rows.',
-  },
-  {
-    id: 'guard-sipario-fianchi-still-deferred',
-    productName: 'SIPARIO Fianchi e divisori (Armadi battenti)',
-    note: 'The "Fianchi" (side-panel/trim) family shares surface-level header vocabulary with the Armadi danger-table family (also "H CODICI... Materico Op. Base..." style tokens) but is a genuinely different table this batch deliberately did NOT attempt -- must stay at 0 rows, not get force-matched by a too-loose header check.',
   },
 ];
 

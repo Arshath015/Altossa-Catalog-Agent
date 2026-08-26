@@ -6596,6 +6596,27 @@ _PIANCA_ARMADI_COLUMN_REGISTRY = {
         ['Materico', 'Op. Base', 'Op. Colore / Essenza', 'Lucido Sp.', 'V. Laccato / V. Met. / Specchio'],
     (('Cornice', 'e', 'pannello', 'Cornice', 'e', 'pannello'), ('Laccato', 'Opaco', 'Essenza')):
         ['Cornice e pannello / Laccato Opaco', 'Cornice e pannello / Essenza'],
+    # SIPARIO Fianchi e divisori (battenti/cardine/scorrevoli) -- side-panel/
+    # divider family, verified against sipario_fianchi_e_divisori_armadi_
+    # battenti_p45-045.jpg. No L row-group value at all (side panels aren't
+    # sized by a printed width the way wardrobe modules are) -- each row
+    # group's own descriptive label ("Fianco Sp 3 senza cornice" etc) is
+    # simply ignored, same as this parser already does for "Terminale"/
+    # "Angolo" labels elsewhere, safe here since every code is already
+    # unique across groups (no repeat-code disambiguation need).
+    (('Materico', 'Op.', 'Base', 'Op.', 'Colore', 'Lucido', 'Sp.', 'Materico'), ('Essenza', 'Interno')):
+        ['Materico', 'Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp.', 'Materico Interno'],
+    # SIPARIO Fianchi di finitura (battenti/scorrevoli) -- verified against
+    # sipario_fianchi_di_finitura_armadi_battenti_p46-046.jpg, a 3-physical-
+    # line wrap (same class as Cornice's own Armadi Moduli 6-column shape).
+    (('L.', 'Opaco', 'Lucido', 'Sp.', 'V.', 'Laccato', 'V.', 'Marmo', 'V.', 'Laccato'), ('Essenza', 'V.', 'Met.', 'Specchio')):
+        ['L. Opaco / Essenza', 'Lucido Sp.', 'V. Laccato / V. Met. / Specchio / Liscio', 'V. Marmo', 'V. Laccato / Specchio / Inciso'],
+    # SIPARIO Anta Tv Moduli scorrevoli's own frame-component table (its
+    # SECOND table on the same page, an unrelated "L CODICI ... Accessori"
+    # LED-accessory shape with no H column at all, correctly stays
+    # unrecognized by this parser -- deliberately not attempted here).
+    (('Opaco', 'Base', 'Opaco', 'Colore'), ()):
+        ['Opaco Base', 'Opaco Colore'],
 }
 
 _PIANCA_ARMADI_H_VALUES = {'238.5', '257.7', '289.7'}
