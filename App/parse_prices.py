@@ -6496,6 +6496,386 @@ def parse_file_pianca_composizione_bundle(path, product_name, brand, all_heading
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca SIPARIO Armadi Moduli/Composizioni "danger table" shape -- the
+# style x door-mechanism family (Plana/Amalfi/Cornice/Icona/Manhattan/
+# Murano/Nastro/Raggio/Tratto/Verona/Milano/Crea x battenti/cardine/
+# scorrevoli/scorrevoli con anta Tv/complanari x Moduli/Composizioni).
+# Genuinely 2-axis (an L row-group label + an H value on each physical
+# row), 1 or 2 CODICI columns (P 59 / P 42.3 depth variants -- the
+# complanari mechanism only ever offers P 59, confirmed on every sampled
+# complanari page), and N named finish-tier columns whose count and exact
+# labels are VERIFIED PER STYLE via direct page-image inspection, never
+# assumed uniform from header text alone: confirmed real that Plana/
+# Amalfi/Icona share one 4-column Materico/Opaco Base/Opaco Colore-
+# Essenza/Lucido Sp. set; the cardine mechanism drops Materico to 3 for
+# those same styles; Cornice has 6 columns on battenti pages but only 5
+# on complanari/scorrevoli (no V. Marmo); Murano/Milano/Manhattan/Nastro/
+# Verona/Raggio/Crea each have their own distinct set --
+# see _PIANCA_ARMADI_COLUMN_REGISTRY, one entry per real header signature
+# actually confirmed against a page image or, where the signature is
+# byte-identical to an already-checked sibling, against the raw text.
+#
+# Registry is keyed by (header_labels, sub_wrap): the header's own tokens
+# after the LAST 'CODICI', and the wrap-continuation tokens on the
+# following physical line after the 'P 59 [P 42.3]' block. This pair
+# uniquely identifies every real shape checked -- confirmed real: Crea's
+# bare 'Vetro Laccato' and Raggio's 'Vetro Laccato' (which adds a
+# 'Specchio' wrap) share identical header_labels but differ in sub_wrap,
+# correctly keeping them separate. A single-CODICI (complanari) table and
+# its 2-CODICI sibling share the SAME key, since sub_wrap excludes the
+# P-block markers themselves -- code_slots is read directly off the
+# matched header line's own literal CODICI count instead, so one
+# registry entry safely covers both.
+#
+# One genuine residual collision found and handled explicitly: Nastro
+# battenti's own 5th column picks up a 4th wrap word ('Liscio', a
+# corner-unit finish option) on the Moduli page but not on the visually
+# near-identical Composizioni page, even though both share the exact
+# same (header_labels, sub_wrap) key -- 'Liscio' sits on a further line
+# past where sub_wrap's capture window stops. Confirmed via direct grep
+# this word appears EXACTLY ONCE across every Armadi text file in this
+# family, only on nastro_armadi_battenti_moduli.txt, so a narrow post-hoc
+# lookahead check (not a per-file special case) safely resolves it
+# without risking a false positive elsewhere.
+#
+# Row layout is 'H code1 [code2] price1..priceN' (H FIRST, unlike every
+# other Pianca shape's trailing-code convention) -- H is identified by
+# exact membership in a small, verified closed set ({238.5, 257.7,
+# 289.7}, confirmed the ONLY 3 values printed across every sampled page;
+# 289.7 only appears for styles/mechanisms offering the taller module),
+# never by a generic decimal regex, since ordinary L values are ALSO
+# decimals (e.g. '47.8', '153.8') and would otherwise be ambiguous.
+#
+# The L row-group label and any leading context text need OPPOSITE carry
+# directions, confirmed via direct row-by-row inspection, not assumed:
+# L prints on the LAST physical row of its 2-3-row H group (needs a
+# BACKWARD fill), while the con-anta-Tv family's 'anta TV Opaco Base/
+# Colore' disambiguator (needed because the SAME code repeats under both
+# labels with different prices -- confirmed real on Icona's own anta-Tv
+# page) prints on the FIRST row of its own mini-group (a plain FORWARD
+# carry). Handled with a two-pass buffer-then-resolve design rather than
+# a single streaming pass, which could only get one direction right.
+# ---------------------------------------------------------------------------
+
+_PIANCA_ARMADI_COLUMN_REGISTRY = {
+    (('Materico', 'Opaco', 'Base', 'Opaco', 'Colore', 'Lucido', 'Sp.'), ('Essenza',)):
+        ['Materico', 'Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp.'],
+    (('Materico', 'Op.', 'Base', 'Op.', 'Colore', 'Lucido', 'Sp.'), ('Essenza',)):
+        ['Materico', 'Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp.'],
+    (('Opaco', 'Base', 'Opaco', 'Colore', 'Lucido', 'Sp.'), ('Essenza',)):
+        ['Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp.'],
+    (('Materico', 'L.', 'Opaco', 'Lucido', 'Sp.', 'Pelle', 'Sint.', 'V.', 'Laccato', 'V.', 'Marmo'), ('Essenza', 'V.', 'Met.')):
+        ['Materico', 'L. Opaco / Essenza', 'Lucido Sp.', 'Pelle Sint.', 'V. Laccato / V. Met. / Specchio', 'V. Marmo'],
+    (('Materico', 'L.', 'Opaco', 'Lucido', 'Sp.', 'Pelle', 'Sint.', 'V.', 'Laccato'), ('Essenza', 'V.', 'Met.')):
+        ['Materico', 'L. Opaco / Essenza', 'Lucido Sp.', 'Pelle Sint.', 'V. Laccato / V. Met. / Specchio'],
+    (('Laccato', 'Opaco', 'Lucido', 'Sp.', 'V.', 'Laccato'), ('Essenza', 'V.Metallizzato')):
+        ['Laccato Opaco', 'Lucido Sp. / Essenza', 'V. Laccato / V.Metallizzato / Specchio'],
+    (('L.', 'Opaco', 'Essenza', 'Lucido', 'Sp.', 'V.', 'Laccato'), ('V.', 'Met.')):
+        ['L. Opaco', 'Essenza', 'Lucido Sp.', 'V. Laccato / V. Met. / Specchio'],
+    (('Laccato', 'Opaco', 'Lucido', 'Sp.'), ('Essenza',)):
+        ['Laccato Opaco', 'Lucido Sp. / Essenza'],
+    (('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Sp.'), ()):
+        ['Laccato Opaco', 'Essenza', 'Lucido Sp.'],
+    (('V.', 'Trasparente', 'V.', 'Riflettente', 'Vetro', 'Trama'), ('V.', 'Metallizzato', 'Vetro', 'Rigato')):
+        ['V. Trasparente / V. Metallizzato / Specchio', 'Vetro Riflettente', 'Vetro Trama / Vetro Rigato'],
+    (('V.', 'Trasparente', 'Vetro', 'Riflettente', 'Vetro', 'Trama'), ('V.', 'Metallizzato', 'Vetro', 'Rigato')):
+        ['V. Trasparente / V. Metallizzato / Specchio', 'Vetro Riflettente', 'Vetro Trama / Vetro Rigato'],
+    (('V.', 'Laccato', 'V.', 'Riflettente', 'V.', 'Trama', 'V.', 'Marmo'), ('V.', 'Metallizzato', 'V.', 'Rigato')):
+        ['V. Laccato / V. Metallizzato / Specchio / V. Trasparente', 'V. Riflettente', 'V. Trama / V. Rigato', 'V. Marmo'],
+    (('Vetro', 'Laccato'), ('Specchio',)):
+        ['Vetro Laccato / Specchio'],
+    # Raggio's own complanari page abbreviates 'Vetro' to 'V.' on this
+    # one header (confirmed real via direct text inspection, not a typo
+    # in this registry) -- every other Raggio page spells it out.
+    (('V.', 'Laccato'), ('Specchio',)):
+        ['Vetro Laccato / Specchio'],
+    (('Vetro', 'Laccato'), ()):
+        ['Vetro Laccato'],
+    (('Materico', 'Op.', 'Base', 'Op.', 'Colore', 'Lucido', 'Sp.', 'V.', 'Laccato'), ('Essenza', 'V.', 'Met.')):
+        ['Materico', 'Op. Base', 'Op. Colore / Essenza', 'Lucido Sp.', 'V. Laccato / V. Met. / Specchio'],
+    (('Cornice', 'e', 'pannello', 'Cornice', 'e', 'pannello'), ('Laccato', 'Opaco', 'Essenza')):
+        ['Cornice e pannello / Laccato Opaco', 'Cornice e pannello / Essenza'],
+}
+
+_PIANCA_ARMADI_H_VALUES = {'238.5', '257.7', '289.7'}
+_PIANCA_ARMADI_ANTATV_RE = re.compile(r'^anta TV Opaco (Base|Colore)$')
+_PIANCA_ARMADI_DS_SUFFIX_RE = re.compile(r'^\S*D/S$')
+_PIANCA_ARMADI_NUMERIC_RE = re.compile(r'^\d+(\.\d+)?$')
+
+
+def _pianca_armadi_section_marker(line):
+    """A section-title line's own leading ALL-CAPS word(s) -- e.g.
+    'PLANA' from ' PLANA Moduli battenti', 'HOME OFFICE' from 'HOME
+    OFFICE Moduli con anta Amalfi' -- or None if the line doesn't open
+    with one. Confirmed this convention holds on every sampled page."""
+    toks = line.split()
+    name_toks = []
+    for t in toks:
+        if t.isupper() and t.isalpha() and len(t) >= 2:
+            name_toks.append(t)
+        else:
+            break
+    return ' '.join(name_toks) if name_toks else None
+
+
+def _pianca_armadi_own_scope(lines, product_name):
+    """Returns (start, end) line-index bounds restricting where a NEW
+    table is allowed to START to just this product's own section.
+    REQUIRED because some pages are shared verbatim between 2 styles --
+    confirmed real: Plana's and Cornice's own 'Cabina soffietto' pages
+    are byte-identical text files each holding BOTH styles' full tables
+    back-to-back, so without this, both products silently absorbed each
+    other's codes and prices (caught via a real cross-contamination
+    check, not assumed safe). Only gates where a table may BEGIN --
+    once a table starts inside the product's own scope, its row-scan
+    already has its own independent termination logic (next header /
+    blank-run), so this never truncates real rows mid-table, only
+    prevents starting a table that belongs to a different style's
+    section. Safe no-op for every single-style file (checked: the one
+    real marker just becomes the whole range either way)."""
+    markers = []
+    for idx, ln in enumerate(lines):
+        name = _pianca_armadi_section_marker(ln)
+        if name:
+            markers.append((idx, name))
+    if not markers:
+        return 0, len(lines)
+    style = product_name.split(' — ')[0].strip().upper()
+
+    def is_own(name):
+        return name == style or style.startswith(name) or name.startswith(style)
+
+    own = [idx for idx, name in markers if is_own(name)]
+    if not own:
+        return 0, len(lines)
+    start = own[0]
+    # A repeated marker of the SAME style (a running page-header on a
+    # later physical page of a multi-page product -- confirmed real on
+    # 'Plana — Moduli stagionali', whose own title reprints
+    # verbatim on page 2 right before its actual price table) does NOT
+    # end the scope; only a DIFFERENT style's marker does.
+    later = [idx for idx, name in markers if idx > start and not is_own(name)]
+    end = later[0] if later else len(lines)
+    return start, end
+
+
+def _pianca_armadi_header_key(line):
+    """Returns (header_labels, code_slots) if `line` looks like this
+    shape's own header, else None. Requires an 'H' token IMMEDIATELY
+    followed by 'CODICI' -- NOT just both tokens present anywhere on the
+    line, which was confirmed too loose: Shape A's own 'L H P CODICI ...'
+    tier-letter header (H separated from CODICI by 'P') and several other
+    unrelated Pianca shapes also contain both words, and matched a first
+    draft of this check, flagging dozens of already-correctly-parsed
+    products (Levante/Peonia/Delano up/Nice/Tobias/... and more) with
+    noisy false-positive flags. Requiring direct adjacency is what every
+    real sample of THIS shape has (confirmed on every checked image),
+    including the one edge case where a line has 2 'H' tokens (Tratto's
+    own 'H a scomparsa per anta interna ... H CODICI CODICI ...' --
+    the first H is followed by 'a', not 'CODICI', and is correctly
+    ignored). code_slots is the literal CODICI count on THIS line --
+    never assumed from the registry, since a complanari page genuinely
+    only ever prints one."""
+    toks = line.split()
+    if not any(toks[i] == 'H' and i + 1 < len(toks) and toks[i + 1] == 'CODICI' for i in range(len(toks))):
+        return None
+    codici_idxs = [i for i, t in enumerate(toks) if t == 'CODICI']
+    if not codici_idxs or len(codici_idxs) > 2:
+        return None
+    header_labels = tuple(toks[codici_idxs[-1] + 1:])
+    if not header_labels:
+        return None
+    return header_labels, len(codici_idxs)
+
+
+def _pianca_armadi_sub_wrap(sub_line):
+    """Tokens on the header's following physical line AFTER the last
+    'P <number>' block -- the real wrap-continuation words (e.g.
+    'Essenza'), with the leading hardware-finish legend text (e.g.
+    'Canna di Fucile') and the P-block markers themselves excluded."""
+    stoks = sub_line.split()
+    p_idxs = [i for i, t in enumerate(stoks) if t == 'P' and i + 1 < len(stoks) and re.match(r'^\d', stoks[i + 1])]
+    if not p_idxs:
+        return tuple(stoks)
+    return tuple(stoks[p_idxs[-1] + 2:])
+
+
+def _pianca_armadi_consume_code(tokens, idx):
+    """Greedily consumes one code unit starting at tokens[idx]: a bare
+    code ('BA715'), a code+hinge-suffix pair ('MMU73','D/S' or, on the
+    Moduli scorrevoli pages specifically, 'PMU75','0/D/S' -- confirmed
+    real via direct image check, not an OCR artifact), a wildcard code
+    ('4C','*','720' or 'M','*','73','D/S'), or '-' (not offered at this
+    depth). Returns (code_or_None, next_idx)."""
+    if tokens[idx] == '-':
+        return None, idx + 1
+    parts = [tokens[idx]]
+    idx += 1
+    if idx < len(tokens) and tokens[idx] == '*':
+        parts.append('*')
+        idx += 1
+        if idx < len(tokens):
+            parts.append(tokens[idx])
+            idx += 1
+    if idx < len(tokens) and _PIANCA_ARMADI_DS_SUFFIX_RE.match(tokens[idx]):
+        parts.append(tokens[idx])
+        idx += 1
+    return ' '.join(parts), idx
+
+
+def parse_file_pianca_armadi_danger(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope (SIPARIO's Armadi Moduli/
+    Composizioni style x mechanism family)."""
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    scope_start, scope_end = _pianca_armadi_own_scope(lines, product_name)
+
+    i = 0
+    while i < len(lines):
+        if not (scope_start <= i < scope_end):
+            i += 1
+            continue
+        key = _pianca_armadi_header_key(lines[i])
+        if key is None:
+            i += 1
+            continue
+        header_labels, code_slots = key
+        sub_line = lines[i + 1] if i + 1 < len(lines) else ''
+        sub_wrap = _pianca_armadi_sub_wrap(sub_line)
+        columns = _PIANCA_ARMADI_COLUMN_REGISTRY.get((header_labels, sub_wrap))
+        if columns is None:
+            flags.append((page_of_line[i], product_name,
+                          f"unrecognized Armadi danger-table header, skipped: {lines[i].strip()[:120]!r}"))
+            i += 1
+            continue
+
+        # Nastro battenti's own 5th column picks up a 4th wrap word
+        # ('Liscio') that sub_wrap's capture window doesn't reach -- see
+        # module comment. Confirmed unique across every Armadi file, safe
+        # to check unconditionally rather than as a per-file exception.
+        lookahead_block = '\n'.join(lines[i:i + 8])
+        if re.search(r'\bLiscio\b', lookahead_block) and 'Liscio' not in columns[-1]:
+            columns = columns[:-1] + [columns[-1] + ' / Liscio']
+
+        i += 2  # past header + sub-line
+
+        # Phase 1: buffer every price row in this table (H, code tokens,
+        # trailing prices, and its own raw leading-context tokens)
+        # without resolving L or the anta-Tv prefix yet -- they need
+        # opposite carry directions, see module comment.
+        records = []
+        blank_run = 0
+        j = i
+        while j < len(lines) and blank_run < 10:
+            raw = lines[j]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                j += 1
+                continue
+            if _pianca_armadi_header_key(raw) is not None:
+                break
+            blank_run = 0
+
+            tokens = stripped.split()
+            h_idxs = [k for k, t in enumerate(tokens) if t in _PIANCA_ARMADI_H_VALUES]
+            if not h_idxs:
+                # Leading-context-only line (a carried L value, an
+                # anta-Tv prefix, or unrelated legend/diagram text).
+                records.append({"line": j, "leading": tokens, "row": None})
+                j += 1
+                continue
+
+            hi = h_idxs[0]
+            leading = tokens[:hi]
+            h_val = tokens[hi]
+            idx2 = hi + 1
+            codes = []
+            for _ in range(code_slots):
+                if idx2 >= len(tokens):
+                    codes.append(None)
+                    continue
+                code, idx2 = _pianca_armadi_consume_code(tokens, idx2)
+                codes.append(code)
+            trailing = tokens[idx2:]
+            if len(trailing) != len(columns) or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) \
+                    or not any(t != '-' for t in trailing):
+                flags.append((page_of_line[j], product_name,
+                              f"Armadi danger-table row shape mismatch (expected {len(columns)} price cells), skipped: {stripped[:120]!r}"))
+                j += 1
+                continue
+
+            records.append({
+                "line": j, "leading": leading,
+                "row": {"h": h_val, "codes": codes, "trailing": trailing},
+            })
+            j += 1
+
+        # Phase 2a: forward pass resolves the anta-Tv prefix (prints on
+        # the FIRST row of its own mini-group).
+        carried_prefix = None
+        for rec in records:
+            text = ' '.join(rec["leading"])
+            if _PIANCA_ARMADI_ANTATV_RE.match(text):
+                carried_prefix = text
+            rec["prefix"] = carried_prefix
+
+        # Phase 2b: backward pass resolves L (prints on the LAST row of
+        # its own 2-3-row H group).
+        carried_l = None
+        for rec in reversed(records):
+            if rec["leading"] and all(_PIANCA_ARMADI_NUMERIC_RE.match(t) for t in rec["leading"]):
+                carried_l = rec["leading"][0]
+            rec["l"] = carried_l
+
+        # Phase 3: emit.
+        depths = ['59', '42.3'][:code_slots]
+        for rec in records:
+            row = rec["row"]
+            if row is None:
+                continue
+            any_price = False
+            for code, depth in zip(row["codes"], depths):
+                if code is None:
+                    continue
+                size = f'{rec["l"]}×{row["h"]}×{depth}' if rec["l"] else f'{row["h"]}×{depth}'
+                for column_label, cell in zip(columns, row["trailing"]):
+                    if cell == '-':
+                        continue
+                    any_price = True
+                    tier = f'{rec["prefix"]} — {column_label}' if rec["prefix"] else column_label
+                    rows.append({
+                        "brand": brand,
+                        "product_name": product_name,
+                        "model_variant": None,
+                        "variant_context": rec["prefix"],
+                        "size": size,
+                        "fabric_tier": tier,
+                        "tier_label": "Finish",
+                        "code": code,
+                        "price_eur": cell,
+                        "source_pdf_page": page_of_line[rec["line"]],
+                    })
+            if not any_price:
+                flags.append((page_of_line[rec["line"]], product_name,
+                              f'no price rows found for H {row["h"]}'))
+
+        i = j  # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
@@ -6512,7 +6892,16 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
     scan flags EVERY 'CODICI' line it doesn't recognize, including every
     other shape's headers -- so any such flag on a page ANY other parser
     actually resolved rows for is dropped here as superseded, rather
-    than left as a duplicate/stale flag alongside the real data."""
+    than left as a duplicate/stale flag alongside the real data.
+
+    Armadi danger-table's own header scan has the identical problem for
+    the same reason -- it also flags every 'H CODICI...' line it doesn't
+    recognize, and 3 real products (Primo, Enea Up, Soffio Up) happen to
+    have a coincidentally similar-looking header on a page their OWN
+    dedicated shape already resolves for real (confirmed via a direct
+    row-count check before adding this filter, not assumed safe). Same
+    superseded-by-another-parser's-real-rows rule applied a second time,
+    scoped to just this one parser's own flags."""
     sub_parsers = [
         parse_file_pianca_shape_a,
         parse_file_pianca_norma_up_2axis,
@@ -6527,9 +6916,12 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_primo_dim_labeled,
         parse_file_pianca_letti_tier,
         parse_file_pianca_composizione_bundle,
+        parse_file_pianca_armadi_danger,
     ]
+    armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
     rows_a, flags_a = results[0]
+    rows_armadi, flags_armadi = results[armadi_idx]
 
     resolved_pages = {r["source_pdf_page"] for _, (rows, _) in zip(sub_parsers[1:], results[1:]) for r in rows}
     flags_a_filtered = [
@@ -6537,8 +6929,19 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         if not (f[0] in resolved_pages and 'unrecognized price-table header' in f[2])
     ]
 
+    resolved_pages_excl_armadi = {
+        r["source_pdf_page"] for idx, (rows, _) in enumerate(results) if idx != armadi_idx for r in rows
+    }
+    flags_armadi_filtered = [
+        f for f in flags_armadi
+        if not (f[0] in resolved_pages_excl_armadi and 'unrecognized Armadi danger-table header' in f[2])
+    ]
+
     all_rows = [r for rows, _ in results for r in rows]
-    all_flags = flags_a_filtered + [f for _, flags in results[1:] for f in flags]
+    other_flags = [
+        f for idx, (_, flags) in enumerate(results) if idx not in (0, armadi_idx) for f in flags
+    ]
+    all_flags = flags_a_filtered + flags_armadi_filtered + other_flags
     return all_rows, all_flags
 
 

@@ -107,6 +107,34 @@
  * fallback (requires a UNIQUE match, never guesses) rather than
  * hardcoding either product.
  *
+ * Batch 3 -- SIPARIO's Armadi Moduli/Composizioni "danger table" family
+ * (10 door styles x up to 5 mechanism types x Moduli/Composizioni, ~63
+ * products, the single biggest remaining dims+2 cluster): L row-group +
+ * H per-row, 1-2 CODICI columns (P 59 / P 42.3 depth variants -- the
+ * complanari mechanism only ever offers P 59), and N named finish-tier
+ * columns whose exact count/labels are VERIFIED PER STYLE via direct
+ * page-image inspection (new parse_file_pianca_armadi_danger, registry-
+ * driven same discipline as shape_b_named). H is identified by a small
+ * verified closed set ({238.5, 257.7, 289.7}), never a generic decimal
+ * regex, since ordinary L values are also decimals. Wildcard codes
+ * ('M * 73 D/S') and a 2nd real hinge-suffix variant ('0/D/S', confirmed
+ * real on Murano's own Moduli scorrevoli page, not an OCR artifact) are
+ * both preserved literally.
+ *
+ * A real cross-contamination bug was found and fixed while verifying
+ * this batch: Plana's and Cornice's own 'Cabina soffietto' pages are
+ * byte-identical text files, each holding BOTH styles' full tables
+ * back-to-back (confirmed via direct diff) -- without scoping each
+ * product's own table-search to its own section (a leading ALL-CAPS
+ * style-name marker line, e.g. ' PLANA Moduli...' / ' CORNICE
+ * Moduli...'), both products silently absorbed each other's codes and
+ * prices. A second bug surfaced fixing the first: a naive "next marker
+ * ends my scope" rule broke multi-page products whose OWN title
+ * reprints verbatim as a running page header (e.g. 'Plana — Moduli
+ * stagionali'), wiping their real rows to 0 -- fixed by only treating a
+ * DIFFERENT style's marker as a scope boundary, not a repeat of the same
+ * one.
+ *
  * RUN WITH: npm run check-pianca-known-gap-shapes
  * Requires the dev server running (npm run dev:server).
  */
@@ -118,6 +146,7 @@ interface PriceRow {
   code: string | null;
   price_eur: string;
   size: string | null;
+  fabric_tier?: string | null;
 }
 interface ChatResponse {
   status?: string;
@@ -132,6 +161,7 @@ interface Case {
   code: string;
   expectedPrice: string;
   expectedSize?: string;
+  expectedTier?: string;
   note: string;
 }
 
@@ -297,6 +327,136 @@ const CASES: Case[] = [
     expectedSize: '123×243×45',
     note: 'Regression guard: the already-live "(Designbook 2022)" family shares the same "L H P CODICI" header text as the new bundle shape but has no "Finitura base" column and no "totale" row -- must keep resolving via flat_price exactly as it did before this batch, not get swallowed by the new composizione_bundle parser. Query deliberately fully-qualified (matching dims1-composizione-iot-new\'s own style) -- the bare-code short form is ambiguous across IOT011/012/013 siblings, a pre-existing matching-layer nuance unrelated to this batch.',
   },
+  {
+    id: 'armadi-plana-battenti-moduli-4col',
+    query: 'Plana armadi battenti moduli price',
+    productName: 'Plana — Armadi battenti (Moduli)',
+    code: 'MA73 D/S',
+    expectedPrice: '341',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'Materico',
+    note: 'New capture from parse_file_pianca_armadi_danger -- Plana/Amalfi/Icona\'s shared 4-column shape (Materico/Opaco Base/Opaco Colore-Essenza/Lucido Sp.), P 59 depth. Source (plana_armadi_battenti_moduli.txt): "238.5 MA73 D/S DA73 D/S 341 429 530 764".',
+  },
+  {
+    id: 'armadi-cornice-battenti-moduli-6col-wildcard',
+    query: 'Cornice — Armadi battenti (Moduli) price',
+    productName: 'Cornice — Armadi battenti (Moduli)',
+    code: 'M * 73 D/S',
+    expectedPrice: '426',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'Materico',
+    note: 'Cornice\'s own 6-column shape, the widest in this family, AND its wildcard-asterisk code convention ("M * 73 D/S", 4 raw tokens including a bare "*"). Also confirms the 5th column\'s real label ("V. Laccato / V. Met. / Specchio") was correctly reconstructed from a 3-PHYSICAL-LINE wrap -- a 2-line grep first missed the "Specchio" word entirely. Query deliberately uses the exact qualified product name (matching this file\'s own established convention for ambiguous names) -- confirmed real via 5 repeated live calls that a shorter "Cornice armadi battenti moduli price" phrasing is genuinely non-deterministic under this session\'s quota-limited LLM availability, intermittently resolving to the pre-existing, unrelated bare "Cornice" collision (a Spazi-10 product, already correctly disambiguated at the data level) instead -- a chat-matching-layer sensitivity that predates and is unrelated to this batch\'s own parser/data work.',
+  },
+  {
+    id: 'armadi-manhattan-moduli-vs-composizioni-different-shapes',
+    query: 'Manhattan armadi battenti moduli price',
+    productName: 'Manhattan — Armadi battenti (Moduli)',
+    code: 'M * 73 D/S',
+    expectedPrice: '642',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'Laccato Opaco',
+    note: 'Regression guard for a real "don\'t assume Moduli and Composizioni share a shape just because they\'re the same style" case: Manhattan\'s Moduli page has 3 columns (Laccato Opaco / Lucido Sp.+Essenza combined / V. Laccato+V.Met.+Specchio combined) -- see the sibling Composizioni case below for the same style\'s genuinely DIFFERENT 4-column split.',
+  },
+  {
+    id: 'armadi-manhattan-composizioni-4col',
+    query: 'Manhattan armadi battenti composizioni price',
+    productName: 'Manhattan — Armadi battenti (Composizioni)',
+    code: 'B * 715',
+    expectedPrice: '2.252',
+    expectedSize: '153.8×238.5×59',
+    expectedTier: 'L. Opaco',
+    note: 'Manhattan\'s own Composizioni page splits Lucido Sp./Essenza into 2 SEPARATE columns (4 total) instead of the Moduli page\'s combined 3 -- confirmed via direct image comparison, not assumed from the Moduli shape. Also exercises the Composizioni-only decorative width-breakdown suffix on the L line ("153.8 50 100") being correctly discarded down to just the L value.',
+  },
+  {
+    id: 'armadi-nastro-battenti-moduli-liscio-4th-wrap-word',
+    query: 'Nastro armadi battenti moduli price',
+    productName: 'Nastro — Armadi battenti (Moduli)',
+    code: 'M * 73 D/S',
+    expectedPrice: '766',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'V. Laccato / V. Met. / Specchio / Liscio',
+    note: 'Regression guard for the one real header collision found in this family: Nastro\'s Moduli page has a 4th wrap word ("Liscio") on its 5th column that its own Composizioni sibling page does NOT have, despite both sharing byte-identical header tokens -- resolved by a narrow post-hoc "Liscio" lookahead (confirmed unique across every Armadi text file via direct grep), not a per-file registry split.',
+  },
+  {
+    id: 'armadi-icona-antatv-opaco-base',
+    query: 'Icona armadi scorrevoli con anta Tv composizioni price',
+    productName: 'Icona — Armadi scorrevoli con anta Tv (Composizioni)',
+    code: '4NA720',
+    expectedPrice: '2.707',
+    expectedSize: '203.8×238.5×59',
+    expectedTier: 'anta TV Opaco Base — Materico',
+    note: 'The con-anta-Tv family\'s own disambiguator: code 4NA720 is printed TWICE on the page (once under "anta TV Opaco Base", once under "anta TV Opaco Colore") with DIFFERENT prices each time -- folded into fabric_tier (same "combine both axes" pattern as Norma Up\'s own struttura_finish) since main()\'s ambiguous-row detection keys on (product, code, fabric_tier) only. See the sibling case below for the SAME code\'s other price.',
+  },
+  {
+    id: 'armadi-icona-antatv-opaco-colore',
+    query: 'Icona armadi scorrevoli con anta Tv composizioni price',
+    productName: 'Icona — Armadi scorrevoli con anta Tv (Composizioni)',
+    code: '4NA720',
+    expectedPrice: '3.223',
+    expectedSize: '203.8×238.5×59',
+    expectedTier: 'anta TV Opaco Colore — Materico',
+    note: 'Same code as armadi-icona-antatv-opaco-base, the OTHER real price -- confirms both survive as distinct rows instead of one silently overwriting the other.',
+  },
+  {
+    id: 'armadi-verona-2col-compound-label',
+    query: 'Verona armadi battenti moduli price',
+    productName: 'Verona — Armadi battenti (Moduli)',
+    code: 'MVR73 D/S',
+    expectedPrice: '638',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'Cornice e pannello / Laccato Opaco',
+    note: 'Verona\'s own shape: the header prints "Cornice e pannello" TWICE (once per column), each disambiguated only by its own wrap word (Laccato Opaco / Essenza) on the following line -- a genuinely different wrap convention from every other style in this family.',
+  },
+  {
+    id: 'armadi-milano-cardine-3heights',
+    query: 'Milano armadi cardine moduli price',
+    productName: 'Milano — Armadi cardine (Moduli)',
+    code: 'MO93 D/S',
+    expectedPrice: '843',
+    expectedSize: '47.8×289.7×59',
+    expectedTier: 'V. Trasparente / V. Metallizzato / Specchio',
+    note: 'Milano is one of only 2 styles offering a 3rd H tier (289.7, not just 238.5/257.7) -- confirms the closed H-value set correctly captures all 3, and that the taller tier\'s own real (non-repeated) price is captured, not silently duplicated from the 238.5 row.',
+  },
+  {
+    id: 'armadi-crea-single-column-tipoAB',
+    query: 'Crea armadi scorrevoli moduli price',
+    productName: 'Crea — Armadi scorrevoli (Moduli)',
+    code: 'PR77 D/S',
+    expectedPrice: '1.234',
+    expectedSize: '97.8×238.5×59',
+    expectedTier: 'Vetro Laccato',
+    note: 'Crea\'s own single-named-column shape, with a "tipo A"/"tipo B" row-level label (2 codes per L/H, PR.../PS...) this batch deliberately does NOT try to capture into fabric_tier (unlike the anta-Tv prefix) since the code alone already disambiguates it safely -- confirms the row still parses correctly with that leading text simply ignored.',
+  },
+  {
+    id: 'armadi-raggio-complanari-abbreviated-v-laccato',
+    query: 'Raggio armadi complanari composizioni price',
+    productName: 'Raggio — Armadi complanari (Composizioni)',
+    code: 'CT720',
+    expectedPrice: '4.603',
+    expectedSize: '206×238.5×59',
+    expectedTier: 'Vetro Laccato / Specchio',
+    note: 'Regression case for a registry gap found via a real "no rows extracted" cross-check: Raggio\'s own complanari page abbreviates "Vetro" to "V." on this ONE header ("V. Laccato" instead of every other Raggio page\'s "Vetro Laccato"), needing its own registry key even though it\'s the same real column.',
+  },
+  {
+    id: 'armadi-contamination-fix-plana-cabina-soffietto',
+    query: 'Plana armadi cabina soffietto moduli price',
+    productName: 'Plana — Cabina soffietto (Moduli)',
+    code: 'NA7T D/S',
+    expectedPrice: '1.247',
+    expectedSize: '134×238.5×59',
+    expectedTier: 'Materico',
+    note: 'Regression guard for the real cross-contamination bug found and fixed in this batch: Plana\'s and Cornice\'s own "Cabina soffietto" pages are byte-identical text files holding BOTH styles\' full tables. Must resolve to ONLY Plana\'s own code (NA7T D/S), never Cornice\'s wildcard "N * 7T D/S" from the same file. See the sibling Cornice case below.',
+  },
+  {
+    id: 'armadi-contamination-fix-cornice-cabina-soffietto',
+    query: 'Cornice — Cabina soffietto (Moduli) price',
+    productName: 'Cornice — Cabina soffietto (Moduli)',
+    code: 'N * 7T D/S',
+    expectedPrice: '1.450',
+    expectedSize: '134×238.5×59',
+    expectedTier: 'Materico',
+    note: 'The other half of the contamination guard -- must resolve to ONLY Cornice\'s own wildcard code, never Plana\'s "NA7T D/S" from the same shared-page text file. Exact qualified name used for the same live-matching-reliability reason as armadi-cornice-battenti-moduli-6col-wildcard above.',
+  },
 ];
 
 interface RejectCase {
@@ -320,6 +480,11 @@ const REJECT_CASES: RejectCase[] = [
     id: 'guard-pedane-not-corrupted',
     productName: 'Pedane',
     note: 'Same class of guard as Icaro -- Pedane is a real 3-column table. Must stay at 0 rows.',
+  },
+  {
+    id: 'guard-sipario-fianchi-still-deferred',
+    productName: 'SIPARIO Fianchi e divisori (Armadi battenti)',
+    note: 'The "Fianchi" (side-panel/trim) family shares surface-level header vocabulary with the Armadi danger-table family (also "H CODICI... Materico Op. Base..." style tokens) but is a genuinely different table this batch deliberately did NOT attempt -- must stay at 0 rows, not get force-matched by a too-loose header check.',
   },
 ];
 
@@ -352,10 +517,22 @@ async function main() {
   const failures: string[] = [];
 
   for (const c of CASES) {
+    // A throwaway non-matching query before each real one -- the chat
+    // endpoint tracks a "last product" anchor server-side independent of
+    // this script's own `history: []`, confirmed real while adding the
+    // Armadi cases below: 2 back-to-back real queries in the same run
+    // could otherwise silently resolve to the PRIOR case's product
+    // instead of failing honestly, especially once enough Pianca-batch
+    // cases accumulated in this same file to make a later query's own
+    // wording occasionally under-confident on its own.
+    await postChat('Pianca', 'xyz-regression-reset-nonexistent-product');
     const resp = await postChat('Pianca', c.query);
-    const row = (resp.matches || []).find(m => m.product_name === c.productName && m.code === c.code);
+    const rowsForCode = (resp.matches || []).filter(m => m.product_name === c.productName && m.code === c.code);
+    const row = c.expectedTier === undefined
+      ? rowsForCode[0]
+      : rowsForCode.find(m => m.fabric_tier === c.expectedTier);
     if (!row) {
-      failures.push(`[${c.id}] "${c.query}" -- expected code "${c.code}" for "${c.productName}" in matches, got none (status=${resp.status || resp.error})`);
+      failures.push(`[${c.id}] "${c.query}" -- expected code "${c.code}"${c.expectedTier ? ` tier "${c.expectedTier}"` : ''} for "${c.productName}" in matches, got none (status=${resp.status || resp.error})`);
       console.log(`[${c.id.padEnd(30)}] FAIL -- code not found`);
       continue;
     }
@@ -392,7 +569,7 @@ async function main() {
     console.log('\nEXIT 1: Pianca known_gap shape-batch regressed.');
     process.exit(1);
   }
-  console.log('\nEXIT 0: dims+1 (bare-CODICI flat price) batch verified, numeric-code regression guarded, wider-table corruption guarded.');
+  console.log('\nEXIT 0: dims+1/Letti/Composizione-bundle/Armadi-danger-table batches verified, numeric-code and wider-table corruption guarded, cross-page contamination guarded.');
 }
 
 main();
