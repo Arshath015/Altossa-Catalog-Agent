@@ -254,8 +254,27 @@ export function similarity(query: string, candidate: string): number {
   // "E") -- confirmed by a full regression:full run that surfaced 36 new
   // row-count mismatches across 4 brands before this was narrowed down to
   // parens only.
-  const qTokens = q.replace(/[()]/g, '').split(/\s+/).filter(Boolean);
-  const cTokens = c.replace(/[()]/g, '').split(/\s+/).filter(Boolean);
+  // Em/en-dash (— / –) stripped the same way as parens just above, for the
+  // same reason -- Pianca's own disambiguation convention for compound
+  // names ("Cornice — Armadi battenti (Moduli)") uses " — " as a real word
+  // separator, but normalize() only strips accents, so the dash survived
+  // as its own standalone token after a plain whitespace split. No real
+  // user ever types a literal em-dash, so that stray token could NEVER
+  // appear in qTokens -- permanently capping every dash-qualified name
+  // below the full containment-match tier (80) no matter how completely
+  // the rest of the query named it, regardless of length or specificity.
+  // Confirmed live: "Cornice armadi battenti moduli price" scored the
+  // qualified product only 48 (diluted overlap) while the unrelated,
+  // pre-existing bare "Cornice" collision (Spazi-10, already correctly
+  // disambiguated at the data level) hit 80 on token-set containment and
+  // won outright -- the maximal-containment tie-break just below never
+  // even got a chance to run, since the two scores weren't tied at all.
+  // Replaced with a space (not stripped to '') since a dash is a genuine
+  // word boundary, unlike a paren -- matters if it's ever NOT already
+  // surrounded by spaces somewhere else in the catalog.
+  const stripSeparators = (s: string) => s.replace(/[–—]/g, ' ').replace(/[()]/g, '');
+  const qTokens = stripSeparators(q).split(/\s+/).filter(Boolean);
+  const cTokens = stripSeparators(c).split(/\s+/).filter(Boolean);
   // Token-SET containment (every token on one side appears on the other,
   // any order) -- not a contiguous-phrase check. That distinction matters:
   // "cuff pouf" isn't a substring of "Cuff bench and pouf" (words in

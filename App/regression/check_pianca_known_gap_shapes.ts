@@ -457,6 +457,16 @@ const CASES: Case[] = [
     expectedTier: 'Materico',
     note: 'The other half of the contamination guard -- must resolve to ONLY Cornice\'s own wildcard code, never Plana\'s "NA7T D/S" from the same shared-page text file. Exact qualified name used for the same live-matching-reliability reason as armadi-cornice-battenti-moduli-6col-wildcard above.',
   },
+  {
+    id: 'armadi-emdash-similarity-fix-guard',
+    query: 'Cornice armadi battenti moduli price',
+    productName: 'Cornice — Armadi battenti (Moduli)',
+    code: 'M * 73 D/S',
+    expectedPrice: '426',
+    expectedSize: '47.8×238.5×59',
+    expectedTier: 'Materico',
+    note: 'Root-cause guard for a real similarity() bug found while writing THIS file\'s own regression cases (fixed in catalogChat.ts, 2026-08-26, unrelated to the parser itself): the em-dash in Pianca\'s own disambiguation naming convention ("Cornice — Armadi battenti (Moduli)") was never stripped the way parens already are, so it survived as a stray standalone token no real user ever types -- permanently capping every em-dash-qualified name (84 across this catalog) below the full containment-match score tier. Confirmed live: this exact PLAIN phrasing (no em-dash typed) reproducibly lost to the unrelated, pre-existing bare "Cornice" collision (Spazi-10, already correctly disambiguated at the data level) in degraded/non-LLM mode, 4 of 5 repeated identical calls, while non-degraded mode was unaffected (the LLM path doesn\'t use this scorer) -- same "only visible in degraded mode" shape as the earlier con/di/per and poltronica-typo anchor bugs. Fixed by stripping em/en-dash the same way as parens in similarity()\'s own tokenizer.',
+  },
 ];
 
 interface RejectCase {
