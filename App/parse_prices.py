@@ -7023,6 +7023,353 @@ def parse_file_pianca_armadi_danger(path, product_name, brand, all_headings=None
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Pianca "wardrobe-danger" 2-axis family -- Brema, Ginevra, Grafica, Logos
+# (CollezioneGiorno), People (CollezioneGiorno), Quadra, Tosca (Madie/
+# wardrobe products). Header convention: a legend block ("L A: battente /
+# C: cassetto / ...", reusing the SAME _PIANCA_2AXIS_LEGEND_RE-style
+# single-letter-colon pattern as Norma Up) followed eventually by a bare
+# "H P CODICI" line with NOTHING trailing (never a shape_b_named-style
+# named column -- the real column labels sit ABOVE, in a "Struttura /
+# Frontali" 2-parent-group header spanning several physical lines).
+#
+# Individually investigated per product, NOT assumed uniform -- confirmed
+# real, structural differences: Ginevra/Logos/People (CollezioneGiorno)/
+# Quadra are simple single-code-per-row tables (verified: every code in
+# each file appears EXACTLY ONCE, checked directly, not assumed from the
+# header shape alone); Grafica and Tosca have a genuine repeating-code/
+# different-price danger pattern (a "Basamento"/"Interno" row-type label
+# to the LEFT of H, same class of collision risk that caused Norma Up's
+# original 1566-row bug) needing the row-type folded into fabric_tier.
+#
+# Column labels: fully legible and exact for Ginevra, Logos, People
+# (CollezioneGiorno), Quadra, and Tosca (verified via direct page-image
+# inspection). Brema and Grafica's own "Struttura+top" header wraps
+# across 4 stacked physical lines with a genuinely ambiguous exact
+# finish-name pairing for their middle columns (their FIRST column,
+# "Materico", is unambiguous and used verbatim) -- per explicit user
+# decision, those columns use a positional "Struttura+top X — Frontali N"
+# label instead of a guessed exact name, the same precedent already
+# established for Fushimi/Inari's own genuinely-ambiguous wrapped column
+# names (_PIANCA_TAVOLI_PIANO_TIERS). Prices and codes are fully exact
+# either way -- this only affects the display label text.
+#
+# Scoped by product_name (like parse_file_pianca_composizione_bundle's
+# own _PIANCA_COMPOSIZIONE_NAME_RE check), not just content -- necessary
+# because several of these products' own text_file is SHARED with other,
+# already-resolved products (e.g. People (CollezioneGiorno)'s underlying
+# structural pattern also appears, byte-identical, in the much larger
+# people.txt file backing 13 unrelated "Composizione P5xx (People)" /
+# "Boiserie e People" products) -- a content-only trigger would have
+# wrongly attributed this table's rows to those unrelated products too.
+# ---------------------------------------------------------------------------
+
+_PIANCA_WARDROBE_DS_SUFFIX_RE = re.compile(r'^\S*D/S$')
+
+
+def _pianca_wardrobe_consume_code(tokens):
+    """Consumes the WHOLE code region (every token in `tokens`, already
+    isolated by the caller) into one literal code string. Handles a
+    plain code, a code+D/S hinge suffix, an embedded wildcard
+    ('M * 73 D/S', 4 tokens, armadi-style), and a TRAILING standalone
+    wildcard ('0083FF *', 2 tokens, confirmed real on Tosca/People's own
+    pages -- a different wildcard convention than armadi's embedded
+    style, not an extraction artifact). Returns None if `tokens` doesn't
+    fully consume as one recognized code shape (caller then skips the
+    row rather than guessing)."""
+    if not tokens:
+        return None
+    if tokens == ['-']:
+        return None
+    if len(tokens) == 1 and _PIANCA_CODE_RE.match(tokens[0]):
+        return tokens[0]
+    if len(tokens) == 2 and _PIANCA_CODE_RE.match(tokens[0]) and _PIANCA_WARDROBE_DS_SUFFIX_RE.match(tokens[1]):
+        return ' '.join(tokens)
+    if len(tokens) == 2 and _PIANCA_CODE_RE.match(tokens[0]) and tokens[1] == '*':
+        return ' '.join(tokens)
+    if len(tokens) == 4 and tokens[1] == '*' and re.match(r'^[A-Z0-9]{1,4}$', tokens[0]) \
+            and re.match(r'^[A-Z0-9]{1,4}$', tokens[2]) and _PIANCA_WARDROBE_DS_SUFFIX_RE.match(tokens[3]):
+        return ' '.join(tokens)
+    if len(tokens) == 3 and tokens[1] == '*' and re.match(r'^[A-Z0-9]{1,4}$', tokens[0]) \
+            and re.match(r'^[A-Z0-9]{1,4}$', tokens[2]):
+        return ' '.join(tokens)
+    return None
+
+
+def _pianca_wardrobe_find_headers(lines, anchor_tokens, lookback=15):
+    """Yields each line index whose own tokens end in exactly ['H','P',
+    'CODICI'] (nothing trailing -- distinguishes this shape from both
+    Shape A, whose CODICI is always followed by the 6 tier letters, and
+    from armadi_danger's own 'H CODICI' adjacency, which has nothing
+    between H and CODICI), PROVIDED a line within `lookback` lines above
+    it contains `anchor_tokens` as a contiguous run -- the product's own
+    verified, near-unique column-header signature (e.g. Brema's 6x
+    'Frontali' run), confirmed checked against a full-catalog grep
+    before use, not assumed safe from this file alone."""
+    n = len(anchor_tokens)
+    anchor_at = set()
+    for i, ln in enumerate(lines):
+        toks = ln.split()
+        for k in range(len(toks) - n + 1):
+            if toks[k:k + n] == anchor_tokens:
+                anchor_at.add(i)
+                break
+    for i, ln in enumerate(lines):
+        if ln.split()[-3:] != ['H', 'P', 'CODICI']:
+            continue
+        if any(i - a >= 0 and i - a <= lookback for a in anchor_at):
+            yield i
+
+
+def _pianca_wardrobe_scan_table(lines, page_of_line, header_idx, product_name, brand, columns, has_row_type, rows, flags):
+    """Row-scan for ONE table starting after `header_idx`, appending
+    directly into the caller's `rows`/`flags` lists. Each row is
+    '[leading context] H P CODE price1..priceN'; H/P located as the LAST
+    adjacent numeric-token pair before the code (never a fixed set,
+    unlike armadi_danger's own closed {238.5,257.7,289.7} -- these
+    products' own H/P values vary freely per row). `leading context`
+    (if any) is captured as a carried row-type label ONLY when
+    `has_row_type` -- forward-carry across rows until the next real
+    label, same convention as armadi_danger's own anta-Tv prefix --
+    and folded into fabric_tier to avoid a (code, fabric_tier) collision
+    when the SAME code legitimately repeats under 2 different row-types
+    with different prices (confirmed real on Grafica/Tosca). Returns the
+    line index where this table's own scan stopped."""
+    n_cols = len(columns)
+    i = header_idx + 1
+    blank_run = 0
+    row_type = None
+    while i < len(lines) and blank_run < 12:
+        raw = lines[i]
+        stripped = raw.strip()
+        if stripped == '':
+            blank_run += 1
+            i += 1
+            continue
+        if stripped.split()[-3:] == ['H', 'P', 'CODICI']:
+            break  # next table's own header -- outer loop handles it
+        blank_run = 0
+
+        tokens = stripped.split()
+        if len(tokens) <= n_cols:
+            i += 1
+            continue
+        trailing = tokens[-n_cols:]
+        if not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if has_row_type and re.match(r'^[A-Za-zÀ-ÿ]', stripped) and len(stripped) <= 40:
+                row_type = stripped
+            i += 1
+            continue
+
+        pre = tokens[:-n_cols]
+        hp_idx = None
+        for k in range(len(pre) - 2, -1, -1):
+            if re.match(r'^\d+(\.\d+)?$', pre[k]) and re.match(r'^\d+(\.\d+)?$', pre[k + 1]):
+                hp_idx = k
+                break
+        if hp_idx is None:
+            flags.append((page_of_line[i], product_name,
+                          f"wardrobe-danger row shape mismatch (no H/P pair found), skipped: {stripped[:120]!r}"))
+            i += 1
+            continue
+
+        leading = _pianca_strip_leading_diagram_noise(pre[:hp_idx])
+        h_val, p_val = pre[hp_idx], pre[hp_idx + 1]
+        code = _pianca_wardrobe_consume_code(pre[hp_idx + 2:])
+        if code is None:
+            flags.append((page_of_line[i], product_name,
+                          f"wardrobe-danger row shape mismatch (code not recognized), skipped: {stripped[:120]!r}"))
+            i += 1
+            continue
+
+        if has_row_type and leading:
+            row_type = ' '.join(leading)
+
+        size = f'{h_val}×{p_val}'
+        any_price = False
+        for column_label, cell in zip(columns, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            tier = f'{row_type} — {column_label}' if (has_row_type and row_type) else column_label
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": row_type if has_row_type else None,
+                "size": size,
+                "fabric_tier": tier,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name, f"no price rows found for code {code}"))
+        i += 1
+    return i
+
+
+def _parse_file_pianca_wardrobe(path, product_name, brand, expected_name, anchor_tokens, columns, has_row_type):
+    if product_name != expected_name:
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    for header_idx in _pianca_wardrobe_find_headers(lines, anchor_tokens):
+        _pianca_wardrobe_scan_table(lines, page_of_line, header_idx, product_name, brand, columns, has_row_type, rows, flags)
+    return rows, flags
+
+
+# Brema, real PDF page 54 -- verified via image. 6 columns; only the 1st
+# ("Materico") has an unambiguous exact name, the remaining 5 use the
+# positional fallback (see module comment above).
+_PIANCA_WARDROBE_BREMA_COLUMNS = ['Struttura+top 0.8 — Frontali Materico'] + \
+    [f'Struttura+top 0.4 — Frontali {i}' for i in range(2, 7)]
+
+
+def parse_file_pianca_brema(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Brema',
+        ['Frontali'] * 6, _PIANCA_WARDROBE_BREMA_COLUMNS, has_row_type=False)
+
+
+# Ginevra, real PDF pages -- verified via text (fully legible, clean 2x2
+# Struttura x Frontali grid). Every code confirmed to appear exactly
+# once across the whole file before trusting the simple (no row-type)
+# scan.
+_PIANCA_WARDROBE_GINEVRA_COLUMNS = [
+    'Struttura Laccato Opaco/Essenza — Frontali L. Opaco/Essenza',
+    'Struttura Laccato Opaco/Essenza — Frontali Lucido Sp.',
+    'Struttura Lucido Spazzolato — Frontali L. Opaco/Essenza',
+    'Struttura Lucido Spazzolato — Frontali Lucido Sp.',
+]
+
+
+def parse_file_pianca_ginevra(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Ginevra',
+        ['L.', 'Opaco', 'Lucido', 'Sp.', 'L.', 'Opaco', 'Lucido', 'Sp.'],
+        _PIANCA_WARDROBE_GINEVRA_COLUMNS, has_row_type=False)
+
+
+# Grafica, real PDF page 71 -- verified via image. 8 columns; only the
+# 1st ("Materico") is unambiguous, rest use the positional fallback. HAS
+# the repeating-code danger pattern (Basamento: L. Opaco / Fin. Metallo
+# row-type, confirmed real via direct row inspection -- code G3CH prints
+# twice with different prices under each).
+_PIANCA_WARDROBE_GRAFICA_COLUMNS = ['Struttura+top 1.4 — Frontali Materico'] + \
+    [f'Struttura+top 1.4 — Frontali {i}' for i in range(2, 9)]
+
+
+def parse_file_pianca_grafica(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Grafica',
+        ['Frontali'] * 8, _PIANCA_WARDROBE_GRAFICA_COLUMNS, has_row_type=True)
+
+
+# Logos (CollezioneGiorno), real PDF page 74 -- verified via text (fully
+# legible: 2 'Top e frontali interni' parent groups x 3 'Struttura e
+# frontali esterni' sub-choices). Every code confirmed to appear exactly
+# once.
+_PIANCA_WARDROBE_LOGOS_COLUMNS = [
+    f'Top e frontali interni {parent} — Struttura e frontali esterni {sub}'
+    for parent in ('L. Opaco/Essenza', 'Lucido Sp.')
+    for sub in ('L. Opaco', 'Essenza', 'Lucido Sp.')
+]
+
+
+def parse_file_pianca_logos_collezionegiorno(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope. Anchor is 6 consecutive bare
+    'Struttura' tokens -- unlike the other 6 products in this family,
+    Logos's own 3-word 'Struttura e frontali esterni' phrase is NOT
+    contiguous on one physical line (it wraps across 3 stacked lines,
+    'Struttura'x6 / 'e frontali'x6 / 'esterni'x6, confirmed via direct
+    text inspection), so only the first word is usable as a same-line
+    anchor. Confirmed unique via full-catalog grep (only logos.txt and
+    logos_collezionegiorno.txt contain this run at all)."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Logos (CollezioneGiorno)',
+        ['Struttura'] * 6,
+        _PIANCA_WARDROBE_LOGOS_COLUMNS, has_row_type=False)
+
+
+# People (CollezioneGiorno), real PDF page 87 -- verified via text (fully
+# legible: 'Struttura Laccato Opaco/Essenza' parent spans 3 Frontali
+# sub-choices, 'Struttura Lucido Spazzolato' spans 2). Scoped by
+# product_name specifically because this exact table ALSO appears,
+# byte-identical, in the much bigger people.txt shared by 13 unrelated
+# already-resolved products -- see module comment above.
+_PIANCA_WARDROBE_PEOPLE_CG_COLUMNS = [
+    'Struttura Laccato Opaco/Essenza — Frontali L. Opaco/Essenza',
+    'Struttura Laccato Opaco/Essenza — Frontali Lucido Sp.',
+    'Struttura Laccato Opaco/Essenza — Frontali Cuoio Rig.',
+    'Struttura Lucido Spazzolato — Frontali L. Opaco/Essenza',
+    'Struttura Lucido Spazzolato — Frontali Lucido Sp.',
+]
+
+
+def parse_file_pianca_people_collezionegiorno(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'People (CollezioneGiorno)',
+        ['L.', 'Opaco', 'Lucido', 'Sp.', 'Cuoio', 'Rig.', 'L.', 'Opaco', 'Lucido', 'Sp.'],
+        _PIANCA_WARDROBE_PEOPLE_CG_COLUMNS, has_row_type=False)
+
+
+# Quadra, real PDF page -- verified via text (fully legible: 'Struttura
+# Laccato Opaco/Essenza' parent spans 3 Frontali sub-choices, 'Struttura
+# Lucido Sp.' spans 1 -- a real domain-consistent asymmetric split
+# already confirmed on People (CollezioneGiorno) above: a narrower
+# 'special' structure finish only ever pairs with its own matching
+# frontali option).
+_PIANCA_WARDROBE_QUADRA_COLUMNS = [
+    'Struttura Laccato Opaco/Essenza — Frontali Laccato Opaco',
+    'Struttura Laccato Opaco/Essenza — Frontali Essenza',
+    'Struttura Laccato Opaco/Essenza — Frontali Lucido Sp.',
+    'Struttura Lucido Sp. — Frontali Lucido Sp.',
+]
+
+
+def parse_file_pianca_quadra(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Quadra',
+        ['Laccato', 'Opaco', 'Essenza', 'Lucido', 'Sp.', 'Lucido', 'Sp.'],
+        _PIANCA_WARDROBE_QUADRA_COLUMNS, has_row_type=False)
+
+
+# Tosca, real PDF page 97 -- verified via text. Only 3 columns, fully
+# legible, no 'Frontali' repeated-word convention at all (a flat
+# 'Esterno' group: Laccato Opaco / Lucido Spazzolato / Essenza). HAS the
+# repeating-code danger pattern (an 'Interno' row-type -- e.g. "Materico
+# Lavagna" vs "Laccato Opaco" -- confirmed real via direct row
+# inspection: code 0083FF * prints twice with different prices under
+# each). Also exercises the trailing-standalone-wildcard code convention
+# ('0083FF *').
+_PIANCA_WARDROBE_TOSCA_COLUMNS = ['Esterno Laccato Opaco', 'Esterno Lucido Spazzolato', 'Esterno Essenza']
+
+
+def parse_file_pianca_tosca(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    return _parse_file_pianca_wardrobe(
+        path, product_name, brand, 'Tosca',
+        ['Laccato', 'Opaco', 'Lucido', 'Spazzolato', 'Essenza'],
+        _PIANCA_WARDROBE_TOSCA_COLUMNS, has_row_type=True)
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
@@ -7064,6 +7411,13 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_letti_tier,
         parse_file_pianca_composizione_bundle,
         parse_file_pianca_armadi_danger,
+        parse_file_pianca_brema,
+        parse_file_pianca_ginevra,
+        parse_file_pianca_grafica,
+        parse_file_pianca_logos_collezionegiorno,
+        parse_file_pianca_people_collezionegiorno,
+        parse_file_pianca_quadra,
+        parse_file_pianca_tosca,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
