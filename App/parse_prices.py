@@ -4856,6 +4856,78 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # Fushimi Lounge, real pdf page (header "L H P CODICI Cuoio") -- same
     # single-named-column shape, different real word. Found 2026-08-25.
     ('Cuoio',): ['Cuoio'],
+    # CollezioneGiorno remainder, found 2026-08-26 during a full sweep of
+    # the never-individually-verified remainder of the original 65-
+    # product batch extraction. Each key below was explicitly checked for
+    # collision against every OTHER product deriving the same key (this
+    # registry is catalog-wide flat, keyed only by the CODICI line's own
+    # literal trailing tokens) before being added -- several real
+    # candidates found this same sweep (1+1 vs Chloé both deriving bare
+    # ('Struttura',) with different real column counts 2 vs 6; Abaco vs
+    # Baio vs Soffio fisso/allungabile all deriving bare ('Piano',) with
+    # different real column counts; Intro vs Delta allungabile both
+    # deriving bare ('Basamento',)) are DELIBERATELY left out of this
+    # registry, still known_gap, pending a dedicated collision-resolution
+    # pass -- not force-added just because one side happens to look safe.
+    #
+    # Seida, real PDF page 18: a genuine 4-column hybrid -- 2 named wood-
+    # finish columns (Laccato Opaco/Essenza) plus 2 Shape-A-style tier-
+    # LETTER columns (A-B-C tessuto cliente / H-P-Q) reused as column
+    # headers here instead of row labels, confirmed via direct image
+    # inspection, not assumed from the header text alone.
+    ('Seduta', 'legno', 'Seduta', 'imbottita'):
+        ['Laccato Opaco', 'Essenza', 'Seduta A-B-C / tessuto cliente', 'Seduta H-P-Q'],
+    # Duetto's own ('Laccato', 'Opaco', 'Finiture', 'Metallo') key
+    # deliberately NOT added here -- a full-catalog recheck (not just
+    # against this batch's own candidate list) found it ALSO collides
+    # with Brema, Norma (CollezioneGiorno), and Norma (CollezioneNotte),
+    # none of which have been individually verified for their own real
+    # column labels under this key yet. Caught the same way the Abaco/
+    # Scacco 'Top' near-miss below was -- see that comment for the actual
+    # incident this generalized the check to prevent.
+    #
+    # Haik, real PDF page 22 -- each column's own name wraps to 2 further
+    # lines (Malva/Oceano/Onice, Argento/Bronzo/Oro), verified via image.
+    ('Malva', 'Argento'): ['Malva / Oceano / Onice', 'Argento / Bronzo / Oro'],
+    # Servoquadro_Servogiro, real PDF page 26 -- same 2-column shape as
+    # the existing 'L. Opaco'/'Essenza'/'Lucido Sp.' family but WITHOUT a
+    # trailing Essenza token on this specific header (verified via image
+    # it's still 2 real columns, Essenza wraps under the first).
+    ('L.', 'Opaco', 'Lucido', 'Sp.'): ['L. Opaco / Essenza', 'Lucido Sp.'],
+    # Abaco's own ('Top',) key deliberately NOT added -- a real
+    # near-miss caught during this same sweep: it LOOKED unique against
+    # this batch's own candidate list, but a full-catalog recheck found
+    # Scacco ALSO derives bare ('Top',), with genuinely DIFFERENT real
+    # column labels ('Linoleum'/'V. Laccato', confirmed via direct image)
+    # that happen to share the same COLUMN COUNT (2) as Abaco's own
+    # ('Cuoio Rigenerato...'/'Vetro Marmo...') -- meaning the row-shape
+    # safety check (which only validates trailing PRICE COUNT, not label
+    # correctness) would NOT have caught this: Scacco's real rows would
+    # have parsed successfully but under Abaco's wrong column names,
+    # silently mislabeling real data rather than failing loudly. Caught
+    # only by manually verifying the bonus match's own image after
+    # first adding this key -- prompted widening the collision check
+    # from "this batch's candidates" to a full-catalog grep for every
+    # new key before trusting any of them, which is what caught the
+    # Duetto/Brema/Norma collision above too.
+    #
+    # Confluence, real PDF page 28 -- a 5-real-column table whose header
+    # line only shows 3 literal 'Piano' tokens (2 of the 3 top-level
+    # Piano/finish groups each span 2 Basamento-finish sub-columns, same
+    # "parent-group token count != real column count" pattern already
+    # established for Siviglia's own 2-parent/4-child 'Frontali' key
+    # above) -- verified via direct image inspection of the real 2-row
+    # header, not assumed 1 column per literal 'Piano' token.
+    ('Piano', 'Piano', 'Piano'): [
+        'Piano Fenix® Bianco — Basamento Bianco Lucido',
+        'Piano Fenix® Nero — Basamento Nero Lucido',
+        'Piano Fenix® Nero — Basamento Titanio Lucido',
+        'Piano Borgogna/Fr.Antracite — Basamento Nero Lucido',
+        'Piano Borgogna/Fr.Antracite — Basamento Titanio Lucido',
+    ],
+    # Delta fisso, real PDF page 30 -- 5 named columns, verified via image.
+    ('L.', 'Opaco', 'Essenza', 'V.', 'Laccato', 'V.', 'Marmo', 'Marmo'):
+        ['L. Opaco', 'Essenza', 'V. Laccato / V. Trasp.', 'V. Marmo / Terrazzo', 'Marmo'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
