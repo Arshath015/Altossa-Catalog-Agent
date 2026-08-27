@@ -4928,6 +4928,60 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # Delta fisso, real PDF page 30 -- 5 named columns, verified via image.
     ('L.', 'Opaco', 'Essenza', 'V.', 'Laccato', 'V.', 'Marmo', 'Marmo'):
         ['L. Opaco', 'Essenza', 'V. Laccato / V. Trasp.', 'V. Marmo / Terrazzo', 'Marmo'],
+    # CollezioneNotte remainder, found 2026-08-26/27 during the same full
+    # sweep as the CollezioneGiorno batch above -- same discipline: every
+    # key checked against the FULL catalog (not just this batch's own
+    # candidates) before being added. Real collisions found and
+    # deliberately NOT added this round: ('Laccato','Opaco','Essenza',
+    # 'Lucido','Sp.') (Consolle Elle vs Domino's OWN first table vs Luce
+    # Illumia vs Ponti), ('Struttura','Struttura') (Ala vs Dedalo
+    # (Progetti 06-07) vs Island up vs People (CollezioneNotte) vs People
+    # (SistemiGiorno)), ('Laccato','Opaco','Essenza','Lucido',
+    # 'Spazzolato') (Ala's OWN 2nd table vs Spazioteca (SistemiGiorno) vs
+    # Venere), ('Laccato','Opaco') (Forma, all 3 of its own tables, vs
+    # Boiserie Soft vs Norma Up vs Ponti).
+    #
+    # Mensole vetro per boiserie, real PDF page (single table).
+    ('Vetro', 'Trasparente', 'Vetro', 'per'):
+        ['Vetro Trasparente / Piombo', 'Vetro per retroilluminazione'],
+    # Mensole metallo per boiserie, real PDF page -- confirmed all 3
+    # tokens after CODICI ('Canna di Fucile') are a real column name
+    # (a finish), not stray legend text bleeding onto the header line.
+    ('Canna', 'di', 'Fucile', 'Laccato', 'Opaco', 'Finiture', 'Metallo'):
+        ['Canna di Fucile', 'Laccato Opaco', 'Finiture Metallo'],
+    # Boiserie e People, real PDF page 70.
+    ('L.', 'Opaco', 'Lucido', 'Sp.', 'Fin.', 'Metallo'):
+        ['L. Opaco / Essenza', 'Lucido Sp.', 'Fin. Metallo'],
+    # Domino's OWN 2nd table ("Staffe metallo"), real PDF page -- its 1st
+    # table shares the deferred ('Laccato','Opaco','Essenza','Lucido',
+    # 'Sp.') collision above, but this one has a genuinely unique key.
+    ('L.', 'Opaco', 'Lucido', 'Alluminio', 'Metacrilato'):
+        ['L. Opaco / Essenza', 'Lucido Spazzolato', 'Alluminio Brunito', 'Metacrilato'],
+    # Accessori (Pedane, pianali e scrittoi), real PDF page.
+    ('Laccato', 'Opaco', 'Alluminio'): ['Laccato Opaco', 'Alluminio'],
+    # Nota, real PDF page 114 -- both columns share a common 'Fianchi
+    # Essenza / Frontali e top' prefix, disambiguated only by their own
+    # trailing finish word, verified via direct row inspection.
+    ('Fianchi', 'Essenza'):
+        ['Fianchi Essenza / Frontali e top: Laccato Opaco', 'Frontali e top: Lucido Spazzolato'],
+    # Kyoto, real PDF page 102 -- one of the 2 originally-named "outlier"
+    # products. A genuinely simple SINGLE-axis 7-column table despite
+    # LOOKING like a Norma-Up-style 2-axis danger grid at first glance
+    # (3 'Struttura esterna' parent groups x 2 'Frontali' sub-choices,
+    # same "parent-group token count != real column count" pattern as
+    # Confluence/Siviglia above) -- confirmed via direct row inspection
+    # that every code appears EXACTLY ONCE (no repeat-code-different-
+    # price collision risk), so this is safe for the simple registry,
+    # not a case needing its own dedicated 2-axis function.
+    ('Struttura', 'esterna', 'Struttura', 'esterna', 'Struttura', 'esterna', 'Vassoio'): [
+        'Struttura esterna Laccato Opaco — Frontali L. Opaco/Essenza',
+        'Struttura esterna Laccato Opaco — Frontali Lucido Sp.',
+        'Struttura esterna Essenza — Frontali L. Opaco/Essenza',
+        'Struttura esterna Essenza — Frontali Lucido Sp.',
+        'Struttura esterna Lucido Sp. — Frontali L. Opaco/Essenza',
+        'Struttura esterna Lucido Sp. — Frontali Lucido Sp.',
+        'Vassoio L. Opaco',
+    ],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
