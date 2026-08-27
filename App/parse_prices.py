@@ -6743,6 +6743,21 @@ _PIANCA_ARMADI_COLUMN_REGISTRY = {
     # unrecognized by this parser -- deliberately not attempted here).
     (('Opaco', 'Base', 'Opaco', 'Colore'), ()):
         ['Opaco Base', 'Opaco Colore'],
+    # Sipario (Spazi-10) -- flagged in flag_triage.json as looking like it
+    # needed its own dedicated 2-axis function (2 real SKUs per row,
+    # sharing one price vector), but confirmed via direct row inspection
+    # to be EXACTLY this parser's own existing 2-CODICI-column shape
+    # (P 59 / P 42.3 depth variants, same price for both -- not a
+    # repeating-code-different-price danger table at all), just needing
+    # 3 new registry entries. Verified real PDF pages 46-54.
+    (('Materico', 'Opaco', 'Base', 'Opaco', 'Colore', 'Lucido', 'Sp.'), ('Essenza', 'L.', 'Metallico')):
+        ['Materico', 'Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp. / L. Metallico'],
+    (('Materico', 'L.', 'Opaco', 'Lucido', 'Pelle', 'V.', 'Laccato', 'V.', 'Marmo'), ('Essenza', 'Sp.', 'Sint.', 'V.', 'L-Met.')):
+        ['Materico', 'L. Opaco / Essenza', 'Lucido Sp. / L-Met.', 'Pelle Sint.',
+         'V. Laccato / V. L-Met. / V. Metall. / Specchio', 'V. Marmo'],
+    (('Materico', 'Opaco', 'Base', 'Opaco', 'Lucido', 'Sp.', 'V.', 'Laccato'), ('Colore', 'L.', 'Metallico', 'V.', 'L-Met.')):
+        ['Materico', 'Opaco Base', 'Opaco Colore / Essenza', 'Lucido Sp. / L. Metallico',
+         'V. Laccato / V. L-Met. / V. Metall. / Specchio'],
 }
 
 _PIANCA_ARMADI_H_VALUES = {'238.5', '257.7', '289.7'}
@@ -7370,6 +7385,180 @@ def parse_file_pianca_tosca(path, product_name, brand, all_headings=None, headin
         _PIANCA_WARDROBE_TOSCA_COLUMNS, has_row_type=True)
 
 
+# ---------------------------------------------------------------------------
+# Cornice (Spazi-10) -- genuinely its own dedicated shape, per this
+# project's standing rule that a structurally different 2-axis grid gets
+# its own function rather than being forced through the wardrobe-danger
+# family above or any existing 2-axis parser. Verified via direct text
+# inspection (real PDF pages 17-22): header "L H P CODICI L. Opaco
+# Lucido Sp. Pelle Sint. Pelle Sint." (sub-line wraps 'Essenza'/
+# 'L. Metallico' under the first 2), 4 real columns under 2 parent
+# groups ('Esterno' x3, 'Copertura aggiuntiva' x1). Two genuinely
+# different row shapes share this ONE header, confirmed via direct code-
+# repetition check, not assumed:
+#   1. "Interno e cappello" rows: the SAME code (e.g. 00D4FF) prints
+#      TWICE, once under a "L. Opaco" interior-finish label and once
+#      under "L. Metallico", with different prices each time -- the
+#      exact danger class that caused Norma Up's original 1566-row bug.
+#      Folded into fabric_tier (same technique as armadi_danger/
+#      wardrobe's own row-type fold).
+#   2. "Copertura" rows: a genuinely separate, single-code-per-row
+#      sub-table (confirmed: never repeats) that only ever populates the
+#      4th column (Pelle Sint. under Copertura aggiuntiva) -- these rows
+#      have NO leading row-type text of their own, so the row-type
+#      carry must be explicitly RESET (not left stale from the previous
+#      "Interno e cappello" block) the moment a bare "Copertura" context
+#      line is seen, confirmed necessary by direct inspection (otherwise
+#      these rows would wrongly inherit a stale "L. Metallico" prefix --
+#      cosmetic only, since their own code never collides, but still
+#      wrong).
+# An "L (description)" heading (e.g. "120 (1 vano anta)") sits on its
+# own line ABOVE each row-block (a plain forward carry, unlike
+# armadi_danger's own L convention which needed a backward fill).
+# ---------------------------------------------------------------------------
+
+_PIANCA_CORNICE_SPAZI10_COLUMNS = [
+    'L. Opaco / Essenza', 'Lucido Sp. / L. Metallico',
+    'Pelle Sint. (Esterno)', 'Pelle Sint. (Copertura aggiuntiva)',
+]
+
+
+def parse_file_pianca_cornice_spazi10(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Cornice':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    n_cols = len(_PIANCA_CORNICE_SPAZI10_COLUMNS)
+    rows = []
+    flags = []
+    i = 0
+    in_table = False
+    l_val = None
+    row_type = None
+    blank_run = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        toks = stripped.split()
+        if toks[-8:] == ['L.', 'Opaco', 'Lucido', 'Sp.', 'Pelle', 'Sint.', 'Pelle', 'Sint.']:
+            in_table = True
+            l_val = None
+            row_type = None
+            blank_run = 0
+            i += 2  # past header + its 'Essenza / L. Metallico' sub-line
+            continue
+        if not in_table:
+            i += 1
+            continue
+
+        if stripped == '':
+            blank_run += 1
+            if blank_run >= 15:
+                in_table = False
+            i += 1
+            continue
+        blank_run = 0
+
+        if len(toks) <= n_cols:
+            # Context-only line: a new L-group heading ("120 (1 vano
+            # anta)"), the "Interno e cappello" section divider (ignored
+            # -- immediately superseded by "L. Opaco"/"L. Metallico" on
+            # the next real row anyway), a bare "Copertura" reset, or
+            # unrelated diagram noise.
+            if re.match(r'^\d+(\.\d+)?\s*\(', stripped):
+                l_val = toks[0]
+            elif stripped == 'Copertura':
+                row_type = None
+            i += 1
+            continue
+
+        trailing = toks[-n_cols:]
+        if not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if stripped == 'Copertura':
+                row_type = None
+            i += 1
+            continue
+
+        pre = toks[:-n_cols]
+        hp_idx = None
+        for k in range(len(pre) - 2, -1, -1):
+            if re.match(r'^\d+(\.\d+)?$', pre[k]) and re.match(r'^\d+(\.\d+)?$', pre[k + 1]):
+                hp_idx = k
+                break
+        if hp_idx is not None:
+            leading = _pianca_strip_leading_diagram_noise(pre[:hp_idx])
+            h_val, p_val = pre[hp_idx], pre[hp_idx + 1]
+            code_tokens = pre[hp_idx + 2:]
+        else:
+            # The "Copertura" sub-table's own rows print only ONE
+            # dimension before the code (e.g. "A  45  06DH4F  - - - 180",
+            # the leading "A" a stray diagram-reference letter), not the
+            # H/P pair the "Interno e cappello" rows have -- confirmed
+            # real via direct inspection, not a parsing failure to work
+            # around blindly. Strips leading bare-single-letter diagram
+            # noise ("A", confirmed never a real row-type value for this
+            # product's own Copertura rows) -- deliberately NOT reusing
+            # _pianca_strip_leading_diagram_noise, which also strips bare
+            # NUMBERS and would wrongly eat the real H value itself here.
+            # P is left unset (None) rather than guessed at which of H/P
+            # this lone value actually is.
+            noise_stripped = list(pre)
+            while noise_stripped and re.match(r'^[A-Z]$', noise_stripped[0]):
+                noise_stripped.pop(0)
+            if noise_stripped and re.match(r'^\d+(\.\d+)?$', noise_stripped[0]):
+                leading = []
+                h_val, p_val = noise_stripped[0], None
+                code_tokens = noise_stripped[1:]
+            else:
+                flags.append((page_of_line[i], product_name,
+                              f"Cornice (Spazi-10) row shape mismatch (no H or H/P found), skipped: {stripped[:120]!r}"))
+                i += 1
+                continue
+
+        code = _pianca_wardrobe_consume_code(code_tokens)
+        if code is None:
+            flags.append((page_of_line[i], product_name,
+                          f"Cornice (Spazi-10) row shape mismatch (code not recognized), skipped: {stripped[:120]!r}"))
+            i += 1
+            continue
+
+        if leading and ' '.join(leading) != 'Interno e cappello':
+            row_type = ' '.join(leading)
+
+        dims = [d for d in (l_val, h_val, p_val) if d is not None]
+        size = '×'.join(dims)
+        any_price = False
+        for column_label, cell in zip(_PIANCA_CORNICE_SPAZI10_COLUMNS, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            tier = f'{row_type} — {column_label}' if row_type else column_label
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": row_type,
+                "size": size,
+                "fabric_tier": tier,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name, f"no price rows found for code {code}"))
+        i += 1
+    return rows, flags
+
+
 def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text=None):
     """Dispatcher: runs every Pianca shape parser over the same text and
     merges results. All header signatures are mutually exclusive by
@@ -7418,6 +7607,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_people_collezionegiorno,
         parse_file_pianca_quadra,
         parse_file_pianca_tosca,
+        parse_file_pianca_cornice_spazi10,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
