@@ -967,6 +967,26 @@ const CASES: Case[] = [
     expectedTier: 'Laccato Opaco',
     note: 'Resolved 2026-08-28, shares Icaro\'s new labels-before-CODICI shape (Laccato Opaco/Essenza/Terrazzo/Marmo). Unlike Icaro, this product\'s pre-existing guard comment WAS accurate (correctly described as a real 4-column table with labels before CODICI) -- confirms the "verify, don\'t trust" rule cuts both ways: some inherited claims hold up, some don\'t, and only re-checking tells you which. Captures "Tavolo rotondo"/"Tavolo quadrato" as variant_context since 2 different shapes can share the same L dimension with different codes (T0P08 vs T0P7A, both L=80). +20 rows.',
   },
+  {
+    id: 'ala-pannelli-cluster7-shared',
+    query: 'Ala price',
+    productName: 'Ala',
+    code: '46R4FWX',
+    expectedPrice: '264',
+    expectedSize: '120×40×4.5',
+    expectedTier: 'Laccato Opaco',
+    note: 'Collision cluster #7 (2026-08-28, partial): Ala\'s OWN "Pannelli" table derives the bare (\'Laccato\',\'Opaco\',\'Essenza\',\'Lucido\',\'Spazzolato\') key, confirmed via direct row inspection genuinely shared with Venere -- both simple, clean 3-column tables, safe to share one flat entry. Spazioteca (SistemiGiorno) also derives this exact key but is deliberately excluded (see guard-spazioteca-scorrevoli-not-corrupted below) -- a real corruption risk found on at least one of its own sub-tables, not force-added.',
+  },
+  {
+    id: 'venere-cluster7-shared',
+    query: 'Venere price',
+    productName: 'Venere',
+    code: '42E84',
+    expectedPrice: '1.300',
+    expectedSize: '40×80×35',
+    expectedTier: 'Laccato Opaco',
+    note: 'The other half of cluster #7\'s safely-shared pair -- confirmed via direct row inspection identical real column structure to Ala\'s "Pannelli" table.',
+  },
 ];
 
 interface RejectCase {
@@ -1057,8 +1077,33 @@ async function main() {
     await new Promise(r => setTimeout(r, 80));
   }
 
+  // Root-cause guard for collision cluster #7's deliberately-excluded
+  // half: Spazioteca (SistemiGiorno) derives the same bare ('Laccato',
+  // 'Opaco','Essenza','Lucido','Spazzolato') key as Ala/Venere, but a
+  // side-legend column (a separate "Anta scorrevole L" width-options
+  // list) bleeds onto the SAME physical line as some real data rows via
+  // columnar pdftotext extraction -- confirmed the generic dims-capture
+  // cannot currently tell that stray leading number apart from a genuine
+  // 2nd dimension (code 47Q9C would parse as size "90×97" instead of the
+  // correct single "97"). Excluded via a product_name guard in
+  // parse_file_pianca_shape_b_named. NOT a REJECT_CASE (unlike Icaro/
+  // Ettorino/Pedane/Scacco) because this product is NOT wholly
+  // known_gap -- it already has substantial real price data from OTHER,
+  // unrelated tables in the same file, so "0 rows total" is the wrong
+  // assertion; the guard instead checks the specific corruption-prone
+  // code never appears at all.
+  {
+    const resp = await postChat('Pianca', 'Spazioteca (SistemiGiorno) price');
+    const rows = (resp.matches || []).filter(m => m.product_name === 'Spazioteca (SistemiGiorno)' && m.code === '47Q9C');
+    const ok = rows.length === 0;
+    if (!ok) {
+      failures.push(`[guard-spazioteca-scorrevoli-not-corrupted] expected code "47Q9C" to be absent (excluded, corruption risk), found ${rows.length} row(s): ${JSON.stringify(rows)}`);
+    }
+    console.log(`[guard-spazioteca-scorrevoli-not-corrupted] ${ok ? 'ok' : 'FAIL'}  code-47Q9C-rows=${rows.length}`);
+  }
+
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length + REJECT_CASES.length}`);
+  console.log(`Total cases: ${CASES.length + REJECT_CASES.length + 1}`);
   console.log(`Failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');

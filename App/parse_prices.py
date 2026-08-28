@@ -5173,21 +5173,31 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # not 2), Island Up's own version has a DIFFERENT nested sub-structure
     # again ('Frontale' x 5 Vetro finish choices) -- each product needs
     # its own dedicated verified parser at the same scale as the SIPARIO
-    # Armadi danger-table build, not a quick registry fix. ('Laccato',
-    # 'Opaco','Essenza','Lucido','Spazzolato') (Ala's OWN 2nd table vs
-    # Spazioteca (SistemiGiorno) vs Venere) -- Ala and Venere are both
-    # confirmed safe simple 3-column tables, but Spazioteca (SistemiGiorno)
-    # has a real, distinct corruption risk: a side-legend column (a
-    # separate "Anta scorrevole L" width-options list) bleeds onto the
-    # SAME physical line as some real data rows via the columnar
-    # pdftotext -layout extraction, and the generic dims-capture cannot
-    # currently tell that stray leading number apart from a genuine 2nd
-    # dimension (confirmed: row for code 47Q9C parses as size "90×97"
-    # instead of the correct single "97"). Deliberately NOT added --
-    # sharing this key as-is would silently corrupt Spazioteca's real
-    # data, which this project's whole discipline exists to prevent.
-    # Needs its own guard/dedicated parser for Spazioteca specifically
-    # before this key can be shared safely.
+    # Armadi danger-table build, not a quick registry fix. Deliberately
+    # skipped this round -- see pianca_brand_state memory.
+    #
+    # Ala (OWN 2nd table, "Pannelli") / Venere -- collision cluster #7,
+    # partially resolved 2026-08-28. Both confirmed via direct row
+    # inspection to be simple, clean 3-column tables under this bare key.
+    # Spazioteca (SistemiGiorno) ALSO derives this exact key but is
+    # DELIBERATELY EXCLUDED below (see the product_name guard in
+    # parse_file_pianca_shape_b_named) -- it has a real, distinct
+    # corruption risk: a side-legend column (a separate "Anta scorrevole
+    # L" width-options list) bleeds onto the SAME physical line as some
+    # real data rows via the columnar pdftotext -layout extraction, and
+    # the generic dims-capture cannot currently tell that stray leading
+    # number apart from a genuine 2nd dimension (confirmed: row for code
+    # 47Q9C parses as size "90×97" instead of the correct single "97").
+    # Spazioteca ALSO has at least one further real sub-table under this
+    # same key with a genuinely different 3-dim convention ("L H P
+    # CODICI") that does not obviously share the same bleed issue --
+    # not yet individually verified either way, so excluded wholesale
+    # rather than partially guessed at. Sharing this key for Spazioteca
+    # as-is would silently corrupt real data, which this project's whole
+    # discipline exists to prevent -- stays at 0 rows (still correctly
+    # known_gap) until it gets its own dedicated verified parser.
+    ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Spazzolato'):
+        ['Laccato Opaco', 'Essenza', 'Lucido Spazzolato'],
     #
     # Mensole vetro per boiserie, real PDF page (single table).
     ('Vetro', 'Trasparente', 'Vetro', 'per'):
@@ -5279,6 +5289,15 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
             # shape_b_named table despite deriving the same registry key
             # from this line alone. See _pianca_wrapped_tier_letters_ahead's
             # own docstring for the confirmed collision this guards.
+            columns = None
+        if (columns == ['Laccato Opaco', 'Essenza', 'Lucido Spazzolato']
+                and product_name == 'Spazioteca (SistemiGiorno)'):
+            # Collision cluster #7's deliberately-excluded half -- see the
+            # registry comment above this key. This exact product derives
+            # the same key as Ala/Venere but has a confirmed side-legend-
+            # column data-corruption risk on at least one of its own
+            # sub-tables; must stay at 0 rows (still correctly known_gap)
+            # rather than silently produce a wrong size on some rows.
             columns = None
         if columns is None:
             i += 1
