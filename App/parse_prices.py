@@ -5735,6 +5735,113 @@ def parse_file_pianca_baio(path, product_name, brand, all_headings=None, heading
 
 
 # ---------------------------------------------------------------------------
+# Icaro / Ettorino -- both a genuinely different header convention from
+# every other Pianca table this session: the real column labels print on
+# the physical line BEFORE "L H P CODICI" (which prints with an EMPTY
+# tail, no trailing tokens at all), not after it or wrapped below it like
+# every shape_b_named entry. Confirmed via direct row inspection (NOT the
+# pre-existing regression guard comments for these 2 products, which
+# turned out to be stale/inaccurate on Icaro specifically -- it described
+# "2 trailing prices... labels wrap to the next line", but the real table
+# is 4 columns with labels on the line BEFORE; per user feedback, an
+# inherited "confirmed" claim is a claim, not proof, and this is exactly
+# that case). Both products: 3 leading dims (L H P), a code, then 4
+# trailing prices, confirmed identical row shape -- one shared row-scan
+# core, 2 product-scoped wrappers with their own verified column lists
+# (Icaro real PDF page 28: Essenza/V. Laccato/V. Marmo/Marmo; Ettorino
+# real PDF page 37: Laccato Opaco/Essenza/Terrazzo/Marmo). Gated on
+# product_name (not on any header-text auto-detection) since both
+# functions run unconditionally over every Pianca product via the shared
+# dispatcher -- this is deliberately the simplest possible guard against
+# misfiring on some other product's own unrelated table, same pattern as
+# every other single/few-product dedicated parser this session (Chloé,
+# Intro, Delta allungabile, Abaco/Aliseo/Baio).
+# ---------------------------------------------------------------------------
+
+_PIANCA_ICARO_COLUMNS = ['Essenza', 'V. Laccato', 'V. Marmo', 'Marmo']
+_PIANCA_ETTORINO_COLUMNS = ['Laccato Opaco', 'Essenza', 'Terrazzo', 'Marmo']
+
+
+def _pianca_labels_before_codici_row_scan(path, product_name, brand, columns):
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    n_cols = len(columns)
+    rows = []
+    flags = []
+    variant_context = None
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == '':
+            continue
+        tokens = stripped.split()
+        trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+        if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                variant_context = stripped
+            continue
+
+        pre_tokens = tokens[:-n_cols]
+        if not pre_tokens or not (_PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1])):
+            continue
+        code = pre_tokens[-1]
+        remaining = list(pre_tokens[:-1])
+
+        dims = []
+        while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+            popped = remaining.pop()
+            if len(dims) < 3:
+                dims.append(popped)
+        dims.reverse()
+        size = '×'.join(dims) if dims else None
+
+        any_price = False
+        for column_label, cell in zip(columns, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": variant_context,
+                "size": size,
+                "fabric_tier": column_label,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name, f"no price rows found for code {code}"))
+
+    return rows, flags
+
+
+def parse_file_pianca_icaro(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Icaro':
+        return [], []
+    return _pianca_labels_before_codici_row_scan(path, product_name, brand, _PIANCA_ICARO_COLUMNS)
+
+
+def parse_file_pianca_ettorino(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Ettorino':
+        return [], []
+    return _pianca_labels_before_codici_row_scan(path, product_name, brand, _PIANCA_ETTORINO_COLUMNS)
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape B, Mambo's OWN 2-axis variant -- Mambo (Progetti di Design
 # 09) only, verified against real PDF pages 28-35. Structurally similar to
 # Norma Up's 2-axis grid (same code repeats across multiple row-type
@@ -8200,6 +8307,8 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_abaco,
         parse_file_pianca_aliseo,
         parse_file_pianca_baio,
+        parse_file_pianca_icaro,
+        parse_file_pianca_ettorino,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]

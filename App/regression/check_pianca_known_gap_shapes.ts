@@ -947,6 +947,26 @@ const CASES: Case[] = [
     expectedTier: 'Laccato Opaco',
     note: 'Ponti\'s OWN "Lavorazioni previste" table -- the 4th and last cluster #8 instance, a genuinely different real table on the same product/file as cluster #5\'s "Mensole sottoponte" case above (confirmed each key only ever derives from its own distinct table, no cross-contamination). Ponti\'s header here wraps a stray "Essenza" word onto its 2nd line (looks like a possible 2nd column) -- confirmed via direct row count every real row has exactly 1 price, same caption-bleed pattern as Norma Up\'s own wrap.',
   },
+  {
+    id: 'icaro-labels-before-codici-4col',
+    query: 'Icaro price',
+    productName: 'Icaro',
+    code: 'T0Z80',
+    expectedPrice: '506',
+    expectedSize: '60×37×60',
+    expectedTier: 'Essenza',
+    note: 'Resolved 2026-08-28. A genuinely different header convention from every other Pianca table this session: the real column labels (Essenza/V. Laccato/V. Marmo/Marmo) print on the physical line BEFORE "L H P CODICI" (which has an EMPTY tail), not after or wrapped below it. The PRE-EXISTING regression guard for this product (removed from REJECT_CASES) turned out to be stale/inaccurate -- it described "2 trailing prices... labels wrap to the next line", but direct row inspection shows 4 real columns with labels before the header. Per user feedback: an inherited "confirmed" claim is a claim, not proof -- always re-verify live rather than trust an old comment. New shared `_pianca_labels_before_codici_row_scan` core (product-name-gated, no header auto-detection needed since only 2 products use this shape). +40 rows.',
+  },
+  {
+    id: 'ettorino-labels-before-codici-4col',
+    query: 'Ettorino price',
+    productName: 'Ettorino',
+    code: 'T0P08',
+    expectedPrice: '1.480',
+    expectedSize: '80×75×80',
+    expectedTier: 'Laccato Opaco',
+    note: 'Resolved 2026-08-28, shares Icaro\'s new labels-before-CODICI shape (Laccato Opaco/Essenza/Terrazzo/Marmo). Unlike Icaro, this product\'s pre-existing guard comment WAS accurate (correctly described as a real 4-column table with labels before CODICI) -- confirms the "verify, don\'t trust" rule cuts both ways: some inherited claims hold up, some don\'t, and only re-checking tells you which. Captures "Tavolo rotondo"/"Tavolo quadrato" as variant_context since 2 different shapes can share the same L dimension with different codes (T0P08 vs T0P7A, both L=80). +20 rows.',
+  },
 ];
 
 interface RejectCase {
@@ -956,16 +976,6 @@ interface RejectCase {
 }
 
 const REJECT_CASES: RejectCase[] = [
-  {
-    id: 'guard-icaro-not-corrupted',
-    productName: 'Icaro',
-    note: 'Icaro shares the exact same bare-CODICI-on-its-own-line header shape as the dims+1 family, but its real rows have 2 trailing prices, not 1 (confirmed: 2 named finish columns, labels wrap to the next line). Must stay at 0 rows (still correctly known_gap for its own real shape), not get a corrupted 1-price capture that silently drops its 2nd column.',
-  },
-  {
-    id: 'guard-ettorino-not-corrupted',
-    productName: 'Ettorino',
-    note: 'Same class of guard as Icaro -- Ettorino is a real 4-column table (labels print BEFORE the CODICI line) sharing the same bare header shape. Must stay at 0 rows.',
-  },
   {
     id: 'guard-scacco-top-collision-not-mislabeled',
     productName: 'Scacco',
