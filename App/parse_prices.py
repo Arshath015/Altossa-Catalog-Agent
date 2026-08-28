@@ -5141,16 +5141,53 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # correctly with no special-casing, same as every other caption-bleed
     # case this session.
     ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Sp.'): ['Laccato Opaco', 'Essenza', 'Lucido Sp.'],
+    # Forma / Boiserie Soft / Norma Up / Ponti (its own "Lavorazioni
+    # previste" table) -- collision cluster #8, resolved 2026-08-28.
+    # Confirmed via direct ROW inspection all 4 are genuinely a single
+    # priced column (never 2 or 3 despite 2 of the 4 -- Ponti's own
+    # "Essenza" wrap, Norma Up's own "Laccato Metallico"/"Finiture
+    # Metallo" wrap -- printing extra finish-name lines right after the
+    # header that look like more columns at a glance; every real row has
+    # exactly ONE trailing price, confirmed via direct count, same
+    # caption-bleed-not-a-real-column pattern as cluster #5's Domino/Luce
+    # Illumia). Norma Up's own rows needed one more fix beyond the
+    # registry key alone: its order code is a GLUED-double-wildcard shape
+    # ("06KBC *1 *2", asterisk fused to its digit, 2 tokens not 4) that
+    # neither existing wildcard-code branch matched -- new dedicated
+    # branch added above (checked first, since the token shapes are
+    # mutually exclusive with the spaced double-wildcard branch), same
+    # "preserve literal printed text" philosophy and confirmed-constant
+    # "*1 *2" suffix as Norma (CollezioneNotte/Giorno)'s own spaced
+    # version.
+    ('Laccato', 'Opaco'): ['Laccato Opaco'],
     # CollezioneNotte remainder, found 2026-08-26/27 during the same full
     # sweep as the CollezioneGiorno batch above -- same discipline: every
     # key checked against the FULL catalog (not just this batch's own
     # candidates) before being added. Real collisions found and
     # deliberately NOT added this round: ('Struttura','Struttura') (Ala vs
     # Dedalo (Progetti 06-07) vs Island up vs People (CollezioneNotte) vs
-    # People (SistemiGiorno)), ('Laccato','Opaco','Essenza','Lucido',
-    # 'Spazzolato') (Ala's OWN 2nd table vs Spazioteca (SistemiGiorno) vs
-    # Venere), ('Laccato','Opaco') (Forma, all 3 of its own tables, vs
-    # Boiserie Soft vs Norma Up vs Ponti).
+    # People (SistemiGiorno)) -- confirmed via direct row inspection this
+    # is NOT a simple flat collision at all: Ala/Dedalo's own tables are
+    # genuinely a nested 2-axis "danger table" (2 parent Struttura groups
+    # x their own distinct 'Frontali' sub-columns, 5 real prices per row,
+    # not 2), Island Up's own version has a DIFFERENT nested sub-structure
+    # again ('Frontale' x 5 Vetro finish choices) -- each product needs
+    # its own dedicated verified parser at the same scale as the SIPARIO
+    # Armadi danger-table build, not a quick registry fix. ('Laccato',
+    # 'Opaco','Essenza','Lucido','Spazzolato') (Ala's OWN 2nd table vs
+    # Spazioteca (SistemiGiorno) vs Venere) -- Ala and Venere are both
+    # confirmed safe simple 3-column tables, but Spazioteca (SistemiGiorno)
+    # has a real, distinct corruption risk: a side-legend column (a
+    # separate "Anta scorrevole L" width-options list) bleeds onto the
+    # SAME physical line as some real data rows via the columnar
+    # pdftotext -layout extraction, and the generic dims-capture cannot
+    # currently tell that stray leading number apart from a genuine 2nd
+    # dimension (confirmed: row for code 47Q9C parses as size "90×97"
+    # instead of the correct single "97"). Deliberately NOT added --
+    # sharing this key as-is would silently corrupt Spazioteca's real
+    # data, which this project's whole discipline exists to prevent.
+    # Needs its own guard/dedicated parser for Spazioteca specifically
+    # before this key can be shared safely.
     #
     # Mensole vetro per boiserie, real PDF page (single table).
     ('Vetro', 'Trasparente', 'Vetro', 'per'):
@@ -5300,7 +5337,23 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                 # checks below, since '<3-char suffix>' alone would fail
                 # _PIANCA_CODE_RE's 4-char minimum and fall through
                 # silently otherwise.
-                if (len(pre_tokens) >= 5 and pre_tokens[-2] == '*' and pre_tokens[-4] == '*'
+                if (len(pre_tokens) >= 3 and re.match(r'^\*[0-9]$', pre_tokens[-1])
+                        and re.match(r'^\*[0-9]$', pre_tokens[-2])
+                        and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])):
+                    # Glued-double-wildcard code (Norma Up, real PDF page
+                    # ~72: "06KBC *1 *2") -- the same double-legend-
+                    # footnote-reference pattern as Norma (CollezioneNotte/
+                    # Giorno)'s own "2NZ4 * 1 * 2" below, just printed with
+                    # the asterisk GLUED to its digit (2 tokens, not 4) --
+                    # confirmed via full-file grep the "*1 *2" suffix is
+                    # constant across every row, same "preserve literal
+                    # printed text" philosophy. Checked before the spaced
+                    # double-wildcard branch below since the token shapes
+                    # are mutually exclusive (bare '*' vs glued '*N'), so
+                    # order doesn't matter for correctness, just clarity.
+                    code = f"{pre_tokens[-3]} {pre_tokens[-2]} {pre_tokens[-1]}"
+                    remaining = list(pre_tokens[:-3])
+                elif (len(pre_tokens) >= 5 and pre_tokens[-2] == '*' and pre_tokens[-4] == '*'
                         and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-5])
                         and re.match(r'^[A-Z0-9]{1,3}$', pre_tokens[-3])
                         and re.match(r'^[A-Z0-9]{1,3}$', pre_tokens[-1])):
