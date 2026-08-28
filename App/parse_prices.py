@@ -4329,6 +4329,35 @@ def _pianca_strip_leading_diagram_noise(label_tokens: list) -> list:
     return tokens
 
 
+def _pianca_wrapped_tier_letters_ahead(lines, idx, max_lookahead=5):
+    """Return the index of a following line whose own tokens end in the 6
+    Shape A tier letters ('A B C H P Q'), if one appears within
+    `max_lookahead` lines of `idx` (blank lines don't count against the
+    budget). None otherwise.
+
+    Exists because Chloé's own header prints its title word ('Struttura')
+    on the SAME line as CODICI but wraps the actual A-B-C-H-P-Q tier row
+    onto its OWN following physical line -- unlike every other Shape A
+    table, whose tier letters are the header line's own last 6 tokens
+    (see `_pianca_is_shape_a_header`). Used both to recognize this wrapped
+    variant (`parse_file_pianca_chloe`) and to keep `shape_b_named` from
+    misreading the same header line under a same-titled registry key
+    (confirmed real risk: '1+1' derives the identical bare ('Struttura',)
+    key from an unrelated, genuinely 2-named-column table -- see the
+    registry's own comment on this collision)."""
+    j = idx + 1
+    seen = 0
+    while j < len(lines) and seen < max_lookahead:
+        if lines[j].strip() == '':
+            j += 1
+            continue
+        if lines[j].split()[-6:] == _PIANCA_TIER_LETTERS:
+            return j
+        seen += 1
+        j += 1
+    return None
+
+
 def _pianca_is_shape_a_header(line: str) -> bool:
     """A Shape A header line ends in exactly the 6 tier-letter tokens 'A B
     C H P Q', in that order, and contains 'CODICI' somewhere before them.
@@ -4498,6 +4527,127 @@ def parse_file_pianca_shape_a(path, product_name, brand, all_headings=None, head
             # was silently affecting before the fix).
             label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
 
+            label = ' '.join(label_tokens).strip() or None
+
+            any_price = False
+            for letter, cell in zip(_PIANCA_TIER_LETTERS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": label,
+                    "variant_context": variant_context,
+                    "size": size,
+                    "fabric_tier": letter,
+                    "tier_label": "Category",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name,
+                              f"no price rows found for code {code}"))
+            i += 1
+        # continue outer loop from wherever the inner scan stopped
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
+# Chloé (CollezioneNotte) only, real PDF page 98 -- a WRAPPED Shape A
+# header: the title word ('Struttura') sits on the same physical line as
+# CODICI, but the actual A-B-C-H-P-Q tier-letter row prints on its own
+# following line instead of trailing the CODICI line itself the way every
+# other Shape A table does. Found 2026-08-27 while resolving the
+# shape_b_named ('Struttura',) collision candidate against 1+1 -- Chloé
+# only LOOKED like a match for that registry (same bare tail token on the
+# header line); its real table is Shape A, just with a 1-line-deeper wrap,
+# confirmed via direct image inspection. Row body (dims/code/diagram-noise
+# handling/price cells) is byte-for-byte the same convention as base Shape
+# A, so this reuses that logic unchanged -- only the header detection and
+# the skip-past-the-tier-line step differ. Scoped to product_name (not just
+# the header-content check, which is already confirmed catalog-wide unique
+# via grep) as defense-in-depth, matching this session's standing practice
+# for every other narrowly-scoped parser.
+# ---------------------------------------------------------------------------
+
+def parse_file_pianca_chloe(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Chloé':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if 'CODICI' not in line or _pianca_is_shape_a_header(line):
+            i += 1
+            continue
+        tier_idx = _pianca_wrapped_tier_letters_ahead(lines, i)
+        if tier_idx is None:
+            i += 1
+            continue
+
+        i = tier_idx + 1
+        blank_run = 0
+        while i < len(lines) and blank_run < 10:
+            raw = lines[i]
+            stripped = raw.strip()
+            if stripped == '':
+                blank_run += 1
+                i += 1
+                continue
+            if 'CODICI' in raw and (_pianca_is_shape_a_header(raw)
+                                     or _pianca_wrapped_tier_letters_ahead(lines, i) is not None):
+                break  # next table's header -- let the outer loop handle it
+            blank_run = 0
+
+            tokens = stripped.split()
+            trailing = tokens[-6:]
+            if len(tokens) < 7 or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+                if 2 < len(stripped) <= 60 and len(tokens) <= 6 and not re.search(r'\d', stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+
+            pre_tokens = tokens[:-6]
+            code = None
+            label_tokens = []
+            if pre_tokens:
+                if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                    code = f"{pre_tokens[-2]} D/S"
+                    label_tokens = list(pre_tokens[:-2])
+                elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                    code = pre_tokens[-1]
+                    label_tokens = list(pre_tokens[:-1])
+
+            if code is None:
+                i += 1
+                continue
+
+            dims = []
+            while label_tokens and re.match(r'^\d+(\.\d+)?$', label_tokens[-1]):
+                popped = label_tokens.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+            dims.reverse()
+            size = '×'.join(dims) if dims else None
+
+            label_tokens = _pianca_strip_leading_diagram_noise(label_tokens)
             label = ' '.join(label_tokens).strip() or None
 
             any_price = False
@@ -4863,12 +5013,26 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # registry is catalog-wide flat, keyed only by the CODICI line's own
     # literal trailing tokens) before being added -- several real
     # candidates found this same sweep (1+1 vs Chloé both deriving bare
-    # ('Struttura',) with different real column counts 2 vs 6; Abaco vs
-    # Baio vs Soffio fisso/allungabile all deriving bare ('Piano',) with
-    # different real column counts; Intro vs Delta allungabile both
-    # deriving bare ('Basamento',)) are DELIBERATELY left out of this
-    # registry, still known_gap, pending a dedicated collision-resolution
-    # pass -- not force-added just because one side happens to look safe.
+    # ('Struttura',); Abaco vs Baio vs Soffio fisso/allungabile all
+    # deriving bare ('Piano',) with different real column counts; Intro vs
+    # Delta allungabile both deriving bare ('Basamento',)) were
+    # DELIBERATELY left out of this registry pending a dedicated
+    # collision-resolution pass -- not force-added just because one side
+    # happens to look safe.
+    #
+    # 1+1 (Progetti 06-07... actually CollezioneGiorno "Tavolini"), real
+    # PDF page 21 -- resolved 2026-08-27. NOT a genuine collision with
+    # Chloé after all: Chloé's own 'CODICI Struttura' line is a WRAPPED
+    # Shape A header (its A-B-C-H-P-Q tier letters print on their own
+    # following physical line, confirmed via image), a structurally
+    # different table this registry never represents -- built as its own
+    # dedicated `parse_file_pianca_chloe` instead, and
+    # `_pianca_wrapped_tier_letters_ahead` keeps this key from ever
+    # matching Chloé's header line. 1+1's own table is genuinely 2 named
+    # columns (Struttura's own 2 finish options), confirmed via image: the
+    # 'Piano' group to the left is a fixed material note (always Laccato
+    # Opaco, not a priced column), only 'Struttura' has 2 real prices.
+    ('Struttura',): ['Laccato Opaco', 'Finiture Metallo'],
     #
     # Seida, real PDF page 18: a genuine 4-column hybrid -- 2 named wood-
     # finish columns (Laccato Opaco/Essenza) plus 2 Shape-A-style tier-
@@ -4928,6 +5092,39 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # Delta fisso, real PDF page 30 -- 5 named columns, verified via image.
     ('L.', 'Opaco', 'Essenza', 'V.', 'Laccato', 'V.', 'Marmo', 'Marmo'):
         ['L. Opaco', 'Essenza', 'V. Laccato / V. Trasp.', 'V. Marmo / Terrazzo', 'Marmo'],
+    # Soffio fisso / Soffio allungabile, real PDF pages 42-44 / 45-47 --
+    # collision cluster #3 (2026-08-27), the shared half. Both derive the
+    # bare ('Piano',) key (also derived by Abaco/Aliseo/Baio, each of which
+    # gets its own dedicated product_name-scoped parser instead -- see the
+    # module comment above `parse_file_pianca_abaco`/`_aliseo`/`_baio` for
+    # the full safety proof of why THIS entry is nonetheless safe to share:
+    # Abaco/Aliseo (2 real columns) and Baio (4) can never produce 5
+    # consecutive valid trailing price-cell tokens, since their own CODICI
+    # code token always falls inside a 5-wide trailing slice and never
+    # matches _PIANCA_PRICE_CELL_RE. L. Opaco and Essenza are always priced
+    # identically here (confirmed via image -- a real coincidence, not a
+    # merged column; genuinely 5 distinct header labels).
+    ('Piano',): ['L. Opaco', 'Essenza', 'Fenix® Bianco/Nero', 'V. Laccato', 'V. Marmo'],
+    # Duetto / Brema / Norma (CollezioneNotte) -- collision cluster #4
+    # (2026-08-27). The original note below (still kept for its accurate
+    # description of clusters #5-8) named a 4th product, "Norma
+    # (CollezioneGiorno)", as sharing this exact bare ('Laccato','Opaco',
+    # 'Finiture','Metallo') key -- disproven on re-verification: that note
+    # was written against `norma.txt`, a stale ORPHAN text file (12 found
+    # catalog-wide, not referenced by any catalog_index.json entry -- a
+    # pre-rename leftover, same family as the already-known people.txt/
+    # logos.txt orphans). Norma (CollezioneGiorno)'s REAL, currently-live
+    # file (`norma_collezionegiorno.txt`) prints its own header as 'L.
+    # Opaco' (abbreviated, confirmed via image), not 'Laccato Opaco' --
+    # a genuinely different, catalog-wide-UNIQUE key, given its own
+    # separate registry entry just below. The real 3-way collision
+    # (Duetto/Brema/Norma (CollezioneNotte)) turned out to have IDENTICAL
+    # real column labels across all 3 (confirmed via image on each),
+    # unlike every other cluster this session -- safe to share one entry.
+    ('Laccato', 'Opaco', 'Finiture', 'Metallo'): ['Laccato Opaco', 'Finiture Metallo'],
+    # Norma (CollezioneGiorno) -- the other half of cluster #4, its own
+    # catalog-wide-unique key (see comment above).
+    ('L.', 'Opaco', 'Finiture', 'Metallo'): ['L. Opaco', 'Finiture Metallo'],
     # CollezioneNotte remainder, found 2026-08-26/27 during the same full
     # sweep as the CollezioneGiorno batch above -- same discipline: every
     # key checked against the FULL catalog (not just this batch's own
@@ -5025,6 +5222,13 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
     while i < len(lines):
         line = lines[i]
         columns = _pianca_shapeb_named_header_columns(line)
+        if columns is not None and _pianca_wrapped_tier_letters_ahead(lines, i) is not None:
+            # A wrapped Shape A table (tier letters on their own following
+            # line, e.g. Chloé's 'CODICI Struttura' header) -- never a real
+            # shape_b_named table despite deriving the same registry key
+            # from this line alone. See _pianca_wrapped_tier_letters_ahead's
+            # own docstring for the confirmed collision this guards.
+            columns = None
         if columns is None:
             i += 1
             continue
@@ -5146,6 +5350,301 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
             i += 1
         # continue outer loop from wherever the inner scan stopped
     return rows, flags
+
+
+# ---------------------------------------------------------------------------
+# Intro / Delta allungabile -- both derive the identical bare ('Basamento',)
+# shape_b_named registry key from their own 'CODICI ... Basamento' header
+# line, but have genuinely DIFFERENT real column counts/labels, confirmed
+# via image: Intro (real PDF page 16) is 3 columns ('Laccato Opaco /
+# Essenza', 'Bianco / Lavagna', 'Finiture Metallo'); Delta allungabile (real
+# PDF page 34) is 2 ('Laccato Opaco / Essenza', 'Cromo Lucido'), on rows with
+# an extra leading dimension column besides (L chiuso / L aperto / H, not
+# the usual L/H/P). Resolved 2026-08-27, collision cluster #2. Deliberately
+# NOT added to the shared flat _PIANCA_SHAPEB_NAMED_HEADERS registry at all
+# -- that registry has no product-scoping mechanism, so a single
+# ('Basamento',) entry could only ever be correct for one side. Each product
+# instead gets its own small product_name-scoped parser sharing one row-scan
+# core, same architecture as the wardrobe-danger family's shared
+# `_parse_file_pianca_wardrobe`. Row convention (dims popped right-to-left
+# off pre-code tokens, capped at 3; wildcard/D-S code forms; model_variant
+# left unset, matching shape_b_named's own established convention of
+# relying on variant_context alone) ported unchanged from shape_b_named's
+# own inner loop, since it's the identical table family, just without a
+# registry lookup -- both callers are already product-scoped before
+# reaching it.
+# ---------------------------------------------------------------------------
+
+_PIANCA_INTRO_COLUMNS = ['Laccato Opaco / Essenza', 'Bianco / Lavagna', 'Finiture Metallo']
+_PIANCA_DELTA_ALLUNGABILE_COLUMNS = ['Laccato Opaco / Essenza', 'Cromo Lucido']
+
+
+def _pianca_basamento_row_scan(lines, page_of_line, product_name, brand, start_idx, columns):
+    rows = []
+    flags = []
+    variant_context = None
+    n_cols = len(columns)
+    i = start_idx
+    blank_run = 0
+    while i < len(lines) and blank_run < 10:
+        raw = lines[i]
+        stripped = raw.strip()
+        if stripped == '':
+            blank_run += 1
+            i += 1
+            continue
+        if 'CODICI' in raw:
+            break  # next table's header -- not expected on these single-table pages, but safe
+        blank_run = 0
+
+        tokens = stripped.split()
+        trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+        if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                variant_context = stripped
+            i += 1
+            continue
+
+        pre_tokens = tokens[:-n_cols]
+        code = None
+        remaining = None
+        if pre_tokens:
+            if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                code = f"{pre_tokens[-2]} D/S"
+                remaining = list(pre_tokens[:-2])
+            elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                code = pre_tokens[-1]
+                remaining = list(pre_tokens[:-1])
+
+        if code is None:
+            i += 1
+            continue
+
+        dims = []
+        if remaining:
+            while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                popped = remaining.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+        dims.reverse()
+        size = '×'.join(dims) if dims else None
+
+        any_price = False
+        for column_label, cell in zip(columns, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": variant_context,
+                "size": size,
+                "fabric_tier": column_label,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name,
+                          f"no price rows found for code {code}"))
+        i += 1
+    return rows, flags
+
+
+def _parse_file_pianca_basamento(path, product_name, brand, target_name, columns):
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+    for i, ln in enumerate(lines):
+        if 'CODICI' in ln and ln.split('CODICI', 1)[1].split() == ['Basamento']:
+            return _pianca_basamento_row_scan(lines, page_of_line, product_name, brand, i + 1, columns)
+    return [], []
+
+
+def parse_file_pianca_intro(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Intro':
+        return [], []
+    return _parse_file_pianca_basamento(path, product_name, brand, 'Intro', _PIANCA_INTRO_COLUMNS)
+
+
+def parse_file_pianca_delta_allungabile(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Delta allungabile':
+        return [], []
+    return _parse_file_pianca_basamento(path, product_name, brand, 'Delta allungabile', _PIANCA_DELTA_ALLUNGABILE_COLUMNS)
+
+
+# ---------------------------------------------------------------------------
+# Abaco / Aliseo / Baio -- collision cluster #3, resolved 2026-08-27. All
+# 3 derive the identical bare ('Piano',) shape_b_named registry key from
+# their own header line. A full-catalog grep for this exact key (not just
+# the 4 products originally named in this cluster) found 11 files total;
+# 6 already have real rows via other, already-verified parsers (Ettore,
+# Fushimi x2, Inari (Tavoli consolle), Maestro, Mambo (Progetti 06-07
+# Tavolino)) and were left untouched. Of the remaining 5: Abaco (real PDF
+# page 22, 2 columns: 'Laccato Opaco / Cemento', 'Marmo / Terrazzo') and
+# Aliseo (real PDF page 12, ALSO 2 columns, but genuinely DIFFERENT labels:
+# 'Vetro Martellato', 'Gres') are a real near-miss of the exact Abaco/Scacco
+# 'Top'-key shape -- same column COUNT, different real labels, which the
+# row-shape safety check (validates price count only) would not catch.
+# Baio (real PDF page 23) is 4 columns ('Laccato Opaco / Essenza', 'Lucido
+# Sp.', 'Terrazzo', 'Marmo'), a 3rd distinct shape under the same key. None
+# of these 3 can go in the shared flat registry (no product-scoping
+# mechanism there), so each gets its own small product_name-scoped parser.
+# Abaco's own rows carry a real leading label ('L. Opaco Bianco / Lavagna'
+# vs 'L. Opaco / Fin. Metallo', the Struttura leg-finish each price row
+# belongs to, confirmed via image), printed only on the FIRST of each
+# 3-row dimension group and omitted on the other 2 -- same continuation
+# pattern as norma_up_2axis's own struttura_finish, so it's carried
+# forward across label-less rows rather than reset to None each time.
+# Unlike the Intro/Delta allungabile pair above (whose own leftover token
+# run is always empty) and unlike shape_b_named's own convention (which
+# hardcodes model_variant=None). Aliseo/Baio have no such leading label.
+#
+# Soffio fisso / Soffio allungabile (real PDF pages 42-44, 45-47) are the
+# 4th and 5th real shapes under this same key -- but here it WAS safe to
+# add a single shared registry entry (5 columns: 'L. Opaco', 'Essenza',
+# 'Fenix® Bianco/Nero', 'V. Laccato', 'V. Marmo', confirmed via image;
+# L. Opaco and Essenza happen to always be priced identically, a real
+# coincidence not a merged column). Verified safe against every other
+# ('Piano',) key-holder found by the same grep: Abaco/Aliseo (2 real
+# columns each) and Baio (4) can never produce 5 consecutive valid
+# trailing price-cell tokens -- their own CODICI code token always falls
+# inside a 5-wide trailing slice and never matches _PIANCA_PRICE_CELL_RE
+# (verified by hand for every row shape present), so this registry entry
+# only ever fires on Soffio fisso/allungabile's own genuine rows. See
+# _PIANCA_SHAPEB_NAMED_HEADERS's own entry below for where it's added.
+# ---------------------------------------------------------------------------
+
+_PIANCA_ABACO_COLUMNS = ['Laccato Opaco / Cemento', 'Marmo / Terrazzo']
+_PIANCA_ALISEO_COLUMNS = ['Vetro Martellato', 'Gres']
+_PIANCA_BAIO_COLUMNS = ['Laccato Opaco / Essenza', 'Lucido Sp.', 'Terrazzo', 'Marmo']
+
+
+def _pianca_piano_family_row_scan(lines, page_of_line, product_name, brand, start_idx, columns, capture_label=False):
+    rows = []
+    flags = []
+    variant_context = None
+    current_label = None  # carried forward across continuation rows with no label of their own -- same convention as norma_up_2axis's own struttura_finish
+    n_cols = len(columns)
+    i = start_idx
+    blank_run = 0
+    while i < len(lines) and blank_run < 10:
+        raw = lines[i]
+        stripped = raw.strip()
+        if stripped == '':
+            blank_run += 1
+            i += 1
+            continue
+        if 'CODICI' in raw:
+            break  # next table's header -- let the outer loop / caller handle it
+        blank_run = 0
+
+        tokens = stripped.split()
+        trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+        if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                variant_context = stripped
+            i += 1
+            continue
+
+        pre_tokens = tokens[:-n_cols]
+        code = None
+        remaining = None
+        if pre_tokens:
+            if len(pre_tokens) >= 2 and pre_tokens[-1] == 'D/S' and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2]):
+                code = f"{pre_tokens[-2]} D/S"
+                remaining = list(pre_tokens[:-2])
+            elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
+                code = pre_tokens[-1]
+                remaining = list(pre_tokens[:-1])
+
+        if code is None:
+            i += 1
+            continue
+
+        dims = []
+        if remaining:
+            while remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                popped = remaining.pop()
+                if len(dims) < 3:
+                    dims.append(popped)
+        dims.reverse()
+        size = '×'.join(dims) if dims else None
+
+        if capture_label:
+            if remaining:
+                remaining = _pianca_strip_leading_diagram_noise(remaining)
+                current_label = ' '.join(remaining).strip() or current_label
+
+        any_price = False
+        for column_label, cell in zip(columns, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": current_label if capture_label else None,
+                "variant_context": variant_context,
+                "size": size,
+                "fabric_tier": column_label,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name,
+                          f"no price rows found for code {code}"))
+        i += 1
+    return rows, flags
+
+
+def _parse_file_pianca_piano_family(path, product_name, brand, columns, capture_label=False):
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+    for i, ln in enumerate(lines):
+        if 'CODICI' in ln and ln.split('CODICI', 1)[1].split() == ['Piano']:
+            return _pianca_piano_family_row_scan(lines, page_of_line, product_name, brand, i + 1, columns, capture_label)
+    return [], []
+
+
+def parse_file_pianca_abaco(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Abaco':
+        return [], []
+    return _parse_file_pianca_piano_family(path, product_name, brand, _PIANCA_ABACO_COLUMNS, capture_label=True)
+
+
+def parse_file_pianca_aliseo(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Aliseo':
+        return [], []
+    return _parse_file_pianca_piano_family(path, product_name, brand, _PIANCA_ALISEO_COLUMNS)
+
+
+def parse_file_pianca_baio(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Baio':
+        return [], []
+    return _parse_file_pianca_piano_family(path, product_name, brand, _PIANCA_BAIO_COLUMNS)
 
 
 # ---------------------------------------------------------------------------
@@ -7608,6 +8107,12 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_quadra,
         parse_file_pianca_tosca,
         parse_file_pianca_cornice_spazi10,
+        parse_file_pianca_chloe,
+        parse_file_pianca_intro,
+        parse_file_pianca_delta_allungabile,
+        parse_file_pianca_abaco,
+        parse_file_pianca_aliseo,
+        parse_file_pianca_baio,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
