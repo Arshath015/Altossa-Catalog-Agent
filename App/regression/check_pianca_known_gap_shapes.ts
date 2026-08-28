@@ -837,6 +837,36 @@ const CASES: Case[] = [
     expectedTier: 'Struttura esterna Laccato Opaco — Frontali L. Opaco/Essenza',
     note: 'One of the 2 originally-named "outlier" products (with Grafica). LOOKS like a Norma-Up-style repeating-code 2-axis danger table at first glance (3 Struttura-esterna parent groups x 2 Frontali sub-choices) but confirmed via direct row inspection that every code appears EXACTLY ONCE across all 6+1 real columns -- genuinely a flat 7-column table, safe for the simple registry rather than needing its own dedicated 2-axis function. The registry VALUE list (7 items) doesn\'t match the KEY tuple length (7 tokens here, coincidentally) -- same "parent-group token count may differ from real column count" pattern as Confluence, verified independently.',
   },
+  {
+    id: 'duetto-struttura-2col-not-real-collision',
+    query: 'Duetto price',
+    productName: 'Duetto',
+    code: '249982',
+    expectedPrice: '224',
+    expectedSize: '33×50×33',
+    expectedTier: 'Laccato Opaco',
+    note: 'Collision cluster #4 (2026-08-27/28): Duetto derives the bare (\'Laccato\',\'Opaco\',\'Finiture\',\'Metallo\') key, genuinely shared with Brema and Norma (CollezioneNotte), confirmed via image to have IDENTICAL real column labels across all 3 -- unlike every other cluster this session, safe to share one flat registry entry as-is. Caught mid-verification: this entry\'s own regeneration into prices.json had never actually been run before this case was added (the interrupted prior session added the registry key + these comments but the live server was still serving pre-fix data, returning no_price_data) -- a reminder that a registry/parser-code change and its data regeneration are 2 separate steps, and only a live re-query (not just a code read) proves the fix real.',
+  },
+  {
+    id: 'norma-collezionenotte-double-wildcard-code',
+    query: 'Norma CollezioneNotte price',
+    productName: 'Norma (CollezioneNotte)',
+    code: '2NZ4 * 1 * 2',
+    expectedPrice: '581',
+    expectedSize: '40',
+    expectedTier: 'Laccato Opaco',
+    note: 'The other half of cluster #4\'s own real complexity, found AFTER the registry key alone proved insufficient: this table\'s order code is a DOUBLE-wildcard shape ("2NZ4 * 1 * 2", 5 tokens) the existing single-wildcard consumer (Enea Up\'s "T0E * 09M", 3 tokens) never matched, so every row was silently skipped (0 rows, 0 flags) even with the correct registry key in place. New 5-token branch in the same wildcard-code consumer, checked before the 3-token branch, requiring BOTH "*" positions literally present so it can never misfire on a real single-wildcard or dims-prefixed code. Same "preserve literal printed text, don\'t resolve" philosophy as Enea Up -- confirmed via full-file grep the "* 1 * 2" suffix is constant across every row of both Norma files, a footnote-style legend reference that never changes which of the row\'s 2 named-column prices applies. +16 rows.',
+  },
+  {
+    id: 'norma-collezionegiorno-double-wildcard-own-key',
+    query: 'Norma CollezioneGiorno price',
+    productName: 'Norma (CollezioneGiorno)',
+    code: '067Z7 * 1 * 2',
+    expectedPrice: '583',
+    expectedSize: '70',
+    expectedTier: 'L. Opaco',
+    note: 'Shares the same double-wildcard code shape as Norma (CollezioneNotte) above but derives its OWN catalog-wide-unique key (\'L.\',\'Opaco\',\'Finiture\',\'Metallo\', abbreviated "L." not "Laccato") -- confirmed via image genuinely distinct from CollezioneNotte\'s header, not a duplicate registry entry. +36 rows.',
+  },
 ];
 
 interface RejectCase {

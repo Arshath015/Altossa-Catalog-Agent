@@ -5286,7 +5286,27 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                 # checks below, since '<3-char suffix>' alone would fail
                 # _PIANCA_CODE_RE's 4-char minimum and fall through
                 # silently otherwise.
-                if (len(pre_tokens) >= 3 and pre_tokens[-2] == '*'
+                if (len(pre_tokens) >= 5 and pre_tokens[-2] == '*' and pre_tokens[-4] == '*'
+                        and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-5])
+                        and re.match(r'^[A-Z0-9]{1,3}$', pre_tokens[-3])
+                        and re.match(r'^[A-Z0-9]{1,3}$', pre_tokens[-1])):
+                    # Double-wildcard code (Norma (CollezioneNotte)/
+                    # (CollezioneGiorno), real PDF pages 106/205: "2NZ4 * 1
+                    # * 2" / "067Z7 * 1 * 2"). Same "preserve the literal
+                    # printed text, don't resolve" philosophy as Enea Up's
+                    # single-wildcard code below -- confirmed via direct
+                    # inspection this table's 2 legend axes (a P-dimension
+                    # legend for the '* 1' position, an H-dimension legend
+                    # for '* 2') are a separate customer customization step
+                    # that never changes which of THIS row's 2 named-column
+                    # prices applies; both markers print as the literal,
+                    # CONSTANT text '* 1 * 2' on every single row of both
+                    # files (confirmed via full-file grep, not assumed),
+                    # never actually varying token values despite looking
+                    # like a per-row wildcard at a glance.
+                    code = f"{pre_tokens[-5]} * {pre_tokens[-3]} * {pre_tokens[-1]}"
+                    remaining = list(pre_tokens[:-5])
+                elif (len(pre_tokens) >= 3 and pre_tokens[-2] == '*'
                         and re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])
                         and re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1])):
                     code = f"{pre_tokens[-3]} * {pre_tokens[-1]}"
