@@ -5125,15 +5125,29 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     # Norma (CollezioneGiorno) -- the other half of cluster #4, its own
     # catalog-wide-unique key (see comment above).
     ('L.', 'Opaco', 'Finiture', 'Metallo'): ['L. Opaco', 'Finiture Metallo'],
+    # Consolle Elle / Domino (both its own "Panche"/"Gambe metallo"
+    # tables) / Luce Illumia / Ponti (its own "Mensole sottoponte" table)
+    # -- collision cluster #5, resolved 2026-08-28. Confirmed via direct
+    # ROW inspection (not header text alone) on all 4 that every row has
+    # exactly 3 real trailing prices with the SAME Laccato Opaco==Essenza
+    # coincidental-identical-pricing pattern already established elsewhere
+    # in this catalog (Soffio fisso/allungabile) -- safe to share one flat
+    # entry. Domino's "Gambe metallo" table prints a stray "Alluminio
+    # Brunito" caption on the 2 lines right after this header (a finish
+    # note, not a real 4th column -- rows still have only 3 prices);
+    # Luce Illumia's own header similarly wraps a stray "L. Metallico"
+    # word onto its 2nd line, same confirmed-not-a-4th-column pattern via
+    # direct row count. The generic row scanner already ignores both
+    # correctly with no special-casing, same as every other caption-bleed
+    # case this session.
+    ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Sp.'): ['Laccato Opaco', 'Essenza', 'Lucido Sp.'],
     # CollezioneNotte remainder, found 2026-08-26/27 during the same full
     # sweep as the CollezioneGiorno batch above -- same discipline: every
     # key checked against the FULL catalog (not just this batch's own
     # candidates) before being added. Real collisions found and
-    # deliberately NOT added this round: ('Laccato','Opaco','Essenza',
-    # 'Lucido','Sp.') (Consolle Elle vs Domino's OWN first table vs Luce
-    # Illumia vs Ponti), ('Struttura','Struttura') (Ala vs Dedalo
-    # (Progetti 06-07) vs Island up vs People (CollezioneNotte) vs People
-    # (SistemiGiorno)), ('Laccato','Opaco','Essenza','Lucido',
+    # deliberately NOT added this round: ('Struttura','Struttura') (Ala vs
+    # Dedalo (Progetti 06-07) vs Island up vs People (CollezioneNotte) vs
+    # People (SistemiGiorno)), ('Laccato','Opaco','Essenza','Lucido',
     # 'Spazzolato') (Ala's OWN 2nd table vs Spazioteca (SistemiGiorno) vs
     # Venere), ('Laccato','Opaco') (Forma, all 3 of its own tables, vs
     # Boiserie Soft vs Norma Up vs Ponti).
