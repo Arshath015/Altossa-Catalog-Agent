@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, AlertTriangle, HelpCircle, ImageIcon } from 'lucide-react';
 import type { ImagePanelData } from '../ImagePanel';
+import { buildVariantGroups, buildSizeColumns, findCell } from './priceGridGrouping';
+import type { PriceRow, VariantGroup } from './priceGridGrouping';
 
 /**
  * CatalogChatWidget
@@ -16,20 +18,9 @@ import type { ImagePanelData } from '../ImagePanel';
  *   { status, message, product_name?, matches?, image_urls? }
  */
 
-interface PriceRow {
-  product_name: string;
-  model_variant: string | null;
-  size: string | null;
-  fabric_tier: string | null;
-  /** Real source-PDF category word for this row's fabric_tier value
-   * ("Base", "Top", "Rivestimento", "Struttura"...) -- null when not
-   * confidently recoverable or when the product has no fabric_tier
-   * dimension at all. Falls back to "FABRIC" for display in that case. */
-  tier_label: string | null;
-  code: string | null;
-  price_eur: string;
-  ambiguous: boolean;
-}
+// PriceRow is now defined in ./priceGridGrouping (imported above) so the
+// grouping/column logic there and the API response shape here can never
+// drift apart.
 
 /** The column header to show for a row's fabric_tier value. Three cases,
  * not two -- collapsing them into one hardcoded "FABRIC" is the exact bug
@@ -567,51 +558,19 @@ function PriceGrid({ rows }: { rows: PriceRow[] }) {
   );
 }
 
-/** One (model_variant, variant_context) combo's own rows + a display
- * header. Grouping by model_variant ALONE (the previous behavior) silently
- * merged different variant_context categories that happen to share a
- * model_variant label -- e.g. Pianca's Esse (CollezioneGiorno Sedie) has
- * "non sfoderabile"/"sfoderabile"/"rivestimento" repeated across THREE
- * real categories ("Sedia con gambe", "Poltroncina con gambe", "Poltrona
- * con base girevole"), so grouping on model_variant alone put all 3
- * categories' rows in ONE table, and the (tier, size) cell lookup then
- * returned only the FIRST matching row per cell -- silently dropping the
- * other 2 categories' prices entirely. Confirmed via live testing
- * 2026-08-24 (found live, not synthetic) -- same shape affects Gamma too,
- * any product with 2+ real variant_context values sharing model_variant
- * labels. For the common case (a single variant_context value, or none),
- * this reduces to exactly the old model_variant-only grouping and the old
- * single-dimension header -- zero behavior change there. */
-interface VariantGroup {
-  key: string;
-  header: string;
-  rows: PriceRow[];
-}
-
-function buildVariantGroups(rows: PriceRow[]): VariantGroup[] {
-  const hasMultipleContexts = new Set(rows.map(r => r.variant_context).filter(Boolean)).size > 1;
-  const keyOf = (r: PriceRow) => `${r.model_variant || '—'}::${r.variant_context || ''}`;
-  const keys = [...new Set(rows.map(keyOf))];
-  return keys.map(key => {
-    const groupRows = rows.filter(r => keyOf(r) === key);
-    const modelVariant = groupRows[0].model_variant || '—';
-    const variantContext = groupRows[0].variant_context;
-    const header = hasMultipleContexts && variantContext
-      ? (modelVariant !== '—' ? `${variantContext} — ${modelVariant}` : variantContext)
-      : modelVariant;
-    return { key, header, rows: groupRows };
-  });
-}
+// VariantGroup + buildVariantGroups now live in ./priceGridGrouping
+// (imported above) -- see that module's own comment for the grouping
+// rationale (Esse/Gamma's variant_context split) and the size/code
+// column-collision fix (Venere/Soffio fisso and 87+ other products
+// found sharing a printed size across 2 real different products).
 
 function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: boolean }) {
   const tiers = [...new Set(group.rows.map(r => r.fabric_tier))].sort(
     (a, b) => tierSortKey(a) - tierSortKey(b)
   );
-  const sizes = [...new Set(group.rows.map(r => r.size))].sort(
-    (a, b) => sizeSortKey(a) - sizeSortKey(b)
+  const columns = buildSizeColumns(group.rows).sort(
+    (a, b) => sizeSortKey(a.size) - sizeSortKey(b.size)
   );
-  const cell = (tier: string | null, size: string | null) =>
-    group.rows.find(r => r.fabric_tier === tier && r.size === size);
 
   return (
     <div className="border-2 border-[var(--riso-line)] overflow-hidden">
@@ -625,9 +584,9 @@ function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: 
           <thead className="bg-[var(--riso-surface)] text-stone-400">
             <tr>
               <th className="text-left px-3 py-1.5 font-medium sticky left-0 bg-[var(--riso-surface)]">{tierColumnHeader(group.rows)}</th>
-              {sizes.map(s => (
-                <th key={s || 'na'} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
-                  {s || '—'}
+              {columns.map(c => (
+                <th key={c.key} className="text-right px-3 py-1.5 font-medium whitespace-nowrap">
+                  {c.label || '—'}
                 </th>
               ))}
             </tr>
@@ -638,10 +597,10 @@ function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: 
                 <td className="px-3 py-1.5 font-medium text-stone-300 sticky left-0 bg-[var(--riso-bg)] whitespace-nowrap">
                   {tier || '—'}
                 </td>
-                {sizes.map(s => {
-                  const r = cell(tier, s);
+                {columns.map(c => {
+                  const r = findCell(group.rows, tier, c.key, columns);
                   return (
-                    <td key={s || 'na'} className="px-3 py-1.5 text-right whitespace-nowrap">
+                    <td key={c.key} className="px-3 py-1.5 text-right whitespace-nowrap">
                       {r ? (
                         <div className="flex flex-col items-end leading-tight">
                           <span className="text-[var(--riso-yellow)]">€{r.price_eur}</span>
