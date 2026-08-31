@@ -151,6 +151,8 @@ interface PriceRow {
   price_eur: string;
   size: string | null;
   fabric_tier?: string | null;
+  variant_context?: string | null;
+  model_variant?: string | null;
 }
 interface ChatResponse {
   status?: string;
@@ -166,6 +168,12 @@ interface Case {
   expectedPrice: string;
   expectedSize?: string;
   expectedTier?: string;
+  /** When set, the matched row's own variant_context (category heading)
+   * must equal this exactly -- for cases specifically guarding heading/
+   * category extraction, not just price/size/code correctness. */
+  expectedVariantContext?: string | null;
+  /** Same idea, for model_variant (a row-level sub-label). */
+  expectedModelVariant?: string | null;
   note: string;
 }
 
@@ -1022,6 +1030,62 @@ const CASES: Case[] = [
     note: 'Regression guard for a false alarm caught and resolved during verification: 06376/06377 ("con kit bar") and 06366/06367 ("ribalta") looked like 2 separate 2-row H-groups at a glance, but the source image (page 22) confirms all 4 genuinely share ONE H=30 label -- the row-level "con kit bar"/"ribalta" text is a descriptive sub-label, not a table-shape boundary. Diagram noise on these same physical lines ("3 7 / 82", "60 / 70") is correctly discarded (fails the clean-bare-number check), not consumed as a bogus dimension.',
   },
   {
+    id: 'cluster6-dedalo-heading-direction-fix',
+    query: 'Dedalo (Progetti 06-07) price',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '06326',
+    expectedPrice: '291',
+    expectedSize: '20×60×45',
+    expectedTier: 'Cuoio R.',
+    expectedVariantContext: 'Moduli People a cassetto',
+    note: 'Root-cause guard for a real category-mislabeling bug found live 2026-09-01 (user-reported): "Moduli People a cassetto"/"a ribalta" print AFTER the group they describe and BEFORE the next one (confirmed via image -- the drawer/flap icon sits between the heading and its own rows), not before it like every other heading in this cluster. The row-scan\'s default "backward" heading association wrongly gave 06326/06327 the NEXT heading ("a ribalta") instead of the one that actually describes them ("a cassetto") -- fixed with a per-product `heading_applies_forward` flag that flushes the OLD context before taking a new heading, rather than changing the shared default (which stays correct for Ala/People/Island up\'s own "precedes-its-rows" headings).',
+  },
+  {
+    id: 'cluster6-dedalo-model-variant-kit-bar',
+    query: 'Dedalo (Progetti 06-07) price',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '06377',
+    expectedPrice: '559',
+    expectedSize: '30×70×35',
+    expectedTier: 'Cuoio R.',
+    expectedVariantContext: 'Moduli People a ribalta',
+    expectedModelVariant: 'con kit bar',
+    note: 'The row-level "con kit bar"/"ribalta" sub-labels (previously silently discarded as noise) are now captured into model_variant, borrowed from whichever row in its own 2-row pair carries the printed text (same print-once-per-pair convention as the outer H dimension, but per-pair here since 2 DIFFERENT sub-labels coexist in one block) -- confirms 06377 (no label of its own) correctly borrows "con kit bar" from its sibling 06376, not "ribalta" from the unrelated pair further down the same block.',
+  },
+  {
+    id: 'cluster6-island-up-heading-direction-fix',
+    query: 'Island up price',
+    productName: 'Island up',
+    code: 'T678H',
+    expectedPrice: '712',
+    expectedSize: '140×78×53',
+    expectedTier: 'Materico Interno',
+    expectedVariantContext: 'Vano con ripiani lineari',
+    note: 'Second real instance of the SAME heading-direction bug, found while verifying Dedalo\'s fix rather than assumed safe for the rest of the cluster: Island up\'s own "Vano con ripiani lineari"/"portascarpe" ALSO print after their own group and before the next, and were ALSO getting the wrong (next) heading before `heading_applies_forward` was extended to this product too.',
+  },
+  {
+    id: 'cluster6-island-up-stacked-headings-first-wins',
+    query: 'Island up price',
+    productName: 'Island up',
+    code: 'T6C8H',
+    expectedPrice: '789',
+    expectedSize: '140×78×53',
+    expectedTier: 'Materico Interno',
+    expectedVariantContext: 'Vano con ripiani portascarpe',
+    note: 'Island up\'s own "Vano con ripiani portascarpe" is immediately followed by 3 MORE consecutive heading-shaped lines ("Con battitacco legno" / "In fase d\'ordine è sempre necessario indicare la" / "configurazione del ripiano", descriptive continuation sentences) -- confirms only the FIRST (the real category title) is kept, not whichever textually-last fragment would otherwise win.',
+  },
+  {
+    id: 'cluster6-island-up-column-name-not-a-heading',
+    query: 'Island up price',
+    productName: 'Island up',
+    code: 'T63RHQ',
+    expectedPrice: '3.824',
+    expectedSize: '140×75×53',
+    expectedTier: 'Materico Interno',
+    expectedVariantContext: 'Coppia cassettiere metallo Miro a 4 cassetti',
+    note: 'Guard for a 3rd and 4th false-positive heading shape found verifying this same fix: the table\'s own column-legend wrap text ("Materico Interno           Laccato Opaco" -- exactly this table\'s own 2 registered column names concatenated; "Vetro Riflettente         Vetro Riflettente" -- the same finish name repeated under both Struttura groups) is heading-shaped but never a real category title. Confirms this product\'s own genuine heading ("Coppia cassettiere metallo Miro a 4 cassetti") is still correctly captured despite sitting right after this exact wrap-text noise.',
+  },
+  {
     id: 'cluster6-people-cn-icon-noise-not-outer-dim',
     query: 'People (CollezioneNotte) price',
     productName: 'People (CollezioneNotte)',
@@ -1100,6 +1164,46 @@ const CASES: Case[] = [
     expectedSize: '90x190',
     expectedTier: 'Materico',
     note: 'Alfa (Tatami)\'s own file (own product, own wildcard code prefix "WZ3" vs Letti\'s "WAF") -- confirms the mechanism generalizes across both files sharing this new shape, not hardcoded to one.',
+  },
+  {
+    id: 'dedalo-madie-danger-fold-l-opaco',
+    query: 'Dedalo (Progetti 06-07) price for 45 55',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '00354Y',
+    expectedPrice: '2.617',
+    expectedSize: '45×55',
+    expectedTier: 'L. Opaco — Materico',
+    note: 'Resolved 2026-09-01 (user-reported: real, clearly priced "Madie" rows -- EUR2,617-7,070 -- entirely missing from "give all Dedalo prices"). Same shape as the already-built wardrobe-danger family (Brema/Grafica/etc, reuses `_pianca_wardrobe_scan_table` unchanged) -- a genuine repeating-code danger fold: code 00354Y prints TWICE, once under row-type "L. Opaco" and once under "Lucido Sp.", each with its own full set of 4 prices (Materico/Laccato Opaco/Essenza/Lucido Spazzolato). Needed its own header-finder (no repeated-word anchor exists among Dedalo\'s own 4 unique column names, unlike every other wardrobe-family product) plus a scan-boundary fix (Dedalo\'s file mixes 3 different table shapes on nearby pages -- the shared scan-terminator, sufficient for every other single-shape wardrobe file, let this 4th occurrence wander straight through "Accessori kit luce" into cluster #6\'s own table many pages later).',
+  },
+  {
+    id: 'dedalo-madie-danger-fold-lucido-sp',
+    query: 'Dedalo (Progetti 06-07) price for 45 55',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '00354Y',
+    expectedPrice: '3.926',
+    expectedSize: '45×55',
+    expectedTier: 'Lucido Sp. — Materico',
+    note: 'Same code as dedalo-madie-danger-fold-l-opaco, the OTHER real price under the same code -- confirms both row-types survive as distinct rows instead of one overwriting the other.',
+  },
+  {
+    id: 'dedalo-madie-c-basamento-variant',
+    query: 'Dedalo (Progetti 06-07) price for 67 55',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '00354YB',
+    expectedPrice: '3.869',
+    expectedSize: '67×55',
+    expectedTier: 'L. Opaco c/basamento — Essenza',
+    note: 'The "c/basamento" (with base) variant code, a different real SKU (00354YB) than the base version (00354Y) -- confirms this shares the same danger-fold mechanism cleanly, not just the simpler 2-row case.',
+  },
+  {
+    id: 'dedalo-madie-diagram-letter-noise-not-in-tier',
+    query: 'Dedalo (Progetti 06-07) price for 94 55',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '00357HB',
+    expectedPrice: '2.491',
+    expectedSize: '94×55',
+    expectedTier: 'L. Opaco c/basamento — Materico',
+    note: 'Root-cause guard for a real bug self-caught before committing: the Madie diagram icon\'s own reference-letter callouts ("A", "A A", "A A 31" -- pointing at specific drawer fronts in the illustration, confirmed via image) print on the SAME line as some rows\' own leading row-type text (source: "A    A       31    L. Opaco c/basamento         94    55   00357HB...") and were bleeding into the captured label (e.g. "A A 31 L. Opaco c/basamento" instead of the real "L. Opaco c/basamento"). Fixed by adding "A" to the shared `_PIANCA_LEADING_DIAGRAM_NOISE_RE` (already stripped bare numbers and "S"/"D" for this exact class of noise elsewhere) -- re-verified all 7 pre-existing wardrobe-danger-family products plus Cornice (Spazi-10), which share this same helper, before landing.',
   },
   {
     id: 'alfa-tatami-4lati-nested-subblock',
@@ -1182,9 +1286,11 @@ async function main() {
     }
     const priceOk = row.price_eur === c.expectedPrice;
     const sizeOk = c.expectedSize === undefined || row.size === c.expectedSize;
-    const ok = priceOk && sizeOk;
+    const variantContextOk = c.expectedVariantContext === undefined || row.variant_context === c.expectedVariantContext;
+    const modelVariantOk = c.expectedModelVariant === undefined || row.model_variant === c.expectedModelVariant;
+    const ok = priceOk && sizeOk && variantContextOk && modelVariantOk;
     if (!ok) {
-      failures.push(`[${c.id}] "${c.query}" code=${c.code} -- expected price="${c.expectedPrice}"${c.expectedSize ? ` size="${c.expectedSize}"` : ''}, got price="${row.price_eur}" size="${row.size}". ${c.note}`);
+      failures.push(`[${c.id}] "${c.query}" code=${c.code} -- expected price="${c.expectedPrice}"${c.expectedSize ? ` size="${c.expectedSize}"` : ''}${c.expectedVariantContext !== undefined ? ` variant_context="${c.expectedVariantContext}"` : ''}${c.expectedModelVariant !== undefined ? ` model_variant="${c.expectedModelVariant}"` : ''}, got price="${row.price_eur}" size="${row.size}" variant_context="${row.variant_context}" model_variant="${row.model_variant}". ${c.note}`);
     }
     console.log(`[${c.id.padEnd(30)}] ${ok ? 'ok' : 'FAIL'}  code=${c.code}  price=${row.price_eur}  size=${row.size}`);
     await new Promise(r => setTimeout(r, 80));

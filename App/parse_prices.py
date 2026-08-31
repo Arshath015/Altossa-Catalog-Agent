@@ -4316,7 +4316,19 @@ _PIANCA_CODE_RE = re.compile(r'^[A-Z0-9]{4,10}$')
 # audit -- verified via the real page image (peonia_divani_p19-19.jpg)
 # that '45' is the cushion diagram's own depth label, not part of the
 # real 'rivestimento' row text.
-_PIANCA_LEADING_DIAGRAM_NOISE_RE = re.compile(r'^-?\d+(\.\d+)?$|^-$|^[SD]$')
+# "A" added 2026-09-01: Dedalo's own Madie table has a diagram icon with
+# "A"/"A A"-shaped reference-letter callouts (pointing at specific drawer
+# fronts in the illustration, same convention class as the pre-existing
+# "S"/"D" single-letter noise below) printed on the SAME line as the row's
+# own leading text, corrupting the captured row-type label into e.g. "A A
+# Lucido Sp." instead of the real "Lucido Sp." -- confirmed via image
+# (page 19) these bare "A" tokens carry no product-identifying meaning at
+# all, unlike a real tier letter. Re-verified every existing caller of
+# this shared helper (Shape A family, wardrobe-danger, cornice_spazi10)
+# against their own already-passing regression cases before landing this,
+# since a bare uppercase "A" is common enough to warrant real scrutiny,
+# not just S/D's existing precedent.
+_PIANCA_LEADING_DIAGRAM_NOISE_RE = re.compile(r'^-?\d+(\.\d+)?$|^-$|^[SDA]$')
 
 
 def _pianca_strip_leading_diagram_noise(label_tokens: list) -> list:
@@ -6117,6 +6129,22 @@ def _pianca_flush_struttura_frontali_block(block, columns, variant_context, prod
             if len(r['dims']) == max_dims:
                 label = r['dims'][0]
                 break
+    # A row-level sub-label (Dedalo's own "con kit bar"/"ribalta") prints
+    # ONLY on the FIRST row of its own 2-row pair within the block, same
+    # print-once-per-pair convention as the outer H dimension -- confirmed
+    # via image: "con kit bar" labels 06376 but not its own sibling 06377,
+    # "ribalta" labels 06366 but not 06367. Unlike H (borrowed from
+    # whichever single row in the WHOLE block has it, since H is the SAME
+    # for all 4 rows here), 2+ DIFFERENT sub-labels can coexist in one
+    # block (06376/06377 vs 06366/06367) -- a plain forward-carry (most
+    # recently seen label so far, reset only when a new one appears) is
+    # the correct per-pair borrow, not a single block-wide value.
+    last_model_variant = None
+    for r in block:
+        if r.get('model_variant') is not None:
+            last_model_variant = r['model_variant']
+        else:
+            r['model_variant'] = last_model_variant
     for r in block:
         dims = list(r['dims'])
         if label is not None and len(dims) == max_dims - 1:
@@ -6130,7 +6158,7 @@ def _pianca_flush_struttura_frontali_block(block, columns, variant_context, prod
             rows.append({
                 "brand": brand,
                 "product_name": product_name,
-                "model_variant": None,
+                "model_variant": r.get('model_variant'),
                 "variant_context": variant_context,
                 "size": size,
                 "fabric_tier": column_label,
@@ -6143,7 +6171,7 @@ def _pianca_flush_struttura_frontali_block(block, columns, variant_context, prod
             flags.append((r['page'], product_name, f"no price rows found for code {r['code']}"))
 
 
-def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, columns_by_frontali_count=None):
+def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, columns_by_frontali_count=None, heading_applies_forward=False):
     with open(path, encoding='utf-8') as f:
         lines = f.read().split('\n')
 
@@ -6212,17 +6240,33 @@ def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, colu
         # inline with zero ambiguity and gating on the wrong column broke
         # its own genuine L value.
         outer_col = None
+        subheader_line_idx = i
         for j in range(i + 1, min(i + 20, len(lines))):
             hm = re.search(r'\bH\b', lines[j])
             lm = re.search(r'\bL\b', lines[j])
             if hm and lm:
                 outer_col = min(hm.start(), lm.start())
+                subheader_line_idx = j
                 break
             if _PIANCA_PRICE_CELL_RE.match(lines[j].strip()):
                 break
         i += 1
         pending_block = []
         blank_run = 0
+        # Only meaningful when heading_applies_forward -- tracks whether a
+        # heading has already been captured for the block CURRENTLY being
+        # accumulated, so a stack of several consecutive heading-shaped
+        # lines (Island up's own "Vano con ripiani portascarpe" / "Con
+        # battitacco legno" / "In fase d'ordine è sempre necessario
+        # indicare la" / "configurazione del ripiano", 4 lines in a row)
+        # takes only the FIRST (the real category title) rather than
+        # whichever ends up textually last (a fragment of the LAST
+        # continuation sentence, in that example -- confirmed wrong via
+        # image before this reset was added). Reset the moment a real row
+        # is added to pending_block, since that means we've moved past
+        # this block's own heading zone and a fresh one may legitimately
+        # follow for the NEXT block.
+        heading_captured_since_flush = False
         while i < len(lines):
             line = lines[i]
             stripped = line.strip()
@@ -6296,9 +6340,121 @@ def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, colu
                             break
                         dims.insert(0, remaining_segs.pop())
                         remaining_positions.pop()
-                    pending_block.append({'code': code, 'dims': dims, 'trailing': trailing, 'page': page_of_line[i]})
-            elif 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
-                variant_context = stripped
+                    # A real row-level sub-label (Dedalo's own "con kit
+                    # bar" vs plain "ribalta", confirmed via image both
+                    # prefix the SAME physical line as their own row, not
+                    # a separate heading line) can be left over in
+                    # `remaining_segs` after the dims loop stops -- only
+                    # ever true noise (a diagram-range annotation like "3
+                    # 7 / 82", or an icon callout the outer_col gate
+                    # already refused to pop) or a genuine label reaches
+                    # here, and the two are reliably told apart by
+                    # whether any letter survives: noise is always purely
+                    # digits/slashes/spaces, a real label always has at
+                    # least one real word in it.
+                    model_variant = None
+                    if remaining_segs:
+                        leftover_text = ' '.join(remaining_segs).strip()
+                        if re.search(r'[A-Za-zÀ-ÿ]', leftover_text):
+                            model_variant = leftover_text
+                    pending_block.append({'code': code, 'dims': dims, 'trailing': trailing, 'page': page_of_line[i], 'model_variant': model_variant})
+                    heading_captured_since_flush = False
+            elif (i > subheader_line_idx and 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped)
+                  # Found live 2026-09-01: Dedalo's own page-intro spec
+                  # labels ("Con cavetto", "Estrazione" -- the same short
+                  # mini-section-title convention seen elsewhere across
+                  # Pianca, e.g. Alfa's "Piedi"/"Rompifilo") sit BEFORE
+                  # the table's own "H ... L ... P" sub-header line and
+                  # would otherwise be wrongly captured as this table's
+                  # own variant_context, persisting all the way through to
+                  # the first real row group. The `i > subheader_line_idx`
+                  # gate above means a heading can only take effect once
+                  # scanning has reached the table's own subheader line
+                  # (or, for Ala's embedded-in-CODICI-line convention
+                  # where no separate subheader line exists at all,
+                  # subheader_line_idx just stays at the header line
+                  # itself -- i is always greater than that already, so
+                  # this gate is a no-op there, matching Ala's own
+                  # already-correct "Scrittoi precedes its own rows"
+                  # behavior unchanged).
+                  #
+                  # Separately: Dedalo's own multi-line prose description
+                  # ("Il modulo a ribalta con kit bar prevede... (Argento,
+                  # / Bronzo, Piombo)") wraps across 3 physical lines, and
+                  # the 2nd/3rd continuation lines ("schienale e il fondo
+                  # in finitura Specchio (Argento,", "Bronzo, Piombo)")
+                  # are each short enough and start with a capital letter,
+                  # so they ALSO passed this check on their own merits.
+                  # Real headings never end in a comma (mid-list) or carry
+                  # an unbalanced closing paren (the matching "(" always
+                  # sits on the SAME line, or there is none at
+                  # all) -- both are reliable signals of a wrapped
+                  # sentence continuation instead, confirmed against every
+                  # other heading already captured correctly across this
+                  # cluster's 5 products.
+                  and not stripped.endswith(',') and stripped.count(')') <= stripped.count('(')
+                  # A THIRD false-positive shape, found live 2026-09-01
+                  # verifying Island up specifically: the SAME finish/
+                  # material name printed twice, once under each of the
+                  # table's own 2 "Struttura" column groups (e.g. "Vetro
+                  # Riflettente         Vetro Riflettente", "Vetro Trama
+                  # Vetro Trama") -- this table's own column-legend wrap
+                  # text, never a real category title (no real heading in
+                  # this whole cluster repeats its own exact text twice on
+                  # one line). Checked by splitting on the SAME 3+-space
+                  # columnar gap convention used throughout this row-scan
+                  # -- a real single-phrase heading never has an internal
+                  # 3+-space gap at all (exactly 1 segment, always
+                  # accepted below); only reject when there ARE 2+ such
+                  # segments and every one of them is identical.
+                  and not (len(re.split(r' {3,}', stripped)) >= 2 and len(set(re.split(r' {3,}', stripped))) == 1)
+                  # A FOURTH shape, sibling to the third: the table's own
+                  # 2 DIFFERENT registered column names concatenated on
+                  # one line ("Materico Interno           Laccato Opaco",
+                  # exactly `columns_for_occurrence`'s own 2 values) --
+                  # not a duplicate of ONE value, but still pure column-
+                  # legend wrap text, never a real category title (a real
+                  # heading is never composed of exactly this table's own
+                  # column names and nothing else).
+                  and set(re.split(r' {3,}', stripped)) != set(columns_for_occurrence)):
+                # Heading DIRECTION genuinely differs by product, confirmed
+                # via source image, not assumed uniform: Ala's own
+                # "Scrittoi" heading has no sibling group after it to
+                # confuse it with (so backward-vs-forward makes no visible
+                # difference there), but BOTH Dedalo ("Moduli People a
+                # cassetto"/"a ribalta") and Island up ("Vano con ripiani
+                # lineari"/"portascarpe") print a heading AFTER the group
+                # it describes and BEFORE the NEXT one -- confirmed by the
+                # drawer/flap icon sitting between the heading and its own
+                # rows, not between the rows and the heading, on BOTH
+                # products' own source images. The originally-assumed
+                # "Ala/Island up look back, only Dedalo looks forward"
+                # split was wrong -- Island up's own T678/T6C8 rows were
+                # ALSO silently mislabeled (T678 got "Vano con ripiani
+                # portascarpe" instead of "lineari") until this was
+                # actually re-checked against the image rather than
+                # assumed safe from Dedalo's fix alone. When
+                # heading_applies_forward is set, a heading line instead
+                # flushes whatever's ALREADY pending under the OLD
+                # variant_context first, then takes effect for the block
+                # that starts after it -- but ONLY the FIRST heading-shaped
+                # line since the last flush counts as the real category
+                # title; Island up's own "Vano con ripiani portascarpe"
+                # is immediately followed by 3 MORE consecutive heading-
+                # shaped lines ("Con battitacco legno" / "In fase
+                # d'ordine..." / "configurazione del ripiano", descriptive
+                # continuation sentences, not further category titles) --
+                # without ignoring those, the LAST fragment would win
+                # instead of the real title.
+                if heading_applies_forward:
+                    if not heading_captured_since_flush:
+                        if pending_block:
+                            _pianca_flush_struttura_frontali_block(pending_block, columns_for_occurrence, variant_context, product_name, brand, rows, flags)
+                            pending_block = []
+                        variant_context = stripped
+                        heading_captured_since_flush = True
+                else:
+                    variant_context = stripped
             i += 1
         if pending_block:
             _pianca_flush_struttura_frontali_block(pending_block, columns_for_occurrence, variant_context, product_name, brand, rows, flags)
@@ -6317,7 +6473,10 @@ def parse_file_pianca_dedalo_progetti_06_07(path, product_name, brand, all_headi
     """See module comment above for scope."""
     if product_name != 'Dedalo (Progetti 06-07)':
         return [], []
-    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS)
+    return _pianca_struttura_frontali_row_scan(
+        path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS,
+        heading_applies_forward=True,
+    )
 
 
 def parse_file_pianca_people_collezionenotte(path, product_name, brand, all_headings=None, heading_text=None):
@@ -6341,7 +6500,10 @@ def parse_file_pianca_island_up(path, product_name, brand, all_headings=None, he
     """See module comment above for scope."""
     if product_name != 'Island up':
         return [], []
-    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_ISLAND_UP_COLUMNS)
+    return _pianca_struttura_frontali_row_scan(
+        path, product_name, brand, _PIANCA_STRUTTURA_ISLAND_UP_COLUMNS,
+        heading_applies_forward=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -8713,6 +8875,87 @@ def parse_file_pianca_tosca(path, product_name, brand, all_headings=None, headin
 
 
 # ---------------------------------------------------------------------------
+# Dedalo (Progetti 06-07)'s own "Madie" (sideboard) family, resolved
+# 2026-09-01 (user-reported: real, clearly priced rows -- 00354Y/00357Y
+# etc, EUR2,617-7,070 -- entirely missing from "give all Dedalo prices").
+# Same real table SHAPE as the wardrobe-danger family above (row ends in
+# H P CODICI, a repeating-code danger fold via a row-type label to the
+# LEFT of H -- confirmed via image, page 19: code 00354Y prints TWICE,
+# once under "L. Opaco" and once under "Lucido Sp.", each with a
+# DIFFERENT full set of 4 prices) -- reuses `_pianca_wardrobe_scan_table`
+# unchanged, including its own already-established "H×P only, L excluded
+# from size" convention (matches Brema/Grafica/etc's own regression-
+# verified behavior, not a new inconsistency introduced for Dedalo).
+#
+# Genuinely needs its OWN header-finder rather than
+# `_pianca_wardrobe_find_headers`, though: that helper requires an
+# `anchor_tokens` REPEATED-word run (e.g. Brema's own 6x "Frontali") to
+# exist near the header, which none of Dedalo's own 4 column names
+# (Materico/Laccato Opaco/Essenza/Lucido Spazzolato, all different words)
+# ever produce. Confirmed via full-catalog grep that "A: battente" text
+# is NOT Dedalo-specific (appears in Brema/Ginevra/Grafica/etc.'s own
+# files too, presumably a shared door-mechanism note near every one of
+# these header shapes) -- not usable as a distinguishing anchor either.
+# Detected instead directly off the header line's own exact shape (ends
+# in H/P/CODICI, same structural signature as the whole family, PLUS "L"
+# then "A:" as its first 2 tokens -- confirmed unique within Dedalo's own
+# file, and this function is already product-name-scoped so cross-
+# product false positives are moot). All 4 real occurrences (pages
+# 16-19, one Madie width/feature variant each) share the identical
+# column set, confirmed via direct row inspection of each.
+# ---------------------------------------------------------------------------
+
+_PIANCA_DEDALO_MADIE_COLUMNS = ['Materico', 'Laccato Opaco', 'Essenza', 'Lucido Spazzolato']
+
+
+def _pianca_dedalo_madie_find_headers(lines):
+    for i, ln in enumerate(lines):
+        toks = ln.split()
+        if toks[-3:] == ['H', 'P', 'CODICI'] and toks[:2] == ['L', 'A:']:
+            yield i
+
+
+def parse_file_pianca_dedalo_madie(path, product_name, brand, all_headings=None, heading_text=None):
+    if product_name != 'Dedalo (Progetti 06-07)':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    # `_pianca_wardrobe_scan_table`'s own termination condition (12 blank
+    # lines, or another line ending in the EXACT SAME 'H P CODICI' shape)
+    # is sufficient for every one of its other 7 callers, each a single-
+    # shape file -- but Dedalo's own file mixes 3 genuinely different
+    # table shapes (this Madie family, the "Accessori kit luce" flat-price
+    # table, and cluster #6's own 'Struttura Struttura' danger table),
+    # NONE of which end in 'H P CODICI' themselves. Confirmed real via a
+    # first attempt without this bound: the 4th Madie occurrence's own
+    # scan silently wandered straight through "Accessori kit luce" and
+    # into cluster #6's own table many pages later, misreading its rows as
+    # shape-mismatched Madie noise. Bounded here by truncating `lines` at
+    # the next bare 'CODICI' mention of ANY shape (or EOF), matching every
+    # OTHER row-scanner's own boundary convention in this file, without
+    # touching the shared function's own more permissive default (still
+    # exactly right for its other 7 single-shape callers).
+    for header_idx in _pianca_dedalo_madie_find_headers(lines):
+        boundary = len(lines)
+        for j in range(header_idx + 1, len(lines)):
+            if 'CODICI' in lines[j]:
+                boundary = j
+                break
+        _pianca_wardrobe_scan_table(lines[:boundary], page_of_line, header_idx, product_name, brand, _PIANCA_DEDALO_MADIE_COLUMNS, True, rows, flags)
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Cornice (Spazi-10) -- genuinely its own dedicated shape, per this
 # project's standing rule that a structurally different 2-axis grid gets
 # its own function rather than being forced through the wardrobe-danger
@@ -8951,6 +9194,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_spazioteca_sistemigiorno,
         parse_file_pianca_alfa_letti,
         parse_file_pianca_alfa_tatami,
+        parse_file_pianca_dedalo_madie,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
