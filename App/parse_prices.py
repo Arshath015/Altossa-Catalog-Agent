@@ -5861,6 +5861,371 @@ def parse_file_pianca_ettorino(path, product_name, brand, all_headings=None, hea
 
 
 # ---------------------------------------------------------------------------
+# Collision cluster #6 -- the bare ('Struttura','Struttura') shape_b_named
+# key, resolved 2026-08-30/31 (deferred from the original collision-cluster
+# sweep as needing SIPARIO-Armadi-scale rigor -- turned out real, but
+# smaller in shape than initially feared once each product's own real rows
+# were individually inspected rather than assumed from the header alone).
+#
+# Ala ("Scrittoi") and Dedalo (Progetti 06-07, "Moduli interni") and BOTH
+# People files (CollezioneNotte, SistemiGiorno) all print the SAME real
+# 5-column convention: 2 top-level "Struttura" material choices (a
+# Laccato Opaco/Essenza-finish structure vs a Lucido Spazzolato-finish
+# structure), each with its own set of "Frontali" (drawer-front) finish
+# sub-choices -- 3 for the first group (L. Opaco/Essenza, Lucido Sp.,
+# Cuoio R./Cuoio Rigenerato), 2 for the second (L. Opaco/Essenza, Lucido
+# Sp.), 5 real columns total. Confirmed via direct row inspection this is
+# NOT a genuine 2-axis "danger table" needing a repeating-code fold at
+# all -- every code in every sampled occurrence appears exactly once.
+# Verified consistent across the FIRST, a MIDDLE, and the LAST of People
+# (SistemiGiorno)'s 49 occurrences (not assumed from one sample), and
+# across all 10 of People (CollezioneNotte)'s -- a genuine catalog-wide
+# furniture-line convention for drawer/cassetto modules, not a
+# coincidental header match. The exact column WORDING still differs
+# slightly per source (Ala/Dedalo/People-SistemiGiorno abbreviate "Cuoio
+# R."/"L. Opaco"; People-CollezioneNotte prints the unabbreviated "Cuoio
+# Rigenerato"/"Laccato Opaco") -- matched exactly as printed per source,
+# not assumed identical just because the STRUCTURE is.
+#
+# A real complication found while verifying the row shape, not assumed
+# away: the group's own OUTER dimension (Ala/Dedalo's "L", People's own
+# "L" or "H" depending on file) sometimes prints INLINE on only ONE row
+# of its own same-group pair (confirmed both ways -- sometimes the
+# FIRST row of the pair, sometimes the SECOND), with the sibling row
+# missing it entirely on its own physical line (a columnar pdftotext
+# layout artifact, the value visually spans/centers across both rows in
+# the real PDF). Handled by processing each blank-line-bounded block of
+# rows together and borrowing the outer dimension from whichever row in
+# the block has the most inline dims, rather than a naive single-
+# direction "carry from the line above" rule (which would only catch
+# HALF the real cases here).
+#
+# A second, separate complication found DURING verification against the
+# real source page images (not caught by plaintext inspection alone):
+# some rows' own product-icon diagram carries an internal callout number
+# (e.g. People (CollezioneNotte)'s drawer-height annotation, printed as
+# "-20"/"-20" beside the icon) that is ALSO a clean bare number sitting
+# to the LEFT of the row -- exactly where a genuine outer-dimension value
+# would be -- but at a totally different, unrelated column position. A
+# "must be a clean standalone number" check alone (sufficient to reject
+# Dedalo's own multi-token "3 7 / 82" diagram-range noise) is NOT
+# sufficient to catch this, since the icon callout passes that check too.
+# Fixed by locating the real outer-dimension column's own position from
+# the table's OWN "H"/"L" sub-header line (whichever of the two labels
+# has the smaller column offset is the genuinely outermost one -- this
+# order differs by file: "H then L" for Dedalo/People-CollezioneNotte,
+# "L then H" for Ala/People-SistemiGiorno) and only accepting a
+# leftover-segment candidate for the OUTERMOST dimension slot if its own
+# real column position on that physical line is within a few characters
+# of the sub-header's own outer-label position; the innermost 2 slots
+# (whichever of H/L sits immediately left of P, plus P itself) are always
+# taken position-agnostically since they've never shown this ambiguity.
+# Ala's own sub-header is embedded IN the CODICI header line itself
+# rather than a separate line below it, and searching for the sub-header
+# starting the line AFTER the CODICI header (never the CODICI line
+# itself) means Ala naturally finds no sub-header and skips this gate
+# entirely -- correct, since Ala's own rows already print all 3 dims
+# inline with zero ambiguity to begin with.
+#
+# Island Up's OWN 2 real occurrences of this bare key ("Estrazione
+# cassettiere Metallo", "Moduli con ripiani") are a COMPLETELY different,
+# much simpler real shape -- just 2 columns ("Materico Interno"/
+# "Laccato Opaco"), no outer-dimension-carry needed at all (every row's
+# own 3 dims already print inline) -- confirmed via direct row
+# inspection, not assumed just because it shares the same bare key.
+# Reuses the exact same shared row-scan core below: since every row
+# already has as many dims as the block's own maximum, the borrow-logic
+# is naturally a no-op for this product, without any special-casing.
+# Island Up's OTHER 3 occurrences of a header starting with "Struttura"
+# (real tail "Struttura Materico Interno Struttura Laccato Opaco", 6
+# tokens, a 4-column table) are a genuinely different, longer, self-
+# describing key that does NOT collide with the bare 2-token key at all
+# -- confirmed via direct row inspection (4 real prices, not 2 or 5) --
+# deliberately out of this cluster's scope, left for the existing
+# `parse_file_pianca_shape_b_named` generic mechanism to potentially
+# pick up on its own if that exact 6-token tail is ever registered.
+#
+# People (CollezioneNotte)/(SistemiGiorno) are scanned for EVERY
+# occurrence of the bare header within their own file (not just once --
+# 10 and 49 respectively), since each is a genuinely separate real table
+# for a different module type ("Moduli cassetto H 20", "Moduli ribalta
+# H 40", etc.), mostly sharing the identical 5-column real structure.
+#
+# NOT all 49 of People (SistemiGiorno)'s own occurrences, though --
+# confirmed by actually counting the real "Frontali" sub-header token per
+# occurrence, not assumed uniform just because 43/49 matched: exactly 6
+# ("Telaio" aluminum-frame tables, e.g. page 202's "Moduli battente")
+# print only 2 real Frontali columns (one bundled "Vetro" glass-finish
+# choice per top-level Struttura group -- the actual glass TYPE names
+# printed below it, "Vetro Trasparente/Riflettente/Trama/Rigato/
+# Metallizzato/Specchio", are alternative options at the SAME price, not
+# separate price columns) rather than the standard 5. Silently produced
+# zero rows for all 6 (~72 codes) before this was caught: the hardcoded
+# 5-column config made `trailing` fail to match a real 2-cell row, and
+# the row was dropped with no flag raised (flags only fire AFTER a valid
+# `trailing` is found). Fixed by counting the real "Frontali" token
+# across the same forward-scan window already used for outer_col
+# detection, and picking the 2-column vs 5-column config per occurrence
+# accordingly, rather than assuming one fixed n_cols for the whole file.
+# ---------------------------------------------------------------------------
+
+_PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS = [
+    'L. Opaco / Essenza', 'Lucido Sp.', 'Cuoio R.', 'L. Opaco / Essenza', 'Lucido Sp.',
+]
+_PIANCA_STRUTTURA_FRONTALI_PEOPLE_SG_VETRO_COLUMNS = ['Vetro', 'Vetro']
+_PIANCA_STRUTTURA_FRONTALI_PEOPLE_CN_COLUMNS = [
+    'Laccato Opaco / Essenza', 'Lucido Sp.', 'Cuoio Rigenerato', 'Laccato Opaco / Essenza', 'Lucido Sp.',
+]
+_PIANCA_STRUTTURA_ISLAND_UP_COLUMNS = ['Materico Interno', 'Laccato Opaco']
+
+
+def _pianca_is_bare_struttura_struttura_header(line: str) -> bool:
+    if 'CODICI' not in line:
+        return False
+    if _pianca_is_shape_a_header(line) or _pianca_is_2axis_header(line):
+        return False
+    return line.split('CODICI', 1)[1].split() == ['Struttura', 'Struttura']
+
+
+def _pianca_flush_struttura_frontali_block(block, columns, variant_context, product_name, brand, rows, flags):
+    """See module comment above for why the outer dimension is borrowed
+    from whichever row in the block has the most inline dims, not a
+    single-direction carry-forward."""
+    max_dims = max((len(r['dims']) for r in block), default=0)
+    label = None
+    if max_dims > 0:
+        for r in block:
+            if len(r['dims']) == max_dims:
+                label = r['dims'][0]
+                break
+    for r in block:
+        dims = list(r['dims'])
+        if label is not None and len(dims) == max_dims - 1:
+            dims = [label] + dims
+        size = '×'.join(dims) if dims else None
+        any_price = False
+        for column_label, cell in zip(columns, r['trailing']):
+            if cell == '-':
+                continue
+            any_price = True
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": variant_context,
+                "size": size,
+                "fabric_tier": column_label,
+                "tier_label": "Finish",
+                "code": r['code'],
+                "price_eur": cell,
+                "source_pdf_page": r['page'],
+            })
+        if not any_price:
+            flags.append((r['page'], product_name, f"no price rows found for code {r['code']}"))
+
+
+def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, columns_by_frontali_count=None):
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    variant_context = None
+    i = 0
+
+    while i < len(lines):
+        if not _pianca_is_bare_struttura_struttura_header(lines[i]):
+            i += 1
+            continue
+        # The real number of "Frontali" price columns genuinely varies
+        # per-occurrence for at least one product (People (SistemiGiorno):
+        # 43/49 occurrences print the standard 5, but 6 "Telaio" aluminum-
+        # frame tables print only 2 -- a bundled "Vetro" glass-finish
+        # choice per Struttura group instead of 3+2 drawer-front finishes)
+        # -- confirmed by literally counting the token, not assumed
+        # uniform from the header key alone. columns_by_frontali_count
+        # (when given) picks the right column-label list per occurrence;
+        # falls back to the caller's default `columns` for every other
+        # product, where this has never varied.
+        columns_for_occurrence = columns
+        if columns_by_frontali_count:
+            frontali_count = sum(lines[j].count('Frontali') for j in range(i + 1, min(i + 20, len(lines))))
+            columns_for_occurrence = columns_by_frontali_count.get(frontali_count, columns)
+        n_cols = len(columns_for_occurrence)
+        # The outermost "H" dimension is genuinely ambiguous from text
+        # alone: some rows carry an unrelated diagram-icon annotation
+        # (People (CollezioneNotte)'s own internal drawer-height callout,
+        # e.g. "-20"/"-20" printed beside the product icon) that is ALSO
+        # a clean bare number sitting to the left of the row, exactly
+        # where a real H value would be -- confirmed against the source
+        # page image (PEOPLE_141): the genuine group H ("40") prints at
+        # the SAME left column as the "H" sub-header itself, while the
+        # icon annotation prints several characters further right, at a
+        # totally different column. Anchoring on the sub-header's own H
+        # column position (searched for within the header line itself --
+        # Ala's own "L    H     P CODICI" -- or a few lines below it --
+        # Dedalo/People (CollezioneNotte)'s own separate "H ... L ... P"
+        # line) is the only reliable way to tell the two apart; a "just a
+        # clean number" check alone (sufficient for Dedalo's multi-token
+        # "3 7 / 82" diagram noise) is NOT sufficient here, since "20"
+        # alone passes that check too.
+        #
+        # The column ORDER genuinely varies by file, confirmed real: it's
+        # "H ... L ... P" for Dedalo/People (CollezioneNotte), but
+        # "L ... H ... P" for Ala/People (SistemiGiorno) -- People
+        # (SistemiGiorno) has its own separate sub-header line too (not
+        # embedded like Ala's), so "does a separate sub-header line
+        # exist" alone can't distinguish which of H/L is truly the
+        # OUTERMOST (leftmost, and therefore the one that can collide
+        # with diagram-icon noise) column -- only comparing the two
+        # labels' own positions can. Ala's sub-header is embedded IN the
+        # CODICI header line itself (i), so searching starting at i+1
+        # naturally excludes it, leaving outer_col unset (no gating) --
+        # confirmed necessary, since Ala's rows already print all 3 dims
+        # inline with zero ambiguity and gating on the wrong column broke
+        # its own genuine L value.
+        outer_col = None
+        for j in range(i + 1, min(i + 20, len(lines))):
+            hm = re.search(r'\bH\b', lines[j])
+            lm = re.search(r'\bL\b', lines[j])
+            if hm and lm:
+                outer_col = min(hm.start(), lm.start())
+                break
+            if _PIANCA_PRICE_CELL_RE.match(lines[j].strip()):
+                break
+        i += 1
+        pending_block = []
+        blank_run = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            if stripped == '':
+                blank_run += 1
+                if blank_run >= 2 and pending_block:
+                    _pianca_flush_struttura_frontali_block(pending_block, columns_for_occurrence, variant_context, product_name, brand, rows, flags)
+                    pending_block = []
+                i += 1
+                continue
+            if 'CODICI' in line:
+                break  # next table's header, any shape -- this table's own scan ends here
+            blank_run = 0
+            # Split on the REAL columnar gaps (3+ spaces) rather than
+            # every whitespace run -- confirmed necessary: a naive
+            # whitespace-only tokenization on Dedalo's own rows let an
+            # unrelated diagram-range annotation on the SAME physical
+            # line ("3 7 / 82", describing an either/or L option
+            # completely unrelated to the actual row 2 segments to its
+            # right) get consumed as if it were a real 3rd dimension
+            # value, since it's purely-numeric-adjacent to the real dims
+            # with nothing but whitespace between them -- a plain
+            # right-to-left "pop while numeric" can't tell a genuine
+            # dimension apart from unrelated noise sitting in a totally
+            # different visual column. Column-segmenting first means
+            # each segment is checked for being a CLEAN bare number on
+            # its own before ever being trusted as a dimension. Segment
+            # START COLUMNS (on the un-stripped line) are tracked
+            # alongside the text so the outermost H pop can additionally
+            # be gated on real column position (see h_col above).
+            seg_matches = list(re.finditer(r'\S+(?:\s{1,2}\S+)*', line))
+            segments = [m.group() for m in seg_matches]
+            positions = [m.start() for m in seg_matches]
+            trailing = segments[-n_cols:] if n_cols <= len(segments) and all(_PIANCA_PRICE_CELL_RE.match(s) for s in segments[-n_cols:]) else []
+            if trailing and any(t != '-' for t in trailing):
+                leftover_segs = segments[:-n_cols]
+                leftover_positions = positions[:-n_cols]
+                # Whether P and CODICI print as one combined segment
+                # ("45 06314", a single space -- Dedalo's own format) or
+                # as two SEPARATE segments ("35" then "5P1Y8", a 3+ space
+                # gap -- People (CollezioneNotte)'s own format) genuinely
+                # varies by source file -- confirmed real, not assumed
+                # uniform. Handled the same way either way: find the code
+                # as the last TOKEN of the last leftover segment, then
+                # greedily consume up to 3 total clean-bare-number
+                # candidates working right-to-left -- first any extra
+                # token sharing the code's own segment, then whole
+                # leftover segments one at a time -- stopping the moment
+                # a candidate ISN'T a clean bare number by itself (a
+                # slash, multiple words -- unrelated diagram noise like
+                # Dedalo's own "3 7 / 82" -- rather than force-parsed).
+                last_seg_tokens = leftover_segs[-1].split() if leftover_segs else []
+                if last_seg_tokens and _PIANCA_CODE_RE.match(last_seg_tokens[-1]) and re.search(r'\d', last_seg_tokens[-1]):
+                    code = last_seg_tokens[-1]
+                    dims = []
+                    if len(last_seg_tokens) > 1 and re.match(r'^\d+(\.\d+)?$', last_seg_tokens[-2]):
+                        dims.insert(0, last_seg_tokens[-2])
+                    remaining_segs = list(leftover_segs[:-1])
+                    remaining_positions = list(leftover_positions[:-1])
+                    while len(dims) < 3 and remaining_segs and re.match(r'^\d+(\.\d+)?$', remaining_segs[-1]):
+                        # The 3rd (outermost, either H or L depending on
+                        # the file's own column order -- see outer_col
+                        # comment above) value is the one that can collide
+                        # with an unrelated diagram-icon annotation that
+                        # also happens to be a clean bare number -- gate
+                        # ONLY this final pop on real column position,
+                        # since the innermost 2 (whichever of H/L sits
+                        # immediately left of P, plus P itself) are always
+                        # structurally safe to take position-agnostically.
+                        if len(dims) == 2 and outer_col is not None and abs(remaining_positions[-1] - outer_col) > 4:
+                            break
+                        dims.insert(0, remaining_segs.pop())
+                        remaining_positions.pop()
+                    pending_block.append({'code': code, 'dims': dims, 'trailing': trailing, 'page': page_of_line[i]})
+            elif 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                variant_context = stripped
+            i += 1
+        if pending_block:
+            _pianca_flush_struttura_frontali_block(pending_block, columns_for_occurrence, variant_context, product_name, brand, rows, flags)
+
+    return rows, flags
+
+
+def parse_file_pianca_ala(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Ala':
+        return [], []
+    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS)
+
+
+def parse_file_pianca_dedalo_progetti_06_07(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Dedalo (Progetti 06-07)':
+        return [], []
+    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS)
+
+
+def parse_file_pianca_people_collezionenotte(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'People (CollezioneNotte)':
+        return [], []
+    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_PEOPLE_CN_COLUMNS)
+
+
+def parse_file_pianca_people_sistemigiorno(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'People (SistemiGiorno)':
+        return [], []
+    return _pianca_struttura_frontali_row_scan(
+        path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS,
+        columns_by_frontali_count={5: _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS, 2: _PIANCA_STRUTTURA_FRONTALI_PEOPLE_SG_VETRO_COLUMNS},
+    )
+
+
+def parse_file_pianca_island_up(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope."""
+    if product_name != 'Island up':
+        return [], []
+    return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_ISLAND_UP_COLUMNS)
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape B, Mambo's OWN 2-axis variant -- Mambo (Progetti di Design
 # 09) only, verified against real PDF pages 28-35. Structurally similar to
 # Norma Up's 2-axis grid (same code repeats across multiple row-type
@@ -8328,6 +8693,11 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_baio,
         parse_file_pianca_icaro,
         parse_file_pianca_ettorino,
+        parse_file_pianca_ala,
+        parse_file_pianca_dedalo_progetti_06_07,
+        parse_file_pianca_people_collezionenotte,
+        parse_file_pianca_people_sistemigiorno,
+        parse_file_pianca_island_up,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]

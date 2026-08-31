@@ -139,7 +139,11 @@
  * Requires the dev server running (npm run dev:server).
  */
 
+import fs from 'fs';
+import path from 'path';
+
 const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
+const ROOT = path.join(__dirname, '..', '..');
 
 interface PriceRow {
   product_name: string;
@@ -987,6 +991,66 @@ const CASES: Case[] = [
     expectedTier: 'Laccato Opaco',
     note: 'The other half of cluster #7\'s safely-shared pair -- confirmed via direct row inspection identical real column structure to Ala\'s "Pannelli" table.',
   },
+  {
+    id: 'cluster6-ala-scrittoi-fully-inline',
+    query: 'Ala price',
+    productName: 'Ala',
+    code: '5A055Y',
+    expectedPrice: '672',
+    expectedSize: '120×10×61',
+    expectedTier: 'Cuoio R.',
+    note: 'Collision cluster #6 (2026-08-30/31): the bare (\'Struttura\',\'Struttura\') shape_b_named key, shared by Ala/Dedalo (Progetti 06-07)/both People files. Ala\'s own rows already print all 3 dims (L H P, in THAT order per its own embedded "L H P CODICI" header) fully inline with zero borrow ambiguity -- confirmed via source image (page 84). New `_pianca_struttura_frontali_row_scan` core.',
+  },
+  {
+    id: 'cluster6-dedalo-cassetto-outer-dim-borrow',
+    query: 'Dedalo (Progetti 06-07) price',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '06314',
+    expectedPrice: '93',
+    expectedSize: '10×37×45',
+    expectedTier: 'Cuoio R.',
+    note: 'Confirmed via source image (page 22): the group\'s own outer H dimension (10) prints inline on only ONE of the 3 "Moduli People a cassetto" sibling rows (0631E) and must be borrowed by the other 2 (06314, 0631C) -- borrowed from whichever row in the blank-line-bounded block has the most inline dims, not a single-direction carry rule.',
+  },
+  {
+    id: 'cluster6-dedalo-4row-shared-h-block',
+    query: 'Dedalo (Progetti 06-07) price',
+    productName: 'Dedalo (Progetti 06-07)',
+    code: '06376',
+    expectedPrice: '488',
+    expectedSize: '30×60×35',
+    expectedTier: 'Cuoio R.',
+    note: 'Regression guard for a false alarm caught and resolved during verification: 06376/06377 ("con kit bar") and 06366/06367 ("ribalta") looked like 2 separate 2-row H-groups at a glance, but the source image (page 22) confirms all 4 genuinely share ONE H=30 label -- the row-level "con kit bar"/"ribalta" text is a descriptive sub-label, not a table-shape boundary. Diagram noise on these same physical lines ("3 7 / 82", "60 / 70") is correctly discarded (fails the clean-bare-number check), not consumed as a bogus dimension.',
+  },
+  {
+    id: 'cluster6-people-cn-icon-noise-not-outer-dim',
+    query: 'People (CollezioneNotte) price',
+    productName: 'People (CollezioneNotte)',
+    code: '5P2Y4',
+    expectedPrice: '409',
+    expectedSize: '40×40×45',
+    expectedTier: 'Cuoio Rigenerato',
+    note: 'Root-cause guard for the trickiest bug in this cluster, caught before committing via direct comparison against the source page image (PEOPLE_141): a drawer-icon diagram annotation ("-20"/"-20", printed to the left of rows 5P1Y8/5P2Y8) is ALSO a clean bare number sitting where a genuine outer-H value would be, at a DIFFERENT column position than the sub-header\'s own real "H" column. A naive "just check it\'s a clean number" rule (sufficient for Dedalo\'s own multi-token "3 7 / 82" noise) wrongly borrowed H=20 onto 5P2Y4 and every other short row in the block. Fixed by anchoring on the real column position of the table\'s own "H"/"L" sub-header label (whichever of the two sits further left is genuinely outermost -- the order differs: "H then L" here, "L then H" for Ala/People (SistemiGiorno)) and gating the outermost pop on that position; the whole 9-row block correctly shares ONE real H=40 (confirmed via image), including this row.',
+  },
+  {
+    id: 'cluster6-island-up-materico-interno',
+    query: 'Island up price',
+    productName: 'Island up',
+    code: 'T63RHQ',
+    expectedPrice: '3.824',
+    expectedSize: '140×75×53',
+    expectedTier: 'Materico Interno',
+    note: 'Island up\'s own 2 real occurrences of the bare (\'Struttura\',\'Struttura\') key are a completely different, simpler 2-column shape (no outer-dimension borrow needed at all -- every row already prints all 3 dims inline) -- confirmed via direct row inspection, not assumed just because it shares the same bare key as Ala/Dedalo/People.',
+  },
+  {
+    id: 'cluster6-island-up-laccato-opaco',
+    query: 'Island up price',
+    productName: 'Island up',
+    code: 'T63RHQ',
+    expectedPrice: '4.283',
+    expectedSize: '140×75×53',
+    expectedTier: 'Laccato Opaco',
+    note: 'Same code as cluster6-island-up-materico-interno, the OTHER real column price -- confirms both survive as distinct rows.',
+  },
 ];
 
 interface RejectCase {
@@ -1102,8 +1166,36 @@ async function main() {
     console.log(`[guard-spazioteca-scorrevoli-not-corrupted] ${ok ? 'ok' : 'FAIL'}  code-47Q9C-rows=${rows.length}`);
   }
 
+  // Cluster #6's own "Vetro" 2-column fix (People (SistemiGiorno)'s 6
+  // "Telaio" aluminum-frame tables, out of 49 total occurrences of the
+  // bare key, print only 2 real Frontali columns instead of the standard
+  // 5 -- silently produced ZERO rows before this fix, since the hardcoded
+  // 5-column config made `trailing` fail to match a real 2-cell row).
+  // Checked via a DIRECT prices.json read rather than the chat endpoint:
+  // every one of these codes ALSO genuinely duplicates a same-size code
+  // in People (SistemiGiorno)'s own standard 5-column table elsewhere in
+  // the source (confirmed real, same "same code/size, two source tables"
+  // pattern as the cop-cos/5P2MHY cases above) -- the pre-existing
+  // ambiguous-price safety net correctly hides ALL of this fabric_tier's
+  // rows from any live chat query as a result, which is correct behavior
+  // but makes the chat endpoint unable to exercise this specific fix.
+  {
+    const pricesPath = path.join(ROOT, 'data', 'Pianca', 'prices.json');
+    const prices: PriceRow[] = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
+    const vetroRows = prices.filter(r =>
+      r.product_name === 'People (SistemiGiorno)' && r.code === '5P526' && r.fabric_tier === 'Vetro'
+    );
+    const prices328 = vetroRows.some(r => r.price_eur === '328');
+    const prices379 = vetroRows.some(r => r.price_eur === '379');
+    const ok = vetroRows.length === 2 && prices328 && prices379;
+    if (!ok) {
+      failures.push(`[cluster6-people-sg-vetro-2col-not-dropped] expected 2 "Vetro" rows for code 5P526 (328, 379), got ${JSON.stringify(vetroRows)}`);
+    }
+    console.log(`[cluster6-people-sg-vetro-2col-not-dropped] ${ok ? 'ok' : 'FAIL'}  vetro-rows=${vetroRows.length}`);
+  }
+
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length + REJECT_CASES.length + 1}`);
+  console.log(`Total cases: ${CASES.length + REJECT_CASES.length + 2}`);
   console.log(`Failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
