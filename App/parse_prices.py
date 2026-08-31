@@ -5861,6 +5861,125 @@ def parse_file_pianca_ettorino(path, product_name, brand, all_headings=None, hea
 
 
 # ---------------------------------------------------------------------------
+# Alfa (Letti)/(Tatami), resolved 2026-08-31 -- the other originally-named
+# "outlier" pair (with Grafica/Kyoto). Superficially matches the already-
+# built Letti tier-ladder shape (bare "L P CODICI" header, "WxH" nominal
+# bed size, wildcard order codes) but its own lookback text reads
+# "Materico / Laccato / Essenza / Cuoio" -- 4 NAMED finish columns, not
+# the "A B C H P Q" tier-letter ladder `parse_file_pianca_letti_tier`
+# requires -- confirmed via direct source-image comparison (both files'
+# own page images), not assumed from the header text alone. Needed a
+# genuinely new mechanism combining 3 conventions already each proven
+# separately elsewhere, but never together: Letti's own "WxH" nominal-
+# size + wildcard-code row shape, PLUS shape_b_named's own "labels print
+# before CODICI" convention (`_pianca_labels_before_codici_row_scan`
+# can't be reused directly -- its own code detector requires the ENTIRE
+# code to be ONE whitespace token, which fails on a wildcard code like
+# "WAF * 03S" split across 3 tokens by the literal asterisk).
+#
+# Every row already carries its own dims fully inline with zero
+# ambiguity (WxH nominal, then real L, then real P, then the wildcard
+# code, then N clean trailing prices) -- confirmed via both files' own
+# source images, no outer-dimension-borrow complication like cluster #6.
+# `size` is deliberately the printed "WxH" nominal bed size (matching
+# `parse_file_pianca_letti_tier`'s own established display convention,
+# e.g. "90x190"), not the internal structural L/P values that follow it.
+# Both files share the identical 4-column set and wildcard-legend
+# convention ("*1 Legno"/"*7 Cuoio" etc, preserved literally per the
+# same "never resolve a wildcard" philosophy as Enea Up/Norma/Cornice),
+# confirmed via direct comparison -- only the code PREFIX differs
+# (Letti: "WAF"; Tatami: "WZ3"/"WZ4", one per lati-count variant).
+# ---------------------------------------------------------------------------
+
+_PIANCA_ALFA_COLUMNS = ['Materico', 'Laccato Opaco', 'Essenza', 'Cuoio']
+
+
+def _pianca_alfa_row_scan(path, product_name, brand):
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    n_cols = len(_PIANCA_ALFA_COLUMNS)
+    rows = []
+    flags = []
+    variant_context = None
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == '':
+            continue
+        tokens = stripped.split()
+        trailing = tokens[-n_cols:] if n_cols <= len(tokens) else []
+        if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing) or not any(t != '-' for t in trailing):
+            if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                variant_context = stripped
+            continue
+
+        pre_tokens = tokens[:-n_cols]
+        # Wildcard code: PREFIX, a bare "*", SUFFIX -- 3 tokens, same
+        # convention as Enea Up's own "T0E * 09M" -- never resolved,
+        # preserved literally.
+        if (len(pre_tokens) < 3 or pre_tokens[-2] != '*'
+                or not re.match(r'^[A-Z0-9]{2,6}$', pre_tokens[-3])
+                or not (re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]))):
+            continue
+        code = f'{pre_tokens[-3]} * {pre_tokens[-1]}'
+        remaining = list(pre_tokens[:-3])
+
+        # Real structural L/P dims (2 clean numbers) sit between the WxH
+        # nominal size and the code -- popped and discarded, since `size`
+        # is the printed WxH notation, not these internal values.
+        for _ in range(2):
+            if remaining and re.match(r'^\d+(\.\d+)?$', remaining[-1]):
+                remaining.pop()
+        size = remaining[-1] if remaining and re.match(r'^\d+x\d+$', remaining[-1]) else None
+        if size is None:
+            flags.append((page_of_line[i], product_name, f"no WxH nominal size found for code {code}"))
+            continue
+
+        any_price = False
+        for column_label, cell in zip(_PIANCA_ALFA_COLUMNS, trailing):
+            if cell == '-':
+                continue
+            any_price = True
+            rows.append({
+                "brand": brand,
+                "product_name": product_name,
+                "model_variant": None,
+                "variant_context": variant_context,
+                "size": size,
+                "fabric_tier": column_label,
+                "tier_label": "Finish",
+                "code": code,
+                "price_eur": cell,
+                "source_pdf_page": page_of_line[i],
+            })
+        if not any_price:
+            flags.append((page_of_line[i], product_name, f"no price rows found for code {code}"))
+
+    return rows, flags
+
+
+def parse_file_pianca_alfa_letti(path, product_name, brand, all_headings=None, heading_text=None):
+    if product_name != 'Alfa (Letti)':
+        return [], []
+    return _pianca_alfa_row_scan(path, product_name, brand)
+
+
+def parse_file_pianca_alfa_tatami(path, product_name, brand, all_headings=None, heading_text=None):
+    if product_name != 'Alfa (Tatami)':
+        return [], []
+    return _pianca_alfa_row_scan(path, product_name, brand)
+
+
+# ---------------------------------------------------------------------------
 # Collision cluster #6 -- the bare ('Struttura','Struttura') shape_b_named
 # key, resolved 2026-08-30/31 (deferred from the original collision-cluster
 # sweep as needing SIPARIO-Armadi-scale rigor -- turned out real, but
@@ -8830,6 +8949,8 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_people_sistemigiorno,
         parse_file_pianca_island_up,
         parse_file_pianca_spazioteca_sistemigiorno,
+        parse_file_pianca_alfa_letti,
+        parse_file_pianca_alfa_tatami,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
