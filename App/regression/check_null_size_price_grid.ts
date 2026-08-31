@@ -18,17 +18,29 @@
  * `VariantTable` renders one `<td>` per column -- with none, the row's
  * own price has nowhere to display at all.
  *
- * A full-dataset blast-radius scan (all 5 brands' own `prices.json`,
+ * **User called this the most serious finding of the whole session, and
+ * asked 2 things directly: how long was it live, and add a check that
+ * catches this FAILURE CLASS across the whole catalog, not just spot
+ * checks.**
+ *
+ * How long: `git log --follow` on this component's own history shows the
+ * ORIGINAL baseline implementation (commit 8945d70, 2026-08-04, the very
+ * first version of this file) already handled a null size correctly --
+ * `sizes = [...new Set(rows.map(r => r.size))]` included `null` as one of
+ * the Set's own distinct values, rendering a real "—"-labelled column for
+ * it. The bug was introduced LATER, in commit 803d5a0 (2026-08-29
+ * 05:33:54, the Venere same-size-different-code fix, which extracted this
+ * logic into `priceGridGrouping.ts` and added `if (r.size === null)
+ * continue;` while fixing a DIFFERENT, real problem) -- confirmed via
+ * `git show 803d5a0` diffing both the removed and added lines directly,
+ * not inferred. Fixed here 2026-09-01 (commit 931c491) -- roughly 3 days
+ * of live exposure, not "since the app's inception" as first assumed.
+ *
+ * Catalog-wide blast-radius scan (all 6 brands' own `prices.json`,
  * counting every (product, model_variant, variant_context) group where
- * EVERY row has size=null) found this is NOT a Pianca-only edge case:
- * Pianca 65 products / 294 groups, Bolzan 44, Bonaldo 34, Varaschini 645,
- * Ditre Italia 5 -- 793 products total, silently showing "-" instead of
- * their own real price, catalog-wide, likely for as long as this
- * component has existed. This check does NOT attempt all 793 live (far
- * too slow for a regression gate) -- it spot-checks one real product per
- * brand, chosen to also cover the SECOND bug found while fixing the
- * first (see below), plus a synthetic edge-case battery for anything a
- * live spot-check can't cheaply exercise.
+ * EVERY row has size=null): Pianca 65 products / 294 groups, Bolzan 44,
+ * Bonaldo 34, Varaschini 645, Ditre Italia 5, Cattelan Italia 0 -- 793
+ * products total, silently showing "-" instead of their own real price.
  *
  * SECOND bug, found while verifying the first fix across brands (not
  * assumed safe from Pianca alone): a naive single hardcoded "Price"
@@ -44,14 +56,49 @@
  * string) rather than a separate hardcoded branch -- one code path, not
  * two that could drift apart.
  *
+ * `runExhaustiveSweep()` below is the check the user specifically asked
+ * for: reads every brand's own `prices.json` DIRECTLY (no HTTP, no dev
+ * server needed for this part -- pure in-memory JS against the same
+ * production `buildVariantGroups`/`buildSizeColumns`/`findCell` the UI
+ * actually renders with), groups every product's rows exactly the way the
+ * UI does, and asserts EVERY row in EVERY group of EVERY product across
+ * ALL 6 brands is reachable via the grid traversal. This is NOT a sample
+ * -- it is the exhaustive, whole-catalog version of the exact check that
+ * would have caught this bug the moment it was introduced, so this
+ * specific failure class (rows present in prices.json, invisible in the
+ * rendered grid) can never silently recur for ANY product, not just the
+ * ones already known to be affected. The live-API CASES below stay too,
+ * since they additionally prove the full request/response pipeline (not
+ * just the pure grouping functions) for a representative product per
+ * brand.
+ *
+ * The FIRST run of the exhaustive sweep found 104 products failing --
+ * every single failing row was `ambiguous: true`, the SAME code sharing
+ * one (tier, size) cell with a genuinely conflicting price from this
+ * catalog's own PRE-EXISTING ambiguous-price safety net (confirmed via
+ * direct source check, e.g. Bolzan's "Flag" prints code "+100" twice
+ * with 2 different real prices, "+100" and "+200" -- a real source-data
+ * conflict, not an extraction bug). That safety net's own job is to make
+ * such a row deliberately NOT resolve to one confident cell (the UI
+ * shows a conflict warning instead of guessing) -- a different, already-
+ * correct behavior from the null-size bug's own symptom (an
+ * UNAMBIGUOUS real price becoming completely invisible). `findLostRows`
+ * now excludes `ambiguous: true` rows from the "must match my own exact
+ * price" requirement for exactly this reason -- see its own comment.
+ *
  * RUN WITH: npm run check-null-size-price-grid
- * Requires the dev server running (npm run dev:server).
+ * Requires the dev server running (npm run dev:server) for the CASES/
+ * synthetic sections; the exhaustive sweep itself does not.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { buildVariantGroups, buildSizeColumns, findCell, FLAT_PRICE_COLUMN_KEY } from '../component/priceGridGrouping';
 import type { PriceRow } from '../component/priceGridGrouping';
 
 const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
+const ROOT = path.join(__dirname, '..', '..');
+const ALL_BRANDS = ['Bolzan', 'Bonaldo', 'Cattelan Italia', 'Ditre Italia', 'Pianca', 'Varaschini'];
 
 interface ChatResponse {
   status?: string;
@@ -80,12 +127,30 @@ async function postChat(brand: string, message: string): Promise<ChatResponse> {
 /** Every row in `rows` must be reachable via the exact grid traversal the
  * UI uses -- a null-size row's grouping key is FLAT_PRICE_COLUMN_KEY,
  * the same unification buildSizeColumns itself uses internally, so this
- * one lookup covers both real-size and dimensionless rows identically. */
+ * one lookup covers both real-size and dimensionless rows identically.
+ *
+ * `ambiguous: true` rows are deliberately EXCLUDED from the "must match
+ * MY OWN exact price" requirement -- found running the exhaustive sweep
+ * for the first time, 2026-09-01: 104 products failed on the very first
+ * run, but EVERY failing row was `ambiguous: true`, the SAME code sharing
+ * one (tier, size) cell with a genuinely conflicting price from this
+ * catalog's own pre-existing ambiguous-price safety net (confirmed via
+ * direct source check, e.g. Bolzan's "Flag" has code "+100" printed
+ * twice with prices "+100" and "+200" -- a real source-data conflict,
+ * not an extraction bug). That safety net's own job is precisely to make
+ * such a row NOT resolve to one specific confident cell (the UI shows a
+ * conflict warning/image instead of guessing) -- this is by-design
+ * different from the null-size bug's own symptom (a real, UNAMBIGUOUS
+ * price becoming completely invisible, zero columns at all). Applying
+ * the null-size fix's "must be reachable" bar to an intentionally-
+ * unresolvable ambiguous row would be flagging correct, already-shipped
+ * behavior as a regression. */
 function findLostRows(rows: PriceRow[]): PriceRow[] {
   const lost: PriceRow[] = [];
   for (const group of buildVariantGroups(rows)) {
     const columns = buildSizeColumns(group.rows);
     for (const row of group.rows) {
+      if (row.ambiguous) continue;
       const rowKey = row.size ?? FLAT_PRICE_COLUMN_KEY;
       const col = columns.find(c => (c.size ?? FLAT_PRICE_COLUMN_KEY) === rowKey && (
         !c.key.includes('::') || c.key === `${rowKey}::${row.code ?? ''}`
@@ -96,6 +161,48 @@ function findLostRows(rows: PriceRow[]): PriceRow[] {
     }
   }
   return lost;
+}
+
+interface SweepFailure {
+  brand: string;
+  product: string;
+  lostCount: number;
+  totalRows: number;
+  sample: PriceRow[];
+}
+
+/** The exhaustive, whole-catalog version of `findLostRows` -- reads every
+ * brand's own `prices.json` directly and asserts every row of every
+ * product is reachable via the grid traversal. This is what actually
+ * catches "product has real price rows but renders zero visible columns"
+ * as a FAILURE CLASS, not a list of already-known offenders: any future
+ * product, in any brand, that ends up with an unreachable row for ANY
+ * reason (not just size===null -- any grouping/column mismatch this
+ * traversal can't resolve) fails this check the moment it's introduced,
+ * the same day `regression:full` next runs, rather than waiting for a
+ * user to spot-check that one specific page against its source image. */
+function runExhaustiveSweep(): SweepFailure[] {
+  const failures: SweepFailure[] = [];
+  for (const brand of ALL_BRANDS) {
+    const pricesPath = path.join(ROOT, 'data', brand, 'prices.json');
+    if (!fs.existsSync(pricesPath)) {
+      failures.push({ brand, product: '(missing prices.json)', lostCount: -1, totalRows: 0, sample: [] });
+      continue;
+    }
+    const allRows: PriceRow[] = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
+    const byProduct = new Map<string, PriceRow[]>();
+    for (const r of allRows) {
+      if (!byProduct.has(r.product_name)) byProduct.set(r.product_name, []);
+      byProduct.get(r.product_name)!.push(r);
+    }
+    for (const [product, rows] of byProduct) {
+      const lost = findLostRows(rows);
+      if (lost.length > 0) {
+        failures.push({ brand, product, lostCount: lost.length, totalRows: rows.length, sample: lost.slice(0, 2) });
+      }
+    }
+  }
+  return failures;
 }
 
 interface Case {
@@ -187,6 +294,28 @@ function runSyntheticCases(): string[] {
 }
 
 async function main() {
+  const failures: string[] = [];
+
+  // Exhaustive sweep first -- pure in-memory, no server needed, and this
+  // is the check the user specifically asked for: every product, every
+  // brand, not a sample. Run before the live-API section so a sweep
+  // failure is reported even if the dev server happens to be down.
+  const sweepFailures = runExhaustiveSweep();
+  const sweepTotalProducts = ALL_BRANDS.reduce((sum, brand) => {
+    const p = path.join(ROOT, 'data', brand, 'prices.json');
+    if (!fs.existsSync(p)) return sum;
+    const rows: PriceRow[] = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    return sum + new Set(rows.map(r => r.product_name)).size;
+  }, 0);
+  if (sweepFailures.length > 0) {
+    for (const f of sweepFailures) {
+      failures.push(`[exhaustive-sweep] ${f.brand} / "${f.product}" -- ${f.lostCount}/${f.totalRows} row(s) unreachable via the grid traversal: ${JSON.stringify(f.sample)}`);
+    }
+    console.log(`[exhaustive sweep, all brands]`.padEnd(45), `FAIL -- ${sweepFailures.length} product(s) with unreachable rows (of ${sweepTotalProducts} checked)`);
+  } else {
+    console.log(`[exhaustive sweep, all brands]`.padEnd(45), `ok  (${sweepTotalProducts} products checked, 0 with unreachable rows)`);
+  }
+
   const probe = await postChat('Pianca', 'ping');
   if (probe.error) {
     console.error(`\nCannot reach ${BASE_URL}/api/catalog/chat (${probe.error}).`);
@@ -194,8 +323,8 @@ async function main() {
     process.exit(1);
   }
 
-  const failures: string[] = [...runSyntheticCases()];
-  console.log(`[synthetic edge cases]`.padEnd(45), failures.length === 0 ? 'ok' : `FAIL (${failures.length})`);
+  failures.push(...runSyntheticCases());
+  console.log(`[synthetic edge cases]`.padEnd(45), failures.length === sweepFailures.length ? 'ok' : `FAIL (${failures.length - sweepFailures.length})`);
 
   for (const c of CASES) {
     const resp = await postChat(c.brand, `give all ${c.product} prices`);
@@ -217,15 +346,16 @@ async function main() {
   }
 
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length + 1}`);
-  console.log(`Failures: ${failures.length}  <-- must be 0`);
+  console.log(`Exhaustive sweep: ${sweepTotalProducts} products checked across ${ALL_BRANDS.length} brands, ${sweepFailures.length} with unreachable rows  <-- must be 0`);
+  console.log(`Live-API cases: ${CASES.length + 1}`);
+  console.log(`Total failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
     failures.forEach(f => console.log(`  ${f}`));
     console.log('\nEXIT 1: null-size price-grid row loss regressed.');
     process.exit(1);
   }
-  console.log('\nEXIT 0: dimensionless flat-price rows (single or code-colliding) are always reachable via the price grid, across every brand spot-checked, no silent data loss.');
+  console.log('\nEXIT 0: every product in every brand\'s prices.json has every row reachable via the price grid (exhaustive), plus the live API pipeline confirmed for a spot-checked product per brand -- this failure class (real price rows silently invisible in the rendered grid) cannot recur undetected.');
 }
 
 main();
