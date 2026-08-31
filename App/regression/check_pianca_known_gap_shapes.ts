@@ -979,7 +979,7 @@ const CASES: Case[] = [
     expectedPrice: '264',
     expectedSize: '120×40×4.5',
     expectedTier: 'Laccato Opaco',
-    note: 'Collision cluster #7 (2026-08-28, partial): Ala\'s OWN "Pannelli" table derives the bare (\'Laccato\',\'Opaco\',\'Essenza\',\'Lucido\',\'Spazzolato\') key, confirmed via direct row inspection genuinely shared with Venere -- both simple, clean 3-column tables, safe to share one flat entry. Spazioteca (SistemiGiorno) also derives this exact key but is deliberately excluded (see guard-spazioteca-scorrevoli-not-corrupted below) -- a real corruption risk found on at least one of its own sub-tables, not force-added.',
+    note: 'Collision cluster #7 (2026-08-28, partial): Ala\'s OWN "Pannelli" table derives the bare (\'Laccato\',\'Opaco\',\'Essenza\',\'Lucido\',\'Spazzolato\') key, confirmed via direct row inspection genuinely shared with Venere -- both simple, clean 3-column tables, safe to share one flat entry. Spazioteca (SistemiGiorno) also derives this exact key but was deliberately excluded at the time (a real corruption risk on one of its own sub-tables, not force-added) -- resolved 2026-08-31 with its own dedicated parser, see cluster7-spazioteca-diagram-legend-not-2nd-dim below.',
   },
   {
     id: 'venere-cluster7-shared',
@@ -1050,6 +1050,26 @@ const CASES: Case[] = [
     expectedSize: '140×75×53',
     expectedTier: 'Laccato Opaco',
     note: 'Same code as cluster6-island-up-materico-interno, the OTHER real column price -- confirms both survive as distinct rows.',
+  },
+  {
+    id: 'cluster7-spazioteca-diagram-legend-not-2nd-dim',
+    query: 'Spazioteca SistemiGiorno price for 97',
+    productName: 'Spazioteca (SistemiGiorno)',
+    code: '47Q9C',
+    expectedPrice: '417',
+    expectedSize: '97',
+    expectedTier: 'Laccato Opaco',
+    note: 'Collision cluster #7\'s deliberately-excluded half, resolved 2026-08-31. Root-cause guard for the confirmed corruption risk that kept Spazioteca out of the shared registry entry: a sliding-door diagram illustration prints several bare numbers ("90/100/120/150/180/200") at VARYING left-hand column positions across the row block (confirmed via source image, page 58 -- NOT a fixed-column side legend), and one of them ("90") happens to sit on the SAME physical line as this code\'s own real row. The generic shape_b_named scanner\'s greedy dims-capture wrongly consumed it as a 2nd dimension, producing "90×97" instead of the correct single "97". New dedicated `parse_file_pianca_spazioteca_sistemigiorno`: for this table\'s own single-H-column convention, captures ONLY the token immediately adjacent to the code, never attempting a 2nd leftward pop -- confirmed via full-image comparison this single-adjacency rule holds for every row in all 4 sub-sections (L 90/100/120/150), regardless of the diagram noise\'s own unpredictable position.',
+  },
+  {
+    id: 'cluster7-spazioteca-scrittoio-3col-clean',
+    query: 'Spazioteca SistemiGiorno price for 120 10 59',
+    productName: 'Spazioteca (SistemiGiorno)',
+    code: '473F6G',
+    expectedPrice: '381',
+    expectedSize: '120×10×59',
+    expectedTier: 'Laccato Opaco',
+    note: 'The OTHER real sub-table Spazioteca derives from this same bare key ("Scrittoio Spazioteca"/"Scrittoio Ala", page 63) -- a genuinely different, fully clean "L H P CODICI" 3-column shape with zero ambiguity, confirmed via image. Detected per-occurrence from the header\'s own pre-CODICI tokens (standalone L+H+P vs standalone H alone), not assumed uniform across the file.',
   },
 ];
 
@@ -1141,31 +1161,6 @@ async function main() {
     await new Promise(r => setTimeout(r, 80));
   }
 
-  // Root-cause guard for collision cluster #7's deliberately-excluded
-  // half: Spazioteca (SistemiGiorno) derives the same bare ('Laccato',
-  // 'Opaco','Essenza','Lucido','Spazzolato') key as Ala/Venere, but a
-  // side-legend column (a separate "Anta scorrevole L" width-options
-  // list) bleeds onto the SAME physical line as some real data rows via
-  // columnar pdftotext extraction -- confirmed the generic dims-capture
-  // cannot currently tell that stray leading number apart from a genuine
-  // 2nd dimension (code 47Q9C would parse as size "90×97" instead of the
-  // correct single "97"). Excluded via a product_name guard in
-  // parse_file_pianca_shape_b_named. NOT a REJECT_CASE (unlike Icaro/
-  // Ettorino/Pedane/Scacco) because this product is NOT wholly
-  // known_gap -- it already has substantial real price data from OTHER,
-  // unrelated tables in the same file, so "0 rows total" is the wrong
-  // assertion; the guard instead checks the specific corruption-prone
-  // code never appears at all.
-  {
-    const resp = await postChat('Pianca', 'Spazioteca (SistemiGiorno) price');
-    const rows = (resp.matches || []).filter(m => m.product_name === 'Spazioteca (SistemiGiorno)' && m.code === '47Q9C');
-    const ok = rows.length === 0;
-    if (!ok) {
-      failures.push(`[guard-spazioteca-scorrevoli-not-corrupted] expected code "47Q9C" to be absent (excluded, corruption risk), found ${rows.length} row(s): ${JSON.stringify(rows)}`);
-    }
-    console.log(`[guard-spazioteca-scorrevoli-not-corrupted] ${ok ? 'ok' : 'FAIL'}  code-47Q9C-rows=${rows.length}`);
-  }
-
   // Cluster #6's own "Vetro" 2-column fix (People (SistemiGiorno)'s 6
   // "Telaio" aluminum-frame tables, out of 49 total occurrences of the
   // bare key, print only 2 real Frontali columns instead of the standard
@@ -1195,7 +1190,7 @@ async function main() {
   }
 
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length + REJECT_CASES.length + 2}`);
+  console.log(`Total cases: ${CASES.length + REJECT_CASES.length + 1}`);
   console.log(`Failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');

@@ -6226,6 +6226,137 @@ def parse_file_pianca_island_up(path, product_name, brand, all_headings=None, he
 
 
 # ---------------------------------------------------------------------------
+# Collision cluster #7's deliberately-excluded half -- Spazioteca
+# (SistemiGiorno), resolved 2026-08-31. Shares the bare ('Laccato','Opaco',
+# 'Essenza','Lucido','Spazzolato') key with Ala's own "Pannelli" table and
+# Venere (both already safely sharing one flat shape_b_named registry
+# entry), but Spazioteca's own file derives this exact key from TWO
+# genuinely different real table shapes -- confirmed via direct row
+# inspection, not assumed from the header alone:
+#   1. "Scorrevoli legno Sp 2.2 con binari" (page 58 area): a single-
+#      dimension "H CODICI ..." table (opening height only, no L/P at
+#      all) -- the real corruption risk this cluster was deferred for. A
+#      genuine diagram illustration of the sliding-door mechanism prints
+#      several bare numbers (the door's own L value, rail lengths, etc)
+#      at VARYING, unpredictable left-hand column positions across the
+#      row block -- confirmed these are NOT a clean single-column side
+#      legend (their own column position shifts row to row, e.g. col 41
+#      then col 16 then col 40 for consecutive "legend" lines), so no
+#      fixed-column-position gate (unlike cluster #6's own fix) can
+#      reliably separate them from a genuine dimension. The one property
+#      that DOES hold for every real row, confirmed across the full
+#      table: the row's own true H value is ALWAYS the token immediately
+#      adjacent to (directly before) its own code -- diagram/legend noise
+#      never sits glued to a code the way a real dimension does. Fixed by
+#      capturing ONLY that single adjacent token, never attempting to
+#      consume a 2nd token further left the way the generic shape_b_named
+#      scanner's own greedy dims-capture does (that greedy behavior is
+#      exactly what turned code 47Q9C's real size "97" into the wrong
+#      "90×97" before this fix).
+#   2. "Scrittoio Spazioteca"/"Scrittoio Ala" (page 63 area): a genuinely
+#      different, fully clean "L H P CODICI ..." 3-column table (only 4
+#      rows total) -- every dim prints inline with zero ambiguity,
+#      confirmed via direct inspection. Uses the standard nearest-3-
+#      clean-numbers capture, same technique as every other Pianca shape
+#      this session.
+# Detected per-occurrence from each header's OWN pre-CODICI text (a
+# standalone "H" only vs standalone "L"/"H"/"P" all three), not assumed
+# uniform across the file, since both shapes derive the identical
+# post-CODICI registry key.
+# ---------------------------------------------------------------------------
+
+_PIANCA_SPAZIOTECA_SG_COLUMNS = ['Laccato Opaco', 'Essenza', 'Lucido Spazzolato']
+
+
+def parse_file_pianca_spazioteca_sistemigiorno(path, product_name, brand, all_headings=None, heading_text=None):
+    if product_name != 'Spazioteca (SistemiGiorno)':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    n_cols = len(_PIANCA_SPAZIOTECA_SG_COLUMNS)
+    rows = []
+    flags = []
+    variant_context = None
+    i = 0
+
+    target_tail = ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Spazzolato')
+    while i < len(lines):
+        line = lines[i]
+        if 'CODICI' not in line:
+            i += 1
+            continue
+        pre, post = line.split('CODICI', 1)
+        if tuple(post.split()) != target_tail:
+            i += 1
+            continue
+        pre_tokens = set(re.findall(r'\bL\b|\bH\b|\bP\b', pre))
+        dim_count = 3 if pre_tokens == {'L', 'H', 'P'} else 1
+        i += 1
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            if stripped == '':
+                i += 1
+                continue
+            if 'CODICI' in line:
+                break  # next table's header, any shape -- this table's own scan ends here
+            tokens = stripped.split()
+            code_idx = None
+            for ti in range(len(tokens) - 1, -1, -1):
+                if _PIANCA_CODE_RE.match(tokens[ti]) and re.search(r'\d', tokens[ti]):
+                    code_idx = ti
+                    break
+            trailing = tokens[code_idx + 1:code_idx + 1 + n_cols] if code_idx is not None else []
+            if code_idx is None or len(trailing) != n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in trailing):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                    variant_context = stripped
+                i += 1
+                continue
+            code = tokens[code_idx]
+            dims = []
+            if dim_count == 1:
+                if code_idx >= 1 and re.match(r'^\d+(\.\d+)?$', tokens[code_idx - 1]):
+                    dims = [tokens[code_idx - 1]]
+            else:
+                j = code_idx - 1
+                while j >= 0 and len(dims) < 3 and re.match(r'^\d+(\.\d+)?$', tokens[j]):
+                    dims.insert(0, tokens[j])
+                    j -= 1
+            size = '×'.join(dims) if dims else None
+            any_price = False
+            for column_label, cell in zip(_PIANCA_SPAZIOTECA_SG_COLUMNS, trailing):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": variant_context,
+                    "size": size,
+                    "fabric_tier": column_label,
+                    "tier_label": "Finish",
+                    "code": code,
+                    "price_eur": cell,
+                    "source_pdf_page": page_of_line[i],
+                })
+            if not any_price:
+                flags.append((page_of_line[i], product_name, f"no price rows found for code {code}"))
+            i += 1
+
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Pianca Shape B, Mambo's OWN 2-axis variant -- Mambo (Progetti di Design
 # 09) only, verified against real PDF pages 28-35. Structurally similar to
 # Norma Up's 2-axis grid (same code repeats across multiple row-type
@@ -8698,6 +8829,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_people_collezionenotte,
         parse_file_pianca_people_sistemigiorno,
         parse_file_pianca_island_up,
+        parse_file_pianca_spazioteca_sistemigiorno,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
