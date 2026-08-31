@@ -384,6 +384,60 @@ function stripNameFromQuery(normalizedQuery: string, normalizedName: string): st
   return q;
 }
 
+/** Split a query into independent size-request GROUPS -- each a sorted
+ * list of that group's own numbers -- whenever it contains 2+ real,
+ * separately-intended size requests joined by "and" or a comma. Fixes a
+ * real bug found live 2026-08-28 (Pianca Ala): "give for 120 40 and 180
+ * 90" (two real, individually-valid sizes) fell through to showing every
+ * row, even though "120 40" alone and "180 90" alone each narrow
+ * correctly on their own. Root cause was two-fold -- neither existing
+ * mechanism has any concept of grouping numbers into separate size
+ * requests at all: `extractSize()`'s regex only ever returns its FIRST
+ * "NxN"-style match, and the bare-number fallback in `lookupForProduct`
+ * flattens EVERY number in the whole query into one flat set, which can
+ * never match any single row (a real row's own size is always just 2-3
+ * numbers, never 4+ at once).
+ *
+ * Deliberately number-only, indifferent to whether a group's own numbers
+ * are written with an "x"/"×" separator or bare with a space ("120x40"
+ * and "120 40" produce the identical group [40, 120]) -- both phrasings
+ * of the same request should behave identically, and duplicating the
+ * matching logic per phrasing style would be a real regression risk in
+ * itself. Uses the same `\b\d{2,3}\b` word-boundary rule as the existing
+ * bareNums extraction below (not a looser `\d{2,3}`) so a number GLUED to
+ * letters, or a single digit inside a real variant name like Ditre's
+ * "2er"/"3er", is correctly excluded exactly like it already was there --
+ * confirmed real risk while building this: "give online 2er and 3er
+ * price" splits into 2 segments on "and", and without the trailing
+ * boundary a size-like number embedded in surrounding text could
+ * misfire. A query with only ONE real group (the overwhelming majority)
+ * returns a single-element array, so callers that only act when 2+
+ * groups are found leave every existing single-size query completely
+ * untouched. */
+export function extractSizeGroups(rawQuery: string, productName: string): number[][] {
+  const q = stripNameFromQuery(normalize(rawQuery), normalize(productName));
+  const groups: number[][] = [];
+  for (const segment of q.split(/\band\b|,/i)) {
+    // Normalize the compact "NNxNN"/"NN×NN" dimension separator to a
+    // space FIRST -- a digit directly followed by "x"/"×" has no \w/\W
+    // transition between them (both are word characters), so the SAME
+    // \b\d{2,3}\b boundary check this function needs anyway (to exclude
+    // a number glued to a real unit/variant-name letter, e.g. Ditre's
+    // "2er"/"120cm") would otherwise ALSO silently exclude "120" in
+    // "120x40" -- confirmed real while building this: "give 120x40 and
+    // 180x90 price" extracted zero numbers per segment without this,
+    // silently falling back to extractSize()'s own single-match limit
+    // instead of the intended 2-group compound match. extractSize()
+    // itself already treats "x"/"×" as a separator token for the exact
+    // same reason -- this keeps both functions' number-recognition rules
+    // consistent with each other.
+    const withXAsSpace = segment.replace(/(\d)\s*[x×]\s*(?=\d)/gi, '$1 ');
+    const nums = (withXAsSpace.match(/\b\d{2,3}\b/g) || []).map(Number).sort((a, b) => a - b);
+    if (nums.length > 0) groups.push(nums);
+  }
+  return groups;
+}
+
 /** Extract a known fabric tier mentioned in free text -- as a real whole
  * word/phrase, never a raw substring (otherwise single-letter tiers like
  * 'e' would false-match inside ordinary words like "bed"). */
@@ -2615,7 +2669,28 @@ export class CatalogChat {
       };
     }
 
-    if (size) {
+    const sizeGroups = extractSizeGroups(rawQueryHint, productName);
+    if (sizeGroups.length > 1) {
+      // Genuine compound multi-size request (2+ "and"/","-separated size
+      // groups) -- see extractSizeGroups' own module comment for the
+      // real bug this fixes (Pianca Ala). Union of each group's own
+      // independent subset-match, using the IDENTICAL matching rule as
+      // the single-size branches below (exact-length match, or fewer-
+      // requested-than-real numbers as a valid partial match -- e.g. a
+      // 2-number "120 40" group correctly matches a 3-number real size
+      // "120x40x4.5"). Only ever taken when 2+ groups are genuinely
+      // found; an ordinary single-size query (the overwhelming
+      // majority) always falls through unchanged to the branches below.
+      const matchesGroup = (realNums: number[], nums: number[]) =>
+        nums.length === realNums.length
+          ? nums.every((n, i) => n === realNums[i])
+          : nums.length < realNums.length && nums.every(n => realNums.includes(n));
+      const sizeFiltered = rows.filter(r => {
+        const realNums = ((r.size || '').match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
+        return sizeGroups.some(g => matchesGroup(realNums, g));
+      });
+      if (sizeFiltered.length > 0) rows = sizeFiltered;
+    } else if (size) {
       const requestedNums = (size.match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
       // If NONE of this product's rows have any real size data at all, a
       // numeric size filter can never mean anything for it -- `realNums`
