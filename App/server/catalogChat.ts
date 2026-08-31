@@ -645,6 +645,43 @@ export class CatalogChat {
    * are two completely different collections). Empty for brands with no
    * `collection` field at all. */
   private productNameToCollection: Map<string, string>;
+  /** Reverse index from a distinctive variant_context/model_variant PHRASE
+   * to the product it belongs to and the specific rows that phrase covers
+   * -- the data structure behind findByVariantPhrase's fallback stage (see
+   * its own doc comment for why this exists at all: a query naming a
+   * sub-item/module/accessory by ITS OWN descriptive text, not the parent
+   * product's name -- e.g. "Cuscini opzionali per seduta" for Pianca's
+   * "Island up" -- has nothing to match against without this, since
+   * neither matchProducts() nor the LLM's own product-name list ever sees
+   * this text at all). Built once here, not scanned per-query, same
+   * precedent as codeToProductNames/realTierPhrases above. Deliberately
+   * data-driven per brand (every CatalogChat instance builds its own from
+   * its own prices.json) rather than hardcoded to any one brand's
+   * vocabulary -- confirmed both Pianca and Ditre Italia need this for
+   * real (Ditre's own modular-sofa sub-configurations are, if anything,
+   * MORE exposed than Pianca's), and Varaschini structurally never will --
+   * its product_name field already IS the full per-SKU descriptive text
+   * (verified directly: product_name and model_variant are byte-identical
+   * for a large sample), so there's no separate hidden layer to index at
+   * all. See the Issue 5 scope-estimate report for the full cross-brand
+   * breakdown this was derived from. */
+  private variantPhraseIndex: { phrase: string; productName: string; rows: PriceRow[] }[] = [];
+
+  /** Minimum similarity() score required to trust a variant-phrase
+   * fallback match (see findByVariantPhrase below) -- deliberately set to
+   * similarity()'s token-SET-CONTAINMENT tier (80), not the lower diluted-
+   * overlap tier it can also produce (up to 60). That diluted-overlap tier
+   * is exactly the scoring shape responsible for every spurious-match bug
+   * found and fixed elsewhere in this file this session (the cuscini/
+   * Island Up collision itself, the "con"/"per" filler dilution, the bare
+   * "80" number collision) -- and a variant phrase is typically longer and
+   * more specific than a product name, so a partial-overlap hit against
+   * one is even MORE likely to be spurious, not less. Requiring full
+   * containment means this fallback only ever fires when the query either
+   * names the whole indexed phrase or the indexed phrase's tokens are
+   * wholly contained in the query -- never a "shares a couple of words"
+   * guess. */
+  private static readonly MIN_VARIANT_PHRASE_SCORE = 80;
 
   /** @param dataDir folder containing catalog_index.json and prices.json for one brand */
   constructor(private dataDir: string) {
@@ -668,6 +705,71 @@ export class CatalogChat {
     };
     for (const r of this.prices) addCode(r.code, r.product_name);
     for (const e of this.catalogIndex) addCode(e.art_code, e.product_name);
+
+    const rowsByProduct = new Map<string, PriceRow[]>();
+    for (const r of this.prices) {
+      const arr = rowsByProduct.get(r.product_name) ?? [];
+      arr.push(r);
+      rowsByProduct.set(r.product_name, arr);
+    }
+    const phraseKeyToEntry = new Map<string, { phrase: string; productName: string; rows: PriceRow[] }>();
+    for (const [productName, rows] of rowsByProduct) {
+      const nameWords = new Set(tokenizeLoose(productName));
+      for (const r of rows) {
+        for (const raw of [r.variant_context, r.model_variant]) {
+          if (!raw || !this.isIndexableVariantPhrase(raw, nameWords)) continue;
+          const key = `${productName} ${raw}`;
+          let entry = phraseKeyToEntry.get(key);
+          if (!entry) {
+            entry = { phrase: raw, productName, rows: [] };
+            phraseKeyToEntry.set(key, entry);
+            this.variantPhraseIndex.push(entry);
+          }
+          entry.rows.push(r);
+        }
+      }
+    }
+  }
+
+  /** True when `phrase` (a raw variant_context/model_variant value) is
+   * distinctive enough to plausibly be searched on its own, independent of
+   * its owning product's name -- feeds variantPhraseIndex above.
+   * Deliberately conservative and structural (brand-agnostic, no per-brand
+   * tuning): raw variant_context/model_variant text is a mix of genuine
+   * sub-item names (Pianca "Moduli People a cassetto", Ditre "Round
+   * footstool diameter 60" -- exactly the pattern that made "Cuscini
+   * opzionali per seduta" unfindable), PDF-table layout noise (leading
+   * dimension numbers, whitespace-mangled duplicated column headers), and
+   * finish/material descriptors ("Legno con bordi naturali", "Ceramica
+   * finitura seta") that are NOT independently-searchable sub-items --
+   * they're tier/column values, already handled by the existing
+   * fabric_tier matching path. This filter only rules out the first two
+   * noise classes structurally; it does NOT try to tell "genuine sub-item"
+   * apart from "finish descriptor" (no reliable structural signal
+   * separates them) -- confirmed via spot-check that finish-descriptor
+   * noise is heavily concentrated in Bolzan/Bonaldo/Cattelan, all
+   * explicitly deferred/low-priority for this fallback per the Issue 5
+   * scoping decision, so a few such entries surviving into their index is
+   * an accepted, logged trade-off, not a bug needing a fix here. */
+  private isIndexableVariantPhrase(phrase: string, nameWords: Set<string>): boolean {
+    const stripped = phrase.trim();
+    if (!stripped) return false;
+    if (/^-?\d/.test(stripped)) return false; // leading dimension/diagram-callout number
+    const openParens = (stripped.match(/\(/g) || []).length;
+    const closeParens = (stripped.match(/\)/g) || []).length;
+    if (openParens !== closeParens) return false; // truncated table-cell fragment
+    const segs = stripped.split(/ {2,}/).filter(Boolean);
+    if (segs.length >= 2 && new Set(segs).size === 1) return false; // mangled duplicated column header
+    const words = tokenizeLoose(stripped);
+    if (words.length < 3) return false;
+    const contentWords = words.filter(w =>
+      w.length > 2 &&
+      !CONVERSATIONAL_FILLER_WORDS.has(w) &&
+      !RISKY_SIZE_CODE_WORDS.has(w) &&
+      !GENERIC_CATEGORY_WORDS.has(w) &&
+      !nameWords.has(w)
+    );
+    return contentWords.length >= 2;
   }
 
   /** Scans the query for any WHOLE token that exactly matches a real
@@ -1671,6 +1773,95 @@ export class CatalogChat {
     };
   }
 
+  /** Fallback stage consulted when primary product-name matching hasn't
+   * (yet) found a confident answer. Called from TWO places:
+   *
+   *  1. catalogChatRoute.ts, BEFORE the LLM step, whenever the raw message
+   *     doesn't literally name a real product -- found necessary via live
+   *     testing 2026-09-01, not assumed safe without it: when handed
+   *     either a cheap shortlist or (on a shortlist miss) the WHOLE
+   *     catalog's product-NAME list, the LLM can return a confident-but-
+   *     WRONG product_names guess built purely from surface word
+   *     resemblance ("Cuscini opzionali per seduta" -> "Cuscini
+   *     decorativi", "large armrest cushion" -> "Freedom 2.0 sofa-bed
+   *     armrests") -- since that guess isn't EMPTY, answerFromIntent
+   *     trusts it directly and NEVER calls answer() at all, so relying
+   *     solely on (2) below silently missed both of Issue 5's own real
+   *     repro cases the moment the LLM was actually live (they only
+   *     passed in a hand-built test that called answer() directly,
+   *     bypassing the LLM path entirely -- exactly the kind of gap this
+   *     project has already named once before, see
+   *     feedback_verify_prior_resolved_claims.md's "test the literal
+   *     repro, not a redesigned stand-in" lesson).
+   *  2. Here inside answer() below, when matches.length === 0 -- the
+   *     backstop for the fully-deterministic path (LLM unavailable) and
+   *     any other direct answer() caller.
+   *
+   * Scores this brand's own variantPhraseIndex (built in the constructor)
+   * against the query using the EXACT SAME similarity() function the
+   * primary product-name matcher uses -- reused rather than forked, per
+   * the Issue 5 mechanism decision, so any future fix to similarity()
+   * automatically improves this path too instead of silently diverging
+   * from it. Requires MIN_VARIANT_PHRASE_SCORE (the token-containment
+   * tier) -- see that constant's own comment for why the lower diluted-
+   * overlap tier is deliberately excluded here.
+   *
+   * Scores this brand's own variantPhraseIndex (built in the constructor)
+   * against the query using the EXACT SAME similarity() function the
+   * primary product-name matcher uses -- reused rather than forked, per
+   * the Issue 5 mechanism decision, so any future fix to similarity()
+   * automatically improves this path too instead of silently diverging
+   * from it. Requires MIN_VARIANT_PHRASE_SCORE (the token-containment
+   * tier) -- see that constant's own comment for why the lower diluted-
+   * overlap tier is deliberately excluded here.
+   *
+   * On a match, returns a result SCOPED to just the matched phrase's own
+   * rows -- not the whole product's price grid -- so "give all Cuscini
+   * opzionali per seduta prices" answers with Island Up's cushion rows
+   * specifically, not a generic "here's everything Island Up sells" dump
+   * that would bury the actual answer.
+   *
+   * When the top score ties across DIFFERENT products (a phrase happens to
+   * be reused verbatim across two products, e.g. a boilerplate
+   * construction note), defers to the existing buildClarifyProductResult
+   * rather than guessing which product was meant -- same "don't guess on a
+   * genuine tie" principle used throughout this file. */
+  findByVariantPhrase(query: string, brand: string): ChatResult | null {
+    if (this.variantPhraseIndex.length === 0) return null;
+    const scored = this.variantPhraseIndex
+      .map(entry => ({ entry, score: similarity(query, entry.phrase) }))
+      .filter(s => s.score >= CatalogChat.MIN_VARIANT_PHRASE_SCORE);
+    if (scored.length === 0) return null;
+
+    const topScore = Math.max(...scored.map(s => s.score));
+    const top = scored.filter(s => s.score === topScore);
+    const distinctProducts = [...new Set(top.map(t => t.entry.productName))];
+    if (distinctProducts.length > 1) {
+      return this.buildClarifyProductResult(distinctProducts);
+    }
+
+    const productName = distinctProducts[0];
+    const matchedPhrases = [...new Set(top.map(t => t.entry.phrase))];
+    const rows = [...new Set(top.flatMap(t => t.entry.rows))];
+    const priceNums = rows
+      .map(r => parseFloat(String(r.price_eur).replace(/[^\d.,]/g, '').replace('.', '').replace(',', '.')))
+      .filter(n => !isNaN(n));
+    const priceRange = priceNums.length
+      ? `€${formatItalianNumber(Math.min(...priceNums))}–€${formatItalianNumber(Math.max(...priceNums))}`
+      : null;
+    const phraseLabel = matchedPhrases.join('", "');
+    const message = rows.length > 6
+      ? `Found "${productName}" -- "${phraseLabel}" section, ${rows.length} price options` + (priceRange ? `, ranging ${priceRange}.` : '.')
+      : `Found "${productName}" -- "${phraseLabel}": ${rows.length} price option${rows.length === 1 ? '' : 's'}.`;
+    return {
+      status: 'multiple_options',
+      message,
+      product_name: productName,
+      matches: rows,
+      image_urls: this.getImageUrls(productName, brand, rows),
+    };
+  }
+
   /**
    * Main entry point for pure deterministic matching (no LLM). Returns a
    * structured result -- never a bare string -- so the caller can decide
@@ -1809,6 +2000,14 @@ export class CatalogChat {
           return this.buildClarifyProductResult(validCandidates);
         }
       }
+      // Last resort before giving up entirely: the query might be naming a
+      // sub-item/module/accessory by its OWN descriptive text (variant_context/
+      // model_variant) rather than any real product name at all -- see
+      // findByVariantPhrase's own doc comment for the Island Up bug this
+      // exists to fix. Deliberately tried only here, after every other
+      // named-product/anchor-based recovery above has already failed.
+      const variantMatch = this.findByVariantPhrase(query, brand);
+      if (variantMatch) return variantMatch;
       return {
         status: 'no_product_match',
         message: "I couldn't find a product matching that in the catalog. Could you check the spelling or try the product's full name?",

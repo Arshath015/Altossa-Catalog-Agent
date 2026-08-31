@@ -33,7 +33,8 @@
     "check-pianca-size-collision": "tsx App/regression/check_pianca_size_collision.ts",
     "check-compound-size-query": "tsx App/regression/check_compound_size_query.ts",
     "check-null-size-price-grid": "tsx App/regression/check_null_size_price_grid.ts",
-    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label && npm run check-pianca-size && npm run check-orphaned-flags && npm run check-ditre-matching && npm run check-anchor-followup-vocab && npm run check-pianca-known-gap-shapes && npm run check-pianca-size-collision && npm run check-compound-size-query && npm run check-null-size-price-grid",
+    "check-variant-phrase-fallback": "tsx App/regression/check_variant_phrase_fallback.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label && npm run check-pianca-size && npm run check-orphaned-flags && npm run check-ditre-matching && npm run check-anchor-followup-vocab && npm run check-pianca-known-gap-shapes && npm run check-pianca-size-collision && npm run check-compound-size-query && npm run check-null-size-price-grid && npm run check-variant-phrase-fallback",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }

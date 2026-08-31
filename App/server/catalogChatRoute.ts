@@ -80,6 +80,33 @@ router.post('/chat', async (req: Request, res: Response) => {
     });
   }
 
+  // Variant-phrase fallback (see findByVariantPhrase's own doc comment,
+  // catalogChat.ts) is checked HERE, BEFORE the LLM step below, not only
+  // inside answer()'s own no-match branch -- found necessary via live
+  // testing 2026-09-01, not assumed: when the message doesn't literally
+  // name a real product, the LLM is handed either a cheap shortlist or (on
+  // a shortlist miss) the WHOLE catalog's product-NAME list, and it can
+  // return a confident-but-WRONG product_names guess built purely from
+  // surface word resemblance ("give all Cuscini opzionali per seduta
+  // prices" -> "Cuscini decorativi", "give large armrest cushion price" ->
+  // "Freedom 2.0 sofa-bed armrests") -- since neither guess is EMPTY,
+  // answerFromIntent trusts it directly and never calls answer() at all,
+  // so a fallback that only fires on answer()'s own "matches.length === 0"
+  // branch never gets a chance to run for these. Checking here instead --
+  // mirroring findProductsByCode's own "a more precise signal wins
+  // outright" precedent inside answer() -- resolves the query BEFORE the
+  // LLM (which only ever sees product NAMES, never variant_context/
+  // model_variant text) has a chance to guess wrong from a name-only list.
+  // Gated on detectNamedProductsInText so it never touches an ordinary
+  // query that already names a real product literally -- same precedence
+  // principle findProductsByCode already uses inside answer().
+  if (catalogChat.detectNamedProductsInText(message).length === 0) {
+    const variantMatch = catalogChat.findByVariantPhrase(message, brand);
+    if (variantMatch) {
+      return res.json(variantMatch);
+    }
+  }
+
   // Try the LLM intent step first (handles typos, natural phrasing, and
   // follow-ups using conversation history + the explicit lastProduct
   // anchor). If it's unavailable, times out, or fails in any way,
