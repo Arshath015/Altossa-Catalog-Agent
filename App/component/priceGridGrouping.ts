@@ -79,24 +79,64 @@ export interface SizeColumn {
   size: string | null;
 }
 
-/** One column per distinct (size, code-when-ambiguous) combination in
- * `rows`. See module comment for why size alone isn't always enough. */
+/** Sentinel grouping key for a dimensionless flat-price row (`size ===
+ * null`) -- treated as just another "size" value throughout this
+ * function so the SAME collision logic (below) covers both cases with
+ * no special-casing. Exported only so `findLostRows`-style regression
+ * checks can look a flat-price cell up directly without re-deriving it. */
+export const FLAT_PRICE_COLUMN_KEY = '__flat__';
+
+/** One column per distinct (size-or-flat, code-when-ambiguous) combination
+ * in `rows`. See module comment for why size alone isn't always enough.
+ *
+ * Bug fixed here, found live 2026-09-01 (Dedalo (Progetti 06-07)'s own
+ * "Accessori kit luce" table, user-reported: 3 real, correctly-priced
+ * rows -- 47101/47100/47102, EUR186/186/206 -- all rendered as "-" with
+ * no price visible anywhere). Root cause: this function used to
+ * unconditionally SKIP every row with `size === null`, which is correct
+ * when a group is a MIX of sized and dimensionless rows (skip only the
+ * dimensionless ones, they don't need a size column) but wrong when
+ * EVERY row in the group has no size at all -- a real, common shape for
+ * flat single-price accessories with no L/H/P dimensions. Skipping all
+ * of them left the group with ZERO columns, and `VariantTable` renders
+ * one `<td>` per column -- with none, the row's own price has nowhere to
+ * display, even though `prices.json`/the API response both already have
+ * the correct value.
+ *
+ * A first fix added a single hardcoded flat column for this case, but a
+ * blast-radius scan (65 Pianca products, plus 44/34/645/5 across Bolzan/
+ * Bonaldo/Varaschini/Ditre Italia -- this component is shared catalog-
+ * wide) turned up a second, narrower collision within that same shape:
+ * Bolzan's own "Awase" has 5 genuinely DIFFERENT codes (RPFL/RPFM/RPFF/
+ * RPFG/RPFP, different bed-frame widths) all sharing one group with
+ * size=null AND fabric_tier=null -- a single flat column's own `.find()`
+ * would have silently shown only the first and dropped the other 4,
+ * the EXACT same shape as this file's own original Venere bug, just on
+ * the null-size axis instead of a real one. Fixed by folding the
+ * null-size case into the SAME (size, code)-collision logic that already
+ * protects real sizes, rather than a separate hardcoded branch -- a
+ * dimensionless row's grouping key is just `FLAT_PRICE_COLUMN_KEY`
+ * instead of its own size string, everything else (ambiguity detection,
+ * code-qualified column key, label) is identical code, not a parallel
+ * copy that could drift out of sync. */
 export function buildSizeColumns(rows: PriceRow[]): SizeColumn[] {
-  const codesForSize = new Map<string, Set<string | null>>();
+  const keyFor = (r: PriceRow) => r.size ?? FLAT_PRICE_COLUMN_KEY;
+  const codesForKey = new Map<string, Set<string | null>>();
   for (const r of rows) {
-    if (r.size === null) continue;
-    if (!codesForSize.has(r.size)) codesForSize.set(r.size, new Set());
-    codesForSize.get(r.size)!.add(r.code);
+    const k = keyFor(r);
+    if (!codesForKey.has(k)) codesForKey.set(k, new Set());
+    codesForKey.get(k)!.add(r.code);
   }
   const seen = new Map<string, SizeColumn>();
   for (const r of rows) {
-    if (r.size === null) continue;
-    const ambiguous = (codesForSize.get(r.size)?.size ?? 0) > 1;
-    const key = ambiguous ? `${r.size}::${r.code ?? ''}` : r.size;
-    if (!seen.has(key)) {
-      seen.set(key, {
-        key,
-        label: ambiguous ? `${r.size} (${r.code ?? '—'})` : r.size,
+    const k = keyFor(r);
+    const ambiguous = (codesForKey.get(k)?.size ?? 0) > 1;
+    const columnKey = ambiguous ? `${k}::${r.code ?? ''}` : k;
+    if (!seen.has(columnKey)) {
+      const baseLabel = r.size ?? 'Price';
+      seen.set(columnKey, {
+        key: columnKey,
+        label: ambiguous ? `${baseLabel} (${r.code ?? '—'})` : baseLabel,
         size: r.size,
       });
     }

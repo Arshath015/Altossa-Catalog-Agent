@@ -38,7 +38,7 @@
  * Requires the dev server running (npm run dev:server).
  */
 
-import { buildVariantGroups, buildSizeColumns, findCell } from '../component/priceGridGrouping';
+import { buildVariantGroups, buildSizeColumns, findCell, FLAT_PRICE_COLUMN_KEY } from '../component/priceGridGrouping';
 import type { PriceRow } from '../component/priceGridGrouping';
 import affectedProducts from './pianca_size_collision_products.json';
 
@@ -76,9 +76,16 @@ function findLostRows(rows: PriceRow[]): PriceRow[] {
   for (const group of buildVariantGroups(rows)) {
     const columns = buildSizeColumns(group.rows);
     for (const row of group.rows) {
-      if (row.size === null) continue; // no column axis to lose it on
-      const col = columns.find(c => c.size === row.size && (
-        !c.key.includes('::') || c.key === `${row.size}::${row.code ?? ''}`
+      // A null-size row's grouping key is FLAT_PRICE_COLUMN_KEY, same
+      // unification buildSizeColumns itself uses -- previously this loop
+      // SKIPPED null-size rows entirely ("no column axis to lose it on"),
+      // which was the exact blind spot that let a real bug ship unnoticed
+      // (found live 2026-09-01, Dedalo's own "kit luce" accessories):
+      // buildSizeColumns used to return ZERO columns for an all-null-size
+      // group, silently dropping every row in it from the rendered grid.
+      const rowKey = row.size ?? FLAT_PRICE_COLUMN_KEY;
+      const col = columns.find(c => (c.size ?? FLAT_PRICE_COLUMN_KEY) === rowKey && (
+        !c.key.includes('::') || c.key === `${rowKey}::${row.code ?? ''}`
       ));
       const found = col ? findCell(group.rows, row.fabric_tier, col.key, columns) : undefined;
       const ok = found && found.code === row.code && found.price_eur === row.price_eur;
