@@ -175,6 +175,22 @@ function containsWholeWord(haystack: string, needle: string): boolean {
 const GENERIC_CATEGORY_WORDS = new Set([
   'table', 'chair', 'armchair', 'console', 'office', 'bench', 'pouf',
   'stand', 'mirror', 'lounge', 'coffee', 'wood', 'tv', 'sofa', 'bed',
+  // "cuscini"/"cuscino" (Italian "cushions"/"cushion") -- found live
+  // 2026-09-01: "give all Cuscini opzionali per seduta prices" (Island
+  // up's own real sub-section title, Pianca) confidently matched the
+  // WRONG, unrelated product "Cuscini decorativi" purely because both
+  // share this one word, in degraded/fallback mode -- the query's own
+  // real signal words ("opzionali", "seduta") never appeared in "Cuscini
+  // decorativi" at all, exactly the "leftover real word means this isn't
+  // really it" shape this list already exists to catch, just missing
+  // this specific broad category noun (used the same way "sofa"/"chair"
+  // already are: a furniture-part category, not a specific product
+  // name, appearing across dozens of unrelated Varaschini "cuscino"-
+  // named products too -- confirmed safe there since this guard only
+  // fires when NO other word is shared, and every one of those compound
+  // names shares several other real words with any query that could
+  // plausibly mean them).
+  'cuscini', 'cuscino',
 ]);
 
 // Ordinary conversational request/question words -- stripped before
@@ -952,6 +968,27 @@ export class CatalogChat {
       if (containsWholeWord(normalize(seg), normalize(productName))) return true;
       const tokens = segTokens(seg);
       if (tokens.length === 0) return false;
+      // A segment made ENTIRELY of size-shaped tokens (bare numbers, or an
+      // "NNxNN"/"NN×NN" compound -- normalize()/segTokens() never split on
+      // "x", so a compound size stays one token) plus known filler words
+      // can only ever be a SECOND size for the already-anchored product,
+      // never a reference to some other product -- a product name is never
+      // purely digits. Confirmed real and live: "give Ala price for 120 40
+      // and 180 90" (Bug 2's own compound-size fix, extractSizeGroups in
+      // this file) splits on "and" into ["give ala price for 120 40",
+      // "180 90"] BEFORE extractSizeGroups ever runs -- segment 2 has no
+      // product-name, tier, or model_variant signal at all, so the OLD
+      // checks below wrongly excluded it as an unrelated clause, silently
+      // truncating the query to just the first size and reporting the
+      // second "couldn't match it to a real product" even though it's a
+      // completely real, priced row. This is checked BEFORE the tier/
+      // variant checks (order doesn't matter for correctness, all 3 are
+      // OR'd) since it's the cheapest and most certain of the three.
+      const isSizeLikeToken = (tok: string) => /^\d+(\.\d+)?([x×]\d+(\.\d+)?)+$|^\d+(\.\d+)?$/.test(tok);
+      if (tokens.every(tok => isSizeLikeToken(tok) || RISKY_SIZE_CODE_WORDS.has(tok) || CONVERSATIONAL_FILLER_WORDS.has(tok))
+          && tokens.some(isSizeLikeToken)) {
+        return true;
+      }
       // Token-SET containment in the SAME direction as every other tier
       // check in this file (e.g. lookupForProduct's own rawTierHits scan,
       // `tierTokens.every(tok => queryTokens.has(tok))`) -- every token of

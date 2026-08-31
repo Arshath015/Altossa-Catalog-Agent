@@ -32,6 +32,29 @@
  * verifying: a query naming 2+ short digit-bearing variant words (Ditre's
  * "2er"/"3er") must not be mistaken for a compound size request.
  *
+ * SECOND real bug, found 2026-09-01 via live re-testing after the above
+ * was reported "done": naming the product INLINE in the same string as
+ * "and" (the user's own natural phrasing, "give Ala price for 120 40 and
+ * 180 90") still failed -- not a test-design nuance, a genuine unfixed
+ * production gap. Root cause: `excludeUnrelatedAndClause` (a DIFFERENT,
+ * earlier mechanism -- strips an "and"-clause that doesn't belong to the
+ * already-named product, e.g. "give X price and the matching lamp") runs
+ * BEFORE extractSizeGroups ever sees the query, splits on the literal
+ * "and", and had no concept of "a segment made purely of size-shaped
+ * numbers can only be MORE of the current product's own request, never a
+ * reference to a different product." Segment 2 ("180 90") matched none
+ * of its 3 existing belongs-to-product checks (product name, tier value,
+ * model_variant leading digit) and was silently dropped, truncating the
+ * query to segment 1 alone before extractSizeGroups ever ran -- the fix
+ * above was real but unreachable through this natural phrasing. Fixed by
+ * adding a 4th check: a segment where every token is either a bare number,
+ * an "NNxNN" compound, or a known filler word now belongs to the product
+ * unconditionally (a product name is never purely digits, so this carries
+ * none of the false-positive risk the existing checks were built to avoid).
+ * The anchor-based cases below still exist and still pass -- this new
+ * case is additive, testing the inline-name phrasing specifically, not a
+ * replacement.
+ *
  * RUN WITH: npm run check-compound-size-query
  * Requires the dev server running (npm run dev:server).
  */
@@ -87,6 +110,15 @@ const CASES: Case[] = [
     expectedSizes: ['120×40×4.5', '180×90×4.5'],
     expectedRowCount: 7,
     note: 'Exact reported repro (a conversational follow-up after already discussing Ala). Before the fix: fell through to all 21 rows (no narrowing at all). "120 40" alone matches 4 rows, "180 90" alone matches 3 -- union is 7, not 21 and not 0.',
+  },
+  {
+    id: 'ala-compound-inline-name-not-truncated-by-and-clause-guard',
+    brand: 'Pianca',
+    query: 'give Ala price for 120 40 and 180 90',
+    productName: 'Ala',
+    expectedSizes: ['120×40×4.5', '180×90×4.5'],
+    expectedRowCount: 7,
+    note: 'The user\'s own real, natural phrasing -- product named INLINE in the same string as "and". This is the exact repro that exposed the excludeUnrelatedAndClause bug (see file header) -- must NOT be truncated to segment 1 alone or report "180 90" as an unmatched product reference.',
   },
   {
     id: 'ala-compound-x-separated',
