@@ -1215,6 +1215,28 @@ const CASES: Case[] = [
     expectedTier: 'Materico',
     note: 'Regression guard for a real nested-block case caught during verification: page 30 has TWO bed variants ("Tatami con giroletto 3 lati" / "4 lati", codes WZ3.../WZ4...) sharing ONE header occurrence with 2 separate row blocks -- confirmed via image both blocks parse correctly and stay distinguishable via their own code prefix even though they share the same size and the same (single-slot, last-heading-wins) variant_context label.',
   },
+  {
+    id: 'ala-pannelli-legno-heading-not-prose-fragment',
+    query: 'Ala price for 120x40',
+    productName: 'Ala',
+    code: '46R4FWX',
+    expectedPrice: '264',
+    expectedSize: '120×40×4.5',
+    expectedTier: 'Laccato Opaco',
+    expectedVariantContext: 'Pannelli legno a muro',
+    note: 'Live-reported bug 2026-09-01: this table\'s real heading ("Pannelli legno a muro") is immediately followed, with no blank line, by a 4-line prose caption ("Con fori di regolazione...", "Per motivi estetici...", "superiormente la boiserie...", "boiserie non attrezzata.") that also matches the shape_b_named heading regex -- unconditional overwrite let the LAST prose fragment ("boiserie non attrezzata.") win as the reported category instead of the real heading, for the WHOLE "give all Ala" response. Fixed with an Ala-scoped "first heading wins within one blank-line-free run" rule in parse_file_pianca_shape_b_named -- deliberately scoped to just this product after two broader attempts each regressed other shape_b_named products (33, then 14) when tried unconditionally; see the fix\'s own code comment for the full story.',
+  },
+  {
+    id: 'ala-pannelli-cannettati-second-group-not-swallowed',
+    query: 'Ala price for 120x40 Cannettati',
+    productName: 'Ala',
+    code: '46R4FWZ',
+    expectedPrice: '369',
+    expectedSize: '120×40×4.5',
+    expectedTier: 'Essenza',
+    expectedVariantContext: 'Pannelli Cannettati legno a muro',
+    note: 'Sibling guard to ala-pannelli-legno-heading-not-prose-fragment: this table has a SECOND real heading ("Pannelli Cannettati legno a muro") later in the same table occurrence, itself followed by its own 4-line prose caption -- confirms the fix correctly resets per-group (via the blank-line/real-row run boundary) rather than only ever capturing the table\'s very first heading once.',
+  },
 ];
 
 interface RejectCase {

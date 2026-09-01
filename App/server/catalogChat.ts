@@ -1776,35 +1776,13 @@ export class CatalogChat {
   /** Fallback stage consulted when primary product-name matching hasn't
    * (yet) found a confident answer. Called from TWO places:
    *
-   *  1. catalogChatRoute.ts, BEFORE the LLM step, whenever the raw message
-   *     doesn't literally name a real product -- found necessary via live
-   *     testing 2026-09-01, not assumed safe without it: when handed
-   *     either a cheap shortlist or (on a shortlist miss) the WHOLE
-   *     catalog's product-NAME list, the LLM can return a confident-but-
-   *     WRONG product_names guess built purely from surface word
-   *     resemblance ("Cuscini opzionali per seduta" -> "Cuscini
-   *     decorativi", "large armrest cushion" -> "Freedom 2.0 sofa-bed
-   *     armrests") -- since that guess isn't EMPTY, answerFromIntent
-   *     trusts it directly and NEVER calls answer() at all, so relying
-   *     solely on (2) below silently missed both of Issue 5's own real
-   *     repro cases the moment the LLM was actually live (they only
-   *     passed in a hand-built test that called answer() directly,
-   *     bypassing the LLM path entirely -- exactly the kind of gap this
-   *     project has already named once before, see
-   *     feedback_verify_prior_resolved_claims.md's "test the literal
-   *     repro, not a redesigned stand-in" lesson).
+   *  1. catalogChatRoute.ts, BEFORE the LLM step, unconditionally (not
+   *     gated on "no product literally named" any more -- see the
+   *     overriding-a-weak-named-match logic below for why that gate had
+   *     to be loosened).
    *  2. Here inside answer() below, when matches.length === 0 -- the
    *     backstop for the fully-deterministic path (LLM unavailable) and
    *     any other direct answer() caller.
-   *
-   * Scores this brand's own variantPhraseIndex (built in the constructor)
-   * against the query using the EXACT SAME similarity() function the
-   * primary product-name matcher uses -- reused rather than forked, per
-   * the Issue 5 mechanism decision, so any future fix to similarity()
-   * automatically improves this path too instead of silently diverging
-   * from it. Requires MIN_VARIANT_PHRASE_SCORE (the token-containment
-   * tier) -- see that constant's own comment for why the lower diluted-
-   * overlap tier is deliberately excluded here.
    *
    * Scores this brand's own variantPhraseIndex (built in the constructor)
    * against the query using the EXACT SAME similarity() function the
@@ -1821,11 +1799,44 @@ export class CatalogChat {
    * specifically, not a generic "here's everything Island Up sells" dump
    * that would bury the actual answer.
    *
+   * **Overriding a weak literal-name match, added 2026-09-01 after live
+   * re-testing found the first version of this method still failed real
+   * Ditre repros.** The original design only ran this fallback when NO
+   * product was literally named in the query (gated in the route via
+   * detectNamedProductsInText) -- correct for "Cuscini opzionali per
+   * seduta" (names nothing), but "Round footstool diameter 60 price"
+   * literally contains the bare, real, unrelated product name "Round" as
+   * a substring/token, which detectNamedProductsInText (and
+   * matchProducts(), via similarity()'s own token-SET-containment tier)
+   * both confidently resolve -- so this fallback never even ran, and the
+   * query silently resolved to the WRONG product ("Round", an armchair),
+   * exactly the same failure SHAPE as the original Cuscini/Island-Up bug,
+   * just via a different collision mechanism (a real one-word product
+   * name instead of a shared category noun). A verification pass that
+   * only tested phrases with zero product-name overlap (as the original
+   * regression cases happened to) never exercised this path at all --
+   * see feedback_verify_prior_resolved_claims.md's "test the literal
+   * repro, not a redesigned stand-in" lesson, now a 4th confirmed
+   * instance of it.
+   *
+   * Fixed by comparing how much of the query's own real content each
+   * candidate explains, not just whether a named-product match exists at
+   * all: a bare single-token product name ("Round") leaves "footstool
+   * diameter 60" as complete leftover, while the matched variant phrase
+   * ("Round footstool diameter 60") explains the ENTIRE query -- when the
+   * variant-phrase candidate leaves STRICTLY LESS unexplained content
+   * than the competing named-product match, it wins outright; a genuine
+   * tie or a MORE complete named-product match (the ordinary, overwhelming
+   * majority case) defers to it unchanged, so this can only ever override
+   * a demonstrably weaker signal, never second-guess a solid one.
+   *
    * When the top score ties across DIFFERENT products (a phrase happens to
-   * be reused verbatim across two products, e.g. a boilerplate
-   * construction note), defers to the existing buildClarifyProductResult
-   * rather than guessing which product was meant -- same "don't guess on a
-   * genuine tie" principle used throughout this file. */
+   * be reused verbatim across two products -- e.g. Ditre's own "Left
+   * fabric corner backrest" accessory is genuinely listed under BOTH
+   * "Isla (Sofa)" and "Isla slim", a real tie in the source catalog, not a
+   * matching bug), defers to the existing buildClarifyProductResult
+   * rather than guessing which product was meant -- same "don't guess on
+   * a genuine tie" principle used throughout this file. */
   findByVariantPhrase(query: string, brand: string): ChatResult | null {
     if (this.variantPhraseIndex.length === 0) return null;
     const scored = this.variantPhraseIndex
@@ -1835,6 +1846,18 @@ export class CatalogChat {
 
     const topScore = Math.max(...scored.map(s => s.score));
     const top = scored.filter(s => s.score === topScore);
+
+    const namedProducts = this.detectNamedProductsInText(query);
+    if (namedProducts.length > 0) {
+      const isFillerWord = (t: string) => CONVERSATIONAL_FILLER_WORDS.has(t) || RISKY_SIZE_CODE_WORDS.has(t);
+      const qContentWords = tokenizeLoose(query).filter(t => !isFillerWord(t));
+      const namedTokens = new Set(tokenizeLoose(namedProducts[0]));
+      const namedLeftover = qContentWords.filter(w => !namedTokens.has(w)).length;
+      const phraseTokens = new Set(top.flatMap(t => tokenizeLoose(t.entry.phrase)));
+      const phraseLeftover = qContentWords.filter(w => !phraseTokens.has(w)).length;
+      if (!(phraseLeftover < namedLeftover)) return null;
+    }
+
     const distinctProducts = [...new Set(top.map(t => t.entry.productName))];
     if (distinctProducts.length > 1) {
       return this.buildClarifyProductResult(distinctProducts);

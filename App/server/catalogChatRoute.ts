@@ -97,10 +97,20 @@ router.post('/chat', async (req: Request, res: Response) => {
   // outright" precedent inside answer() -- resolves the query BEFORE the
   // LLM (which only ever sees product NAMES, never variant_context/
   // model_variant text) has a chance to guess wrong from a name-only list.
-  // Gated on detectNamedProductsInText so it never touches an ordinary
-  // query that already names a real product literally -- same precedence
-  // principle findProductsByCode already uses inside answer().
-  if (catalogChat.detectNamedProductsInText(message).length === 0) {
+  //
+  // NOT gated on detectNamedProductsInText any more -- a second live-
+  // testing round (2026-09-01) found "Round footstool diameter 60 price"
+  // still failed, because "Round" is ITSELF a real, unrelated one-word
+  // Ditre product name literally present in the query, so the original
+  // gate ("only run this when nothing is literally named") skipped the
+  // fallback entirely and the query silently resolved to the wrong
+  // product. findByVariantPhrase now does its OWN internal comparison
+  // (see its doc comment) between a competing named-product match and the
+  // variant-phrase match, only overriding the named match when the phrase
+  // demonstrably explains MORE of the query -- safe to call
+  // unconditionally, since it defers to the named match in every other
+  // case, including when nothing is named at all (its original behavior).
+  {
     const variantMatch = catalogChat.findByVariantPhrase(message, brand);
     if (variantMatch) {
       return res.json(variantMatch);

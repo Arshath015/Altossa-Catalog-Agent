@@ -5318,11 +5318,55 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
         n_cols = len(columns)
         i += 1
         blank_run = 0
+        # Ala-only: within one CONTIGUOUS run of heading-shaped lines (no
+        # blank line between them), only the FIRST wins -- found necessary
+        # live 2026-09-01, verifying Ala's own "give all" response: its
+        # "Pannelli" table's real heading ("Pannelli legno a muro") is
+        # immediately followed (NO blank line) by a 4-line wrapped prose
+        # caption ("Con fori di regolazione...", "Per motivi estetici...",
+        # "superiormente la boiserie...", "boiserie non attrezzata.") that
+        # ALSO matches _PIANCA_SHAPEB_HEADING_RE (a real word, 3-60 chars)
+        # -- unconditional overwrite let the LAST prose fragment win
+        # instead of the real heading, for both of Ala's own "Pannelli"/
+        # "Pannelli Cannettati" groups.
+        #
+        # Deliberately scoped to product_name == 'Ala' rather than applied
+        # to every shape_b_named product (this function's own general
+        # heading-capture rule below is otherwise UNCHANGED from before
+        # this fix) -- two broader attempts were tried and reverted after
+        # live full-catalog diffing surfaced real regressions elsewhere:
+        #  1. A blanket "only the first heading-shaped line EVER wins" (no
+        #     run-gating at all) broke 33 other products, since many of
+        #     THEIR tables have noise (a wrapped column-header/wildcard-
+        #     legend fragment, e.g. Enea Up's own "*P L. Opaco" / "Essenza"
+        #     / "*C noce Canaletto" 3-line legend) that's also heading-
+        #     shaped and sits BEFORE the real heading -- "last wins" was
+        #     already correct there by construction.
+        #  2. A blank-line-gated "first wins within a contiguous run"
+        #     (no product scoping) narrowed the damage to 14 products but
+        #     was STILL wrong for at least one real case: Enea's own
+        #     "Progetti di" / "Tavolo" is a single title WRAPPED across 2
+        #     immediately-consecutive lines with no blank between them --
+        #     "first wins" incorrectly kept the fragment "Progetti di"
+        #     instead of "Tavolo", regressing a case that "last wins" had
+        #     always gotten right. There's no single run-based rule that's
+        #     correct for BOTH "real heading followed by prose" (Ala, wants
+        #     first) and "a wrapped 2-line title" (Enea, wants last) shapes
+        #     without also being able to tell which piece is the real
+        #     identity-bearing one -- not attempted here. Scoping this fix
+        #     to Ala specifically (matching this file's own established
+        #     precedent -- Dedalo/Island's own per-product
+        #     heading_applies_forward flag, Intro/Delta allungabile's own
+        #     dedicated small parsers rather than shared-registry tweaks)
+        #     gets Ala's real bug fixed with zero blast radius on any other
+        #     product's already-correct behavior.
+        heading_run_active = False
         while i < len(lines) and blank_run < 10:
             raw = lines[i]
             stripped = raw.strip()
             if stripped == '':
                 blank_run += 1
+                heading_run_active = False
                 i += 1
                 continue
             if 'CODICI' in raw and (_pianca_shapeb_named_header_columns(raw) is not None
@@ -5343,8 +5387,9 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                 # diagram-bleed bugs this session -- reusing that same
                 # signal rather than a digit-free-only check, since some
                 # real headings here DO carry digits (e.g. "Tavolo P 80").
-                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped):
+                if 2 < len(stripped) <= 60 and _PIANCA_SHAPEB_HEADING_RE.match(stripped) and not (product_name == 'Ala' and heading_run_active):
                     variant_context = stripped
+                    heading_run_active = True
                 i += 1
                 continue
 
@@ -5462,7 +5507,9 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                     "price_eur": cell,
                     "source_pdf_page": page_of_line[i],
                 })
-            if not any_price:
+            if any_price:
+                heading_run_active = False
+            else:
                 flags.append((page_of_line[i], product_name,
                               f"no price rows found for code {code}"))
             i += 1
@@ -6408,7 +6455,24 @@ def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, colu
                   # accepted below); only reject when there ARE 2+ such
                   # segments and every one of them is identical.
                   and not (len(re.split(r' {3,}', stripped)) >= 2 and len(set(re.split(r' {3,}', stripped))) == 1)
-                  # A FOURTH shape, sibling to the third: the table's own
+                  # A FIFTH shape, sibling to the third: the SAME single
+                  # WORD repeated across a table's own per-column legend
+                  # line, but with IRREGULAR internal spacing (some gaps
+                  # 2 spaces, some 7+) rather than the clean, uniform 3+-
+                  # space columnar gaps the third check above assumes --
+                  # found live 2026-09-01, fixing Ala: "Frontali  Frontali
+                  # Frontali      Frontali  Frontali" (5 price columns'
+                  # own repeated "Frontali" sub-header) has a 2-space gap
+                  # between its first pair, so splitting only on 3+-space
+                  # runs produces segments that AREN'T all identical
+                  # ("Frontali  Frontali" stays fused as one segment) and
+                  # slips through the third check undetected. Checked at
+                  # the WORD level instead (plain whitespace split, no gap-
+                  # size assumption at all): a line that's nothing but the
+                  # same single word repeated 2+ times, regardless of
+                  # spacing, is never a real category title.
+                  and not (len(stripped.split()) >= 2 and len(set(stripped.split())) == 1)
+                  # A SIXTH shape, sibling to the third: the table's own
                   # 2 DIFFERENT registered column names concatenated on
                   # one line ("Materico Interno           Laccato Opaco",
                   # exactly `columns_for_occurrence`'s own 2 values) --

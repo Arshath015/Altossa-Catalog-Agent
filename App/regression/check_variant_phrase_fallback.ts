@@ -53,6 +53,39 @@
  * similarity(), gated behind `matches.length === 0` in `answer()`, a
  * condition several OTHER fixes this session (anchor-vocabulary
  * widening, the "give all" content-free fallback) are also built around.
+ *
+ * **SECOND live-test round, 2026-09-01: the original "4/4 passing"
+ * verification did not hold up, and the reason is itself a process
+ * lesson.** The original CASES below (still kept, still valid) were
+ * hand-picked to be collision-free with any real product name -- when the
+ * user instead tested the literal example phrasings quoted in this
+ * feature's own scope-estimate report ("Round footstool diameter 60",
+ * "Left fabric corner backrest", "Rectangular armrest cushion"), 2 of 3
+ * exposed real gaps my own verification never exercised:
+ *  1. "Round footstool diameter 60 price" resolved to the WRONG product
+ *     ("Round", an unrelated armchair) -- "Round" is ALSO a real, bare,
+ *     one-word Ditre product name, so detectNamedProductsInText's own
+ *     gate (added to the route specifically to avoid touching an
+ *     ordinary named-product query) skipped the fallback entirely. Fixed
+ *     by having findByVariantPhrase compare how much of the query each
+ *     candidate leaves unexplained, overriding a weak single-token named
+ *     match only when the variant-phrase match explains strictly more.
+ *  2. "Left fabric corner backrest price" and "Rectangular armrest
+ *     cushion price" both fell to `clarify_product` -- confirmed, via
+ *     direct inspection of the built index, NOT a matching bug: both
+ *     phrases are genuinely listed VERBATIM under multiple real sibling
+ *     products in the source catalog (Isla (Sofa) AND Isla slim; all 4
+ *     Krisby variants) -- a real tie in the data, which the mechanism
+ *     correctly declines to guess on rather than silently picking one.
+ * CLARIFY_CASES below locks in this exact tied-clarify behavior (and the
+ * post-fix "Round" resolution, including its own genuine tie against
+ * "Pouff Clip") using the user's own literal phrasings, not a rephrased
+ * substitute -- this is the 4th confirmed instance of the "test the
+ * literal repro" lesson in feedback_verify_prior_resolved_claims.md, and
+ * the reason the ORIGINAL CASES below were never a sufficient check on
+ * their own: they happen to all be collision-free queries, which never
+ * exercises the override logic at all.
+ *
  * Verified via a full `regression:full` run (including
  * check_ditre_matching.ts's 48-case battery -- Ditre is both the
  * brand most exposed to this new fallback AND the most matcher-sensitive
@@ -77,6 +110,7 @@ interface ChatResponse {
   status?: string;
   product_name?: string;
   matches?: PriceRow[];
+  candidates?: string[];
   message?: string;
   error?: string;
 }
@@ -155,6 +189,48 @@ const CASES: Case[] = [
   },
 ];
 
+interface ClarifyCase {
+  id: string;
+  brand: string;
+  query: string;
+  expectedCandidates: string[];
+  mustNotResolveTo?: string;
+  note: string;
+}
+
+/** The user's own literal example phrasings (from this feature's scope-
+ * estimate report), which the ORIGINAL CASES above never actually tested
+ * -- see this file's own header comment for the full story. Each of these
+ * is a genuine cross-sibling tie in the source data (the same accessory
+ * text really is listed under 2+ real products), so `clarify_product`
+ * with the correct candidate list IS the correct answer -- these cases
+ * exist to guard that exact candidate list and, for the Round case, that
+ * it never again resolves to the wrong single product. */
+const CLARIFY_CASES: ClarifyCase[] = [
+  {
+    id: 'ditre-round-footstool-not-wrong-armchair',
+    brand: 'Ditre Italia',
+    query: 'Round footstool diameter 60 price',
+    expectedCandidates: ['Clip (Sofa)', 'Pouff Clip'],
+    mustNotResolveTo: 'Round',
+    note: 'The user\'s exact literal repro. Before the override fix, this silently resolved to "Round" (a real, unrelated one-word Ditre armchair product) since detectNamedProductsInText found "Round" and skipped the fallback entirely. Now correctly overrides that weak single-token match and finds the real tie: "Round footstool diameter 60" is genuinely listed verbatim under both Clip (Sofa) and Pouff Clip.',
+  },
+  {
+    id: 'ditre-isla-left-fabric-corner-backrest-genuine-tie',
+    brand: 'Ditre Italia',
+    query: 'Left fabric corner backrest price',
+    expectedCandidates: ['Isla (Sofa)', 'Isla slim'],
+    note: 'The user\'s exact literal repro. Confirmed via direct index inspection: "Left fabric corner backrest" is genuinely listed verbatim under both Isla (Sofa) and Isla slim in the source catalog -- a real tie, not a matching bug, so clarify_product with exactly these 2 candidates is the correct, honest answer.',
+  },
+  {
+    id: 'ditre-krisby-rectangular-armrest-cushion-genuine-tie',
+    brand: 'Ditre Italia',
+    query: 'Rectangular armrest cushion price',
+    expectedCandidates: ['Krisby (Sofa)', 'Krisby mix', 'Krisby low', 'Krisby mix low'],
+    note: 'The user\'s exact literal repro. Confirmed via direct index inspection: "Rectangular armrest cushion" is genuinely listed verbatim under all 4 Krisby family variants -- a real tie, not a matching bug.',
+  },
+];
+
 async function main() {
   const failures: string[] = [];
 
@@ -189,8 +265,32 @@ async function main() {
     await new Promise(r => setTimeout(r, 80));
   }
 
+  for (const c of CLARIFY_CASES) {
+    const resp = await postChat(c.brand, c.query);
+    const candidates = resp.candidates || [];
+    const statusOk = resp.status === 'clarify_product';
+    const candidatesOk = JSON.stringify([...candidates].sort()) === JSON.stringify([...c.expectedCandidates].sort());
+    const wrongResolutionOk = !c.mustNotResolveTo || resp.product_name !== c.mustNotResolveTo;
+    const ok = statusOk && candidatesOk && wrongResolutionOk;
+
+    if (!ok) {
+      failures.push(
+        `[${c.id}] query=${JSON.stringify(c.query)} -- ` +
+        `status: got ${JSON.stringify(resp.status)} expected clarify_product; ` +
+        `candidates: got ${JSON.stringify(candidates)} expected ${JSON.stringify(c.expectedCandidates)}; ` +
+        `product_name=${JSON.stringify(resp.product_name)}` +
+        (c.mustNotResolveTo ? ` (must not be ${JSON.stringify(c.mustNotResolveTo)})` : '') +
+        ` message=${JSON.stringify(resp.message)}`
+      );
+      console.log(`[${c.id.padEnd(48)}] FAIL`);
+    } else {
+      console.log(`[${c.id.padEnd(48)}] ok  (candidates=${JSON.stringify(candidates)})`);
+    }
+    await new Promise(r => setTimeout(r, 80));
+  }
+
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length}`);
+  console.log(`Total cases: ${CASES.length + CLARIFY_CASES.length}`);
   console.log(`Total failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
