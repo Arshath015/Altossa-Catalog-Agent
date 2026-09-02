@@ -9020,6 +9020,254 @@ def parse_file_pianca_dedalo_madie(path, product_name, brand, all_headings=None,
 
 
 # ---------------------------------------------------------------------------
+# Norma (CollezioneNotte)'s own "Comodino"/"Comò"/"Settimanale" tables --
+# found live 2026-09-01/02: the product had only its "Basamento" table (16
+# rows) extracted; direct source inspection (confirmed via real page
+# images 107-112, not text alone) found 6 more table occurrences of a
+# GENUINELY different shape entirely missing. Its own dedicated function,
+# not a shared registry entry, since the row shape doesn't match anything
+# else in this file:
+#   - Header: "L <Category> ... H  P  CODICI" (verified via image: 2
+#     parent "Copertura esterna" groups of 3 "Frontali" finish columns
+#     each, plus 1 more "Vetro Marmo" column -- 7 price columns total,
+#     genuinely different from Norma Up's OWN 2-axis shape one file over,
+#     which has only 6 -- confirmed these are two unrelated products with
+#     superficially similar headers, not the same table reused).
+#   - Each GROUP is 2 row-pairs: "a terra" (floor-standing, H and P both
+#     printed) then "con basamento" (with an added base -- H is
+#     DELIBERATELY omitted in the source for these rows, confirmed via
+#     image: the printed table genuinely never restates it, not a text-
+#     extraction drop, so size is captured as L×P only for these, 2 dims
+#     not 3, matching this project's "capture only what's printed" rule).
+#     A few groups are SHORT (just one a-terra + one con-basamento row,
+#     45mm depth only, no 55mm pair) -- confirmed via image (e.g. Comodino
+#     H42's own L=91 group), not assumed uniform.
+#   - L (the group's own nominal width, e.g. "41"/"51"/...) prints ONCE,
+#     on the LAST physical row of the group (backward-fill to every row
+#     in that group) -- same carry-forward convention already used
+#     elsewhere in this file (e.g. the armadi-danger family's own L).
+#   - The category label ("Comodino"/"Comò"/"Comò basso"/"Settimanale")
+#     prints on its own line AFTER the group it describes (backward
+#     semantics, confirmed via image: the label sits directly below each
+#     group's own diagram icon, describing the rows already printed
+#     above it) -- but does NOT always reprint for every group: when a
+#     group has no label of its own before the table ends or the next
+#     CODICI header appears, it inherits whichever label was last seen
+#     (confirmed via image: an unlabelled trailing group's own diagram
+#     icon visually matches its labelled predecessor's icon style, e.g.
+#     Comodino H42's own L=91 group is drawn as the same "Comò basso"
+#     style as L=71 just above it, despite carrying no text label of its
+#     own). The label can also change PARTWAY through one table
+#     occurrence (confirmed via image, not assumed one-label-per-page:
+#     Comodino H62's own page prints "Comodino" for its first 2 groups
+#     then switches to "Comò" for the rest, all under one continuous
+#     header).
+# ---------------------------------------------------------------------------
+
+_PIANCA_NORMA_CN_GRUPPI_COLUMNS = [
+    "Copertura Laccato Opaco/Essenza — Frontali L. Opaco/Essenza",
+    "Copertura Laccato Opaco/Essenza — Frontali Lucido Sp./V.Laccato/V.Met./Specchio",
+    "Copertura Laccato Opaco/Essenza — Frontali Cuoio Rig.",
+    "Copertura Lucido Sp./Cuoio Rig. — Frontali L. Opaco/Essenza",
+    "Copertura Lucido Sp./Cuoio Rig. — Frontali Lucido Sp./V.Laccato/V.Met./Specchio",
+    "Copertura Lucido Sp./Cuoio Rig. — Frontali Cuoio Rig.",
+    "Vetro Marmo",
+]
+
+
+def _pianca_norma_cn_is_header(line: str) -> bool:
+    return bool(re.match(r'^\s*L\s+\S.*\bH\s+P\s+CODICI\s*$', line))
+
+
+def _pianca_norma_cn_scan_table(lines, page_of_line, header_idx, product_name, brand, rows, flags):
+    header_line = lines[header_idx]
+    # A bare leading digit-only segment is genuinely AMBIGUOUS by shape
+    # alone -- it's either the group's own L value (printed once, on the
+    # LAST row of the group) or a row's own CONTINUATION H value (the 2nd
+    # "a terra" row repeats H with no "a terra" prefix at all, matching
+    # the FIRST row's own H). Found live 2026-09-02, verifying the very
+    # first regenerated output: a plain "is it a bare 2-3 digit token"
+    # check can't tell these apart, and silently mis-filing a
+    # continuation H as if it were L (1) permanently loses that row's own
+    # real H (size collapses from L×H×P to just L×P) and (2) temporarily
+    # corrupts group_l until the REAL L value happens to overwrite it a
+    # few lines later -- which happens to still produce the right group_l
+    # by the time of the group's own flush (since the real L always comes
+    # chronologically last), masking symptom (2) but never fixing (1).
+    # Resolved the same way _pianca_struttura_frontali_row_scan's own
+    # outer_col gate does: by REAL COLUMN POSITION, not token shape --
+    # this table's own header always prints "L" at the far left and its
+    # own "H" immediately before "P  CODICI", confirmed via image to be
+    # 50+ characters apart, so classifying a bare digit by whichever of
+    # the two it's actually printed closer to is unambiguous.
+    l_col = header_line.index('L')
+    h_match = re.search(r'\bH\s+P\s+CODICI', header_line)
+    h_col = h_match.start() if h_match else l_col
+
+    def classify_bare_digit(start_col):
+        return 'l' if abs(start_col - l_col) < abs(start_col - h_col) else 'h'
+
+    i = header_idx + 1
+    group_rows = []  # rows for the CURRENTLY open group, L not yet known
+    group_l = None
+    last_category = None
+
+    def flush(category):
+        nonlocal group_l
+        for r in group_rows:
+            dims = [group_l] if group_l else []
+            if r['h']:
+                dims.append(r['h'])
+            dims.append(r['p'])
+            size = '×'.join(dims) if len(dims) > 1 else None
+            any_price = False
+            for label, cell in zip(_PIANCA_NORMA_CN_GRUPPI_COLUMNS, r['prices']):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": r['row_type'],
+                    "variant_context": category,
+                    "size": size,
+                    "fabric_tier": label,
+                    "tier_label": "Finish",
+                    "code": r['code'],
+                    "price_eur": cell,
+                    "source_pdf_page": r['page'],
+                })
+            if not any_price:
+                flags.append((r['page'], product_name, f"no price rows found for code {r['code']}"))
+        group_rows.clear()
+        group_l = None
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if 'CODICI' in line:
+            break
+        # This table occurrence's own real end -- confirmed present
+        # verbatim, exactly once, at the true end of every one of the 6
+        # occurrences. Needed as its own boundary (not just the next
+        # 'CODICI'): without it, the scan bled through the NEXT table's
+        # own multi-line wrapped header/column-legend text (found live
+        # 2026-09-02) and wrongly captured "Specchio" -- a bare word from
+        # that wrapped legend's own trailing line, coincidentally short
+        # and digit-free -- as if it were a real category label for
+        # whatever group was still pending, corrupting the last group of
+        # 6 of the table's own occurrences before this fix.
+        if 'Per il calcolo del prezzo' in line:
+            break
+        if stripped == '':
+            i += 1
+            continue
+        # A pure-text line (no digits at all) is a category label,
+        # describing the group just accumulated -- see module comment for
+        # why this is backward, not forward, and why it's remembered
+        # (last_category) for a later group that has none of its own.
+        if not any(c.isdigit() for c in stripped) and 2 < len(stripped) <= 40:
+            flush(stripped)
+            last_category = stripped
+            i += 1
+            continue
+
+        # Position-aware split (start column preserved per segment) -- see
+        # classify_bare_digit's own comment for why raw token shape alone
+        # can't tell a group's L value apart from a row's own
+        # continuation H value. 2+-space gaps are the real columnar
+        # boundary here (a single space can appear WITHIN one logical
+        # segment, e.g. "45 2N2Y4" or, confirmed live on Settimanale's
+        # own H127 rows, "a terra 127" -- a 3-digit H sits close enough to
+        # its own "a terra" prefix that the source prints only 1 space
+        # between them, unlike the 2-digit H tables' own 2+-space gap).
+        seg_matches = list(re.finditer(r'\S+(?:\s{1}\S+)*', line))
+        segs = [m.group() for m in seg_matches]
+        starts = [m.start() for m in seg_matches]
+        row_type = None
+        l_value = None
+        if segs:
+            m = re.match(r'^(a terra|con basamento)(?:\s+(\d{2,3}))?$', segs[0])
+            if m:
+                row_type = m.group(1)
+                segs.pop(0)
+                starts.pop(0)
+                if m.group(2):
+                    # Glued trailing digit (e.g. "a terra 127") is
+                    # unambiguously THIS row's own H -- a group's L value
+                    # is never glued to a row-type prefix in any confirmed
+                    # occurrence -- so it's reinserted as its own leading
+                    # segment rather than going through classify_bare_digit.
+                    segs.insert(0, m.group(2))
+                    starts.insert(0, starts[0] if starts else 0)
+            elif re.match(r'^\d{2,3}$', segs[0]):
+                if classify_bare_digit(starts[0]) == 'l':
+                    l_value = segs.pop(0)
+                    starts.pop(0)
+                    if segs and segs[0] in ('a terra', 'con basamento'):
+                        row_type = segs.pop(0)
+                        starts.pop(0)
+                # else: leave it in segs -- it's this row's own H,
+                # handled by the ordinary 9-segment branch below.
+
+        h = None
+        if len(segs) == 9:
+            h, p_code, prices = segs[0], segs[1], segs[2:9]
+        elif len(segs) == 8:
+            p_code, prices = segs[0], segs[1:8]
+        else:
+            i += 1
+            continue
+        pc_parts = p_code.split()
+        if len(pc_parts) != 2 or not all(_PIANCA_PRICE_CELL_RE.match(x) for x in prices):
+            i += 1
+            continue
+        p, code = pc_parts
+        if not (_PIANCA_CODE_RE.match(code) and re.search(r'\d', code)):
+            i += 1
+            continue
+
+        if l_value:
+            group_l = l_value
+        # A continuation row (no explicit prefix on this physical line,
+        # e.g. the 2nd "a terra"/"con basamento" row of a pair) keeps
+        # whatever row_type was last seen -- same carry-forward
+        # convention as L above, needed because only the FIRST row of
+        # each pair repeats the "a terra"/"con basamento" text.
+        effective_row_type = row_type or (group_rows[-1]['row_type'] if group_rows else None)
+        group_rows.append({'row_type': effective_row_type, 'h': h, 'p': p, 'code': code,
+                            'prices': prices, 'page': page_of_line[i]})
+        i += 1
+
+    # Table occurrence ended (next CODICI or EOF) with no trailing label
+    # for whatever's left buffered -- inherits the last real category seen,
+    # per the module comment's own confirmed-via-image carry-forward rule.
+    flush(last_category)
+
+
+def parse_file_pianca_norma_collezionenotte_gruppi(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope (Norma (CollezioneNotte) only)."""
+    if product_name != 'Norma (CollezioneNotte)':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    for i, line in enumerate(lines):
+        if _pianca_norma_cn_is_header(line):
+            _pianca_norma_cn_scan_table(lines, page_of_line, i, product_name, brand, rows, flags)
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Cornice (Spazi-10) -- genuinely its own dedicated shape, per this
 # project's standing rule that a structurally different 2-axis grid gets
 # its own function rather than being forced through the wardrobe-danger
@@ -9259,6 +9507,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_alfa_letti,
         parse_file_pianca_alfa_tatami,
         parse_file_pianca_dedalo_madie,
+        parse_file_pianca_norma_collezionenotte_gruppi,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
