@@ -201,21 +201,42 @@ const PIANCA_QUALIFIER_DISPLAY_MAP: Record<string, string> = {
 // verified label wins over the generic collection-name translation for
 // these particular products (Palù's own CollezioneNotte side gets
 // "Nightstand" here rather than the generic "Bedroom Collection", since
-// the more precise label was already confirmed available). Every other
-// Progetti/Spazi-10/Designbook-qualified product not listed here is
-// DELIBERATELY left untouched -- e.g. Dedalo (Progetti 06-07)/(Collezione
-// Notte) and Spazioteca (Spazi-10)/(SistemiGiorno) were individually
-// checked too and found to both be variations of a similar wardrobe/
-// storage system with no clean type split; Mensole legno per boiserie
-// (Spazi-10)/(CollezioneNotte) are literally the same furniture
-// ("wooden shelves for wall paneling") distinguished only by an internal
-// SKU-prefix, with no real customer-facing distinction to label at all.
-// Forcing a label onto any of these would be worse than the qualifier it
-// replaces -- reported as genuinely unresolved rather than papered over.
+// the more precise label was already confirmed available).
+//
+// Dedalo (Progetti 06-07)/(CollezioneNotte): each source's own top-level
+// framing gives a clean pair -- Progetti 06-07 opens with "DEDALO 2023 di
+// Luciano Marson Caratteristiche madia" (Pianca's own primary description
+// is "sideboard/cabinet"); CollezioneNotte's own table is headed "Moduli
+// cassetto" but every one of its own row groups is labelled "Comodino N
+// cassetti..." (nightstand).
+//
+// Spazioteca (Spazi-10): its entire 3-page scope is one specific function,
+// "Passaggio porta per moduli ponte" (door-passage bridge module) -- a
+// specific architectural component, not a general furniture type.
+// Spazioteca (SistemiGiorno) needs NO override at all: "SistemiGiorno" is
+// already a PIANCA_QUALIFIER_DISPLAY_MAP key, so it already reads "Day
+// Storage System" automatically -- an accurate description for what
+// genuinely is the comprehensive whole-system version, unlike Dedalo/
+// Palù's case where the generic collection name would undersell a more
+// precise available furniture-type fact.
+//
+// Mensole legno per boiserie (Spazi-10)/(CollezioneNotte) is DELIBERATELY
+// still not in this table -- but not because no answer exists any more.
+// Found 2026-09-02, while investigating THIS list: the CollezioneNotte
+// side was actually a superseded_reprint (all 32 of its own codes/96
+// prices verified present in Spazi-10's own table, ~4% lower, source
+// dated 2.5 years older -- see flag_triage.json), not a genuine collision
+// at all. Its own catalog_index.json/prices.json entries were removed
+// entirely (see extract_catalog.py's own PIANCA_INDEX_NAME_OVERRIDES);
+// there is no longer a second product to disambiguate, so no display
+// label is needed for it either.
 const PIANCA_PRODUCT_DISPLAY_OVERRIDES: Record<string, string> = {
   'Palù (Progetti 08)': 'Palù (Chair)',
   'Palù (CollezioneNotte)': 'Palù (Nightstand)',
   'Mambo (Progetti 09)': 'Mambo (Sideboard)',
+  'Dedalo (Progetti 06-07)': 'Dedalo (Sideboard)',
+  'Dedalo (CollezioneNotte)': 'Dedalo (Nightstand)',
+  'Spazioteca (Spazi-10)': 'Spazioteca (Door-Passage Module)',
 };
 
 export function formatProductDisplayName(rawName: string): string {
