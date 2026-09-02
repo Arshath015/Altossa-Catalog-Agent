@@ -51,6 +51,10 @@ interface ChatResult {
   message: string;
   product_name?: string;
   candidates?: string[];
+  /** Display-only labels parallel to `candidates` (see catalogChat.ts's
+   * formatProductDisplayName) -- render these, but keep sending back
+   * `candidates[i]` (unchanged) wherever the raw name is needed. */
+  candidateLabels?: string[];
   matches?: PriceRow[];
   image_urls?: string[];
 }
@@ -268,7 +272,7 @@ export default function CatalogChatWidget({
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-7">
         {messages.map((m, i) => (
-          <MessageBubble key={i} message={m} onShowImages={onLatestImages} />
+          <MessageBubble key={i} message={m} onShowImages={onLatestImages} onSelectCandidate={sendMessage} />
         ))}
         {loading && (
           <div className="flex items-center gap-1.5 pl-1">
@@ -333,7 +337,19 @@ function ChatInput({ brand, loading, onSend }: { brand: string; loading: boolean
   );
 }
 
-function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShowImages?: (data: ImagePanelData) => void }) {
+function MessageBubble({ message, onShowImages, onSelectCandidate }: {
+  message: ChatMessage;
+  onShowImages?: (data: ImagePanelData) => void;
+  /** Clicking a candidate chip (see the `candidates` rendering below) sends
+   * its exact raw value as the next message -- reuses the SAME sendMessage
+   * path the text input already uses, so it behaves identically to typing
+   * the candidate and hitting enter. No new backend logic: candidates/
+   * lastCandidates already round-trip correctly, this just gives the user
+   * a way to pick one without having to type it back (previously required,
+   * even when the qualifier text wasn't something they could safely type --
+   * e.g. Tier 2 collision qualifiers with no customer-facing label yet). */
+  onSelectCandidate?: (candidate: string) => void;
+}) {
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -385,10 +401,14 @@ function MessageBubble({ message, onShowImages }: { message: ChatMessage; onShow
 
       {message.result?.candidates && message.result.candidates.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {message.result.candidates.map((c) => (
-            <span key={c} className="font-data text-xs px-2.5 py-1 border border-stone-600 text-stone-300">
-              {c}
-            </span>
+          {message.result.candidates.map((c, i) => (
+            <button
+              key={c}
+              onClick={() => onSelectCandidate?.(c)}
+              className="font-data text-xs px-2.5 py-1 border border-stone-600 text-stone-300 hover:border-[var(--riso-yellow)] hover:text-[var(--riso-yellow)] transition-colors"
+            >
+              {message.result?.candidateLabels?.[i] ?? c}
+            </button>
           ))}
         </div>
       )}

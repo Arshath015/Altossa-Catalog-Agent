@@ -78,6 +78,12 @@ export interface ChatResult {
   message: string;
   product_name?: string;
   candidates?: string[];
+  /** Display-only labels parallel to `candidates` (same order/length) --
+   * see formatProductDisplayName's own comment in catalogChat.ts. Render
+   * this for the user instead of `candidates[i]` directly; `candidates`
+   * itself must stay the raw, matchable name, since the client sends it
+   * back verbatim as `lastCandidates` on a later turn. */
+  candidateLabels?: string[];
   matches?: PriceRow[];
   image_urls?: string[];
   /** True whenever this reply was produced without a working LLM call (the
@@ -146,6 +152,80 @@ export function combineAddon(basePrice: string, addonPrice: string): string {
   const toInt = (s: string) => parseInt(s.replace(/[^\d]/g, ''), 10) || 0;
   const total = toInt(basePrice) + toInt(addonPrice);
   return formatItalianNumber(total);
+}
+
+// Translates a small, fixed set of Pianca-only internal source-catalog-
+// name qualifiers into a customer-recognizable furniture-category label,
+// for DISPLAY ONLY -- never used to change `product_name` itself, which
+// stays exactly as stored everywhere it's used for matching, anchoring
+// (lastProduct round-tripping), or data lookups. Found necessary live
+// 2026-09-01: a collision qualifier like "Norma (CollezioneNotte)" tells
+// a real customer nothing -- "CollezioneNotte" is Pianca's own internal
+// PDF catalog name (their "Night Collection", i.e. bedroom furniture),
+// not a word any shopper recognizes, so a clarify_product prompt asking
+// to choose between "(CollezioneNotte)" and "(CollezioneGiorno)" gave no
+// real way to tell the options apart.
+//
+// Deliberately a SMALL, closed, hand-checked translation table -- not a
+// general slug-to-English translator -- covering only the 4 qualifiers
+// confirmed to map cleanly onto a real furniture category (Collezione/
+// Sistemi Giorno/Notte = day/night = living-dining/bedroom). The
+// "Storage System" wording for Sistemi Giorno/Notte is a naming CHOICE,
+// not a verified translation the way the rest of this table is -- worth
+// revisiting if it reads oddly to a real user, not a fact to defend.
+// Other Pianca qualifiers (Progetti NN, Spazi-10, Designbook, or an
+// already furniture-descriptive word like "Divani"/"Letti") are
+// deliberately left untouched here -- they either already read fine, or
+// don't have an equally safe translation and need their own hand-checked
+// label, tracked and proposed separately rather than force-fit into this
+// table. Harmless no-op for every other brand (none of these keys can
+// ever appear in their own product names).
+const PIANCA_QUALIFIER_DISPLAY_MAP: Record<string, string> = {
+  CollezioneNotte: 'Bedroom Collection',
+  CollezioneGiorno: 'Living/Dining Collection',
+  SistemiGiorno: 'Day Storage System',
+  SistemiNotte: 'Night Storage System',
+};
+
+// Per-PRODUCT overrides (keyed by the exact raw product_name, not the bare
+// qualifier) for the "Tier 2" collision pairs -- Progetti NN/Spazi-10/
+// Designbook qualifiers that have no universal translation (a catalog
+// number doesn't map onto a furniture category the way Collezione/Sistemi
+// Giorno/Notte do), but where a SPECIFIC pair was individually checked
+// against its own source text and found to have a clean, real furniture-
+// type distinction. E.g. "Progetti 08" means "chair" for Palù
+// specifically (its source header literally reads "PALÙ ... Sedia"), not
+// universally for every product printed in that catalog -- so this table
+// is intentionally keyed per full product name, never per bare qualifier.
+// Checked before PIANCA_QUALIFIER_DISPLAY_MAP so a more specific, hand-
+// verified label wins over the generic collection-name translation for
+// these particular products (Palù's own CollezioneNotte side gets
+// "Nightstand" here rather than the generic "Bedroom Collection", since
+// the more precise label was already confirmed available). Every other
+// Progetti/Spazi-10/Designbook-qualified product not listed here is
+// DELIBERATELY left untouched -- e.g. Dedalo (Progetti 06-07)/(Collezione
+// Notte) and Spazioteca (Spazi-10)/(SistemiGiorno) were individually
+// checked too and found to both be variations of a similar wardrobe/
+// storage system with no clean type split; Mensole legno per boiserie
+// (Spazi-10)/(CollezioneNotte) are literally the same furniture
+// ("wooden shelves for wall paneling") distinguished only by an internal
+// SKU-prefix, with no real customer-facing distinction to label at all.
+// Forcing a label onto any of these would be worse than the qualifier it
+// replaces -- reported as genuinely unresolved rather than papered over.
+const PIANCA_PRODUCT_DISPLAY_OVERRIDES: Record<string, string> = {
+  'Palù (Progetti 08)': 'Palù (Chair)',
+  'Palù (CollezioneNotte)': 'Palù (Nightstand)',
+  'Mambo (Progetti 09)': 'Mambo (Sideboard)',
+};
+
+export function formatProductDisplayName(rawName: string): string {
+  const override = PIANCA_PRODUCT_DISPLAY_OVERRIDES[rawName];
+  if (override) return override;
+  const m = rawName.match(/^(.*) \(([^)]+)\)$/);
+  if (!m) return rawName;
+  const [, base, qualifier] = m;
+  const translated = PIANCA_QUALIFIER_DISPLAY_MAP[qualifier];
+  return translated ? `${base} (${translated})` : rawName;
 }
 
 function escapeRegex(s: string): string {
@@ -1766,10 +1846,18 @@ export class CatalogChat {
     const shown = allCandidates.slice(0, CatalogChat.CLARIFY_CANDIDATE_CAP);
     const hiddenCount = allCandidates.length - shown.length;
     const disclosure = hiddenCount > 0 ? ` (and ${hiddenCount} more)` : '';
+    // `candidates` stays the RAW, matchable product names -- the client
+    // stores this array as `lastCandidates` and sends it back verbatim on
+    // a later turn, so it must remain something the matcher recognizes.
+    // `candidateLabels` is a parallel, display-only array (same order/
+    // length) for what's actually shown to the user -- see
+    // formatProductDisplayName's own comment.
+    const shownLabels = shown.map(formatProductDisplayName);
     return {
       status: 'clarify_product',
-      message: `I found a few products that could match: ${shown.join(', ')}${disclosure}. Which one did you mean?`,
+      message: `I found a few products that could match: ${shownLabels.join(', ')}${disclosure}. Which one did you mean?`,
       candidates: shown,
+      candidateLabels: shownLabels,
     };
   }
 
@@ -2045,6 +2133,43 @@ export class CatalogChat {
     // rather than just under-displaying results). Any display/return cap
     // happens once, at the very end, via buildClarifyProductResult.
     const topMatches = matches.filter(m => m.score >= topScore - 5);
+
+    // Anchor tie-break: when the query itself ties 2+ real products (e.g.
+    // "give all norma price" scores "Norma Up", "Norma (CollezioneNotte)",
+    // and "Norma (CollezioneGiorno)" equally, since "norma" is the only
+    // shared word) AND lastProduct is one of those tied candidates, prefer
+    // it outright instead of re-asking a question the conversation already
+    // answered. Found live 2026-09-01: resolving "Norma CollezioneNotte
+    // price" first, then following up with "give all norma price" (an
+    // ordinary, real anchor-continuation phrasing), silently discarded the
+    // anchor and fell back to a flat 3-way clarify -- lastProduct was
+    // already threaded into this function's own signature and used
+    // elsewhere (the zero-match branch's content-free-followup handling,
+    // and resolveProductQuery's own lastModelVariant continuity), but this
+    // specific tied-candidate branch never consulted it at all.
+    //
+    // Deliberately placed BEFORE the "maximal token-set containment" check
+    // below rather than replacing it -- if the query itself narrows to a
+    // single dominant candidate (e.g. explicitly naming a DIFFERENT tied
+    // product than the anchor, "give Norma CollezioneGiorno price"), that
+    // candidate's own score rises well above the tie threshold and
+    // topMatches.length is already 1 by the time this code runs, so this
+    // anchor check is only ever reached when the query genuinely doesn't
+    // distinguish between the tied candidates on its own -- exactly the
+    // case the anchor should resolve, never a case where the query itself
+    // asked for something else.
+    if (topMatches.length > 1 && lastProduct && this.productNames.includes(lastProduct)
+      && topMatches.some(m => m.name === lastProduct)) {
+      const productName = lastProduct;
+      const { scopedQuery, excludedClause } = this.excludeUnrelatedAndClause(query, productName);
+      const size = extractSize(scopedQuery);
+      const tiers = extractTiers(scopedQuery, [productName]);
+      const wantsFullList = /\b(all|full|complete|every)\b/i.test(query);
+      return this.withUnresolvedClauseNote(
+        this.resolveProductQuery(productName, size, tiers, brand, scopedQuery, lastModelVariant, wantsFullList),
+        excludedClause
+      );
+    }
 
     if (topMatches.length > 1 && topScore < 100) {
       // Any time there's more than one candidate and it's not a clean,
@@ -2585,7 +2710,7 @@ export class CatalogChat {
     // deferring to whatever the LLM/checkFamilyAmbiguity below resolve to
     // rather than guessing which of the colliding products was meant).
     const codeMatches = this.findProductsByCode(rawQuery);
-    const effectiveProductName = codeMatches.length === 1 ? codeMatches[0] : validProductName;
+    let effectiveProductName = codeMatches.length === 1 ? codeMatches[0] : validProductName;
 
     // Ambiguity backstop: even though the LLM confidently returned ONE
     // valid product name, check whether it actually belongs to an
@@ -2645,7 +2770,23 @@ export class CatalogChat {
       ? null
       : this.checkFamilyAmbiguity(rawQuery, effectiveProductName);
     if (familyCandidates) {
-      return this.buildClarifyProductResult(familyCandidates);
+      // Same anchor tie-break as answer()'s own tied-candidate branch --
+      // found necessary via the SAME live Norma repro, but via a
+      // DIFFERENT code path: here the LLM confidently guessed ONE valid
+      // but WRONG sibling name ("Norma Up" instead of the already-
+      // established "Norma (CollezioneNotte)"), so isAnchoredGuess above
+      // is false (the LLM's own guess doesn't equal lastProduct) and
+      // isTrustedAnchorContinuation never fires -- checkFamilyAmbiguity
+      // still runs and re-flags the whole family, discarding a real
+      // anchor the conversation already established. If lastProduct is
+      // one of the flagged family candidates, prefer it outright instead
+      // of re-asking; otherwise this is a genuine fresh ambiguity (the
+      // anchor isn't even a candidate here) and still asks as before.
+      if (lastProduct && familyCandidates.includes(lastProduct)) {
+        effectiveProductName = lastProduct;
+      } else {
+        return this.buildClarifyProductResult(familyCandidates);
+      }
     }
 
     if (!skipFamilyAmbiguityCheck && looksLikeFreshAttempt) {
@@ -2918,11 +3059,16 @@ export class CatalogChat {
     const lastVariants: string[] = Array.isArray(lastModelVariant)
       ? lastModelVariant
       : (lastModelVariant ? [lastModelVariant] : []);
+    // Display-only -- see formatProductDisplayName's own comment. Every
+    // `product_name`/`product_name:` FIELD below stays the raw
+    // `productName`, unchanged (matching/anchor state depends on it);
+    // only text actually shown to the user in `message` strings uses this.
+    const displayProductName = formatProductDisplayName(productName);
     let rows = this.prices.filter(r => r.product_name === productName);
     if (rows.length === 0) {
       return {
         status: 'no_price_data',
-        message: `I found "${productName}" in the catalog, but I don't have price data for it yet. Here's the product page so you can check it directly.`,
+        message: `I found "${displayProductName}" in the catalog, but I don't have price data for it yet. Here's the product page so you can check it directly.`,
         product_name: productName,
         image_urls: this.getImageUrls(productName, brand),
       };
@@ -3196,7 +3342,7 @@ export class CatalogChat {
       const tiers = [...new Set(allForProduct.map(r => r.fabric_tier).filter((x): x is string => !!x))];
       return {
         status: 'no_matching_variant',
-        message: `I found "${productName}", but not that exact size/fabric combination. Available sizes: ${sizes.join(', ') || 'n/a'}. Available fabric tiers: ${tiers.join(', ') || 'n/a'}.`,
+        message: `I found "${displayProductName}", but not that exact size/fabric combination. Available sizes: ${sizes.join(', ') || 'n/a'}. Available fabric tiers: ${tiers.join(', ') || 'n/a'}.`,
         product_name: productName,
         image_urls: this.getImageUrls(productName, brand),
       };
@@ -3785,7 +3931,7 @@ export class CatalogChat {
     if (cleanRows.length === 0) {
       return {
         status: 'ambiguous_price',
-        message: `"${productName}" has more than one listed price for this configuration in the source catalog (this usually means two structural variants share a page, like wood vs. iron frame). I can't confidently give you a single number -- here's the actual catalog page so you can confirm the right one.`,
+        message: `"${displayProductName}" has more than one listed price for this configuration in the source catalog (this usually means two structural variants share a page, like wood vs. iron frame). I can't confidently give you a single number -- here's the actual catalog page so you can confirm the right one.`,
         product_name: productName,
         matches: rows,
         image_urls: this.getImageUrls(productName, brand, rows),
@@ -3804,8 +3950,8 @@ export class CatalogChat {
       // otherwise (e.g. Cattelan's "cristallo specchiato bronzo") keep
       // the product identifiable by combining both.
       const displayName = r.model_variant
-        ? (normalize(r.model_variant).includes(normalize(productName)) ? r.model_variant : `${productName} (${r.model_variant})`)
-        : productName;
+        ? (normalize(r.model_variant).includes(normalize(productName)) ? r.model_variant : `${displayProductName} (${r.model_variant})`)
+        : displayProductName;
       let addonInfo = '';
       if (r.model_variant && isAddonVariant(r.model_variant)) {
         const mainPrice = findMainStructurePrice(r.size);
@@ -3840,7 +3986,7 @@ export class CatalogChat {
       const variant = remainingVariants[0];
       displayName = normalize(variant).includes(normalize(productName))
         ? variant
-        : `${productName} (${variant})`;
+        : `${displayProductName} (${variant})`;
     } else {
       // If everything remaining shares the same short code (e.g. both
       // the "h.27 basamento" surcharge AND the "Struttura...(h.27)"
@@ -3849,7 +3995,7 @@ export class CatalogChat {
       // generic product name, which looks like the narrowing did nothing
       // even when it correctly did.
       const codes = new Set(remainingVariants.map(v => extractShortCode(v)).filter(Boolean));
-      displayName = codes.size === 1 ? `${productName} ${[...codes][0]!.replace(':', '.')}` : productName;
+      displayName = codes.size === 1 ? `${displayProductName} ${[...codes][0]!.replace(':', '.')}` : displayProductName;
     }
     const sizesAvail = [...new Set(rows.map(r => r.size).filter((x): x is string => !!x))];
     const tiersAvail = [...new Set(rows.map(r => r.fabric_tier).filter((x): x is string => !!x))];
