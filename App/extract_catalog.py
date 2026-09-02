@@ -459,18 +459,31 @@ PIANCA_INDEX_NAME_OVERRIDES: dict[tuple[str, str], str | None] = {
 
     # Second round, found 2026-08-22 while extracting CollezioneNotte:
     # Palù and "Mensole legno per boiserie" collided with Progetti di
-    # Design 08's and Spazi-10's own already-live bare names respectively
-    # -- confirmed genuine collisions (Palù: same designer, Raffaella
+    # Design 08's and Spazi-10's own already-live bare names respectively.
+    # Palù confirmed a genuine collision (same designer, Raffaella
     # Mangiarotti, but Progetti 08's is a Sedia/chair vs CollezioneNotte's
-    # Comodino/nightstand; Mensole legno per boiserie: completely
-    # different SKU code families, Spazi-10's 46D-prefix vs
-    # CollezioneNotte's 46E-prefix). Per the established convention,
-    # BOTH sides get qualified, not just the newly-colliding one -- the
-    # already-live Progetti 08/Spazi-10 entries are renamed here too.
+    # Comodino/nightstand) -- both sides qualified, per the established
+    # convention.
     ('2024_10_Progetti_di_Design_08_1R +6_.pdf', 'Palù'): 'Palù (Progetti 08)',
     ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Palù'): 'Palù (CollezioneNotte)',
     ('2026_02_Spazi-10_1R.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (Spazi-10)',
-    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Mensole legno per boiserie'): 'Mensole legno per boiserie (CollezioneNotte)',
+    # "Mensole legno per boiserie" was ORIGINALLY (2026-08-22) also called a
+    # genuine collision here, on the claim that the two used "completely
+    # different SKU code families, Spazi-10's 46D-prefix vs CollezioneNotte's
+    # 46E-prefix" -- CORRECTED 2026-09-02, found doing a fresh naming-label
+    # investigation for a completely different reason: that claim only ever
+    # compared CollezioneNotte's codes against Spazi-10's DIFFERENT "Divisori
+    # legno" (46D-prefix) section, never against Spazi-10's OWN "Mensole
+    # legno" (46E-prefix) section -- the one that's actually the same table.
+    # All 32/32 of CollezioneNotte's own codes are present verbatim in
+    # Spazi-10's "Mensole legno" table, same L dimensions, same column
+    # structure, with a consistent ~4.1% price uplift in Spazi-10 (source
+    # 2026-02, vs CollezioneNotte's 2023-09) -- the same superseded_reprint
+    # signature already established for Peonia/Cornice. Reclassified; see
+    # flag_triage.json for the full evidence. Dropped entirely (None) rather
+    # than qualified -- indexing a confirmed ~4%-stale reprint as a separate
+    # live product would present stale pricing as a current option.
+    ('2023_09_CollezioneNotte_1R_+10_.pdf', 'Mensole legno per boiserie'): None,
     # Found 2026-08-23 during SistemiGiorno's structural mapping: both
     # "Spazioteca" and "Spazio" are SistemiGiorno's own comprehensive,
     # ~70-100-page systems (dozens of internal size-variant Colonne/Ante/
