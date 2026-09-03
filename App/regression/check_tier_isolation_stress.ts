@@ -294,6 +294,17 @@ addCase('2prod', 'give me all prices for Levante (Divani) and Levante (Poltrone)
   { product: 'Levante (Poltrone)', tier: 'A', price: '1.643' },
 ], undefined, 'Pianca');
 
+// ===== Varaschini cross-product isolation (1) =====
+// Same collection prefix ("Allegra"), but structurally different tier
+// DIMENSIONS on purpose -- Poltrona's cat. tier grid (IMBOTTITURA/
+// RIVESTIMENTO, Shape A) vs Tavolino's materials-grid TOP tier -- same
+// "unambiguous mismatch if leaked" design as Bonaldo's Cuff/Casablanca
+// pair above. Verified live against the running server before adding.
+addCase('2prod', 'Allegra Poltrona price and Allegra Tavolino price', ['Allegra Poltrona', 'Allegra Tavolino'], [
+  { product: 'Allegra Poltrona', tier: 'cat. B - COM', price: '2.321' },
+  { product: 'Allegra Tavolino', tier: 'HPL', price: '1.139' },
+], undefined, 'Varaschini');
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----

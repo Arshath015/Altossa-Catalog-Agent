@@ -221,6 +221,33 @@ const CASES: Case[] = [
     expectedHeader: 'FINISH',
     note: 'Primo (ArmadioPrimo, a single-product source file with no per-product photographic INDICE at all -- see --single-product in extract_catalog.py) has the simplest Pianca table shape yet: ONE named finish column ("Materico"), one code per row, no row-type-axis at all. Not folded into the generic Shape B named-columns registry despite the single-token "Materico" tail matching that mechanism, because each row also prints a leading dimension value (H 238.5/257.7, or L 48/98.5) on the same line as the code+price that the generic parser has no field for -- captured into `size` instead via a dedicated parser (parse_file_pianca_primo_dim_labeled). Verified against every value in the real page image (primo_p6-6.jpg, primo_p7-7.jpg): all 16 Composizioni battenti codes (AA701-AA808, EUR 356-1.820) and all 3 Accessori interni codes (8AR005/8AR010/8AT010, EUR 30/38/225) match source exactly. Also confirmed a real bug this shape\'s Maniglie-spec preamble text ("Finiture maniglie", "Laccato Opaco (Bianco, Seta, Ecrù)") would otherwise have been mis-captured as variant_context by the generic heading regex -- fixed with two targeted exclusions (real sub-headings here never end in ")" or start with "Finiture"), verified by confirming variant_context is null for all 16 Composizioni battenti rows post-fix.',
   },
+  {
+    id: 'varaschini-allegra-shapeA-tier',
+    category: 'upholstered chair, Shape A cat. tier grid (Varaschini)',
+    brand: 'Varaschini',
+    query: 'Allegra Poltrona category b price',
+    productName: 'Allegra Poltrona',
+    expectedHeader: 'IMBOTTITURA/RIVESTIMENTO',
+    note: 'Real source label -- Varaschini own Shape A upholstery column header, added 2026-09-03 (no Varaschini coverage existed in this file before, despite the brand having been live since 2026-08-12).',
+  },
+  {
+    id: 'varaschini-beltair-top-materials-grid-tier',
+    category: 'TOP-material tier (Varaschini)',
+    brand: 'Varaschini',
+    query: 'give me all prices for Belt / Belt Air Coffee table',
+    productName: 'Belt / Belt Air Coffee table Ø50',
+    expectedHeader: 'TOP',
+    note: 'Deliberate DIVERGENCE from the upholstery case above -- same brand, but this product own real tier is TOP MATERIAL (HPL/Ceramica), not fabric, confirmed via tier_label on the parsed row (materials-grid family, System/Customade own vocabulary).',
+  },
+  {
+    id: 'varaschini-biglight-flat-price-no-tier',
+    category: 'flat single-price, no tier dimension (Varaschini)',
+    brand: 'Varaschini',
+    query: 'give me all prices for Big / Big Light 13610',
+    productName: 'Big / Big Light 13610',
+    expectedHeader: '—',
+    note: 'Same class as Cattelan BOTERO Wood Round/MADRAS above -- a genuinely single-price product (a table base, colors are included finish choices not tiers) with no tier dimension at all, not a mislabeled FABRIC. This exact product had 0 rows (thus untestable) before the 2026-09-03 diagram-clutter TSV parser fix.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

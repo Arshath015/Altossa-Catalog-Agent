@@ -169,6 +169,16 @@ const CASES: Case[] = [
       { product: 'Levante (Poltrone)', tier: 'A', price: '1.643', excludePrices: ['2.647'] },
     ],
   },
+  {
+    id: 'varaschini-allegra-poltrona-tavolino-isolation',
+    brand: 'Varaschini',
+    query: 'Allegra Poltrona price and Allegra Tavolino price',
+    note: 'Varaschini cross-product isolation, added 2026-09-03 (no Varaschini coverage existed in this file before). Structurally different tier vocabularies on the SAME collection name (Poltrona = Shape A cat. B-COM/C/D/E/Luxury upholstery tiers, Tavolino = materials-grid HPL/HPL Perla-Ardesia top-material tiers) -- a leaked value would be an obvious, unambiguous mismatch, matching the same principle as the Bonaldo chair/rug case above.',
+    required: [
+      { product: 'Allegra Poltrona', tier: 'cat. B - COM', price: '2.321', excludePrices: ['1.139', '1.188'] },
+      { product: 'Allegra Tavolino', tier: 'HPL', price: '1.139', excludePrices: ['2.321', '2.365', '2.464', '2.552', '3.146'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
