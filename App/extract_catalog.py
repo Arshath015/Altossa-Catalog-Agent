@@ -2653,7 +2653,31 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
                     ]
                 else:
                     rec = section_records[code]
-                    rec[1] = max(rec[1], page)
+                    # Only extend p_end (rec[1]) while this code's real
+                    # priced page is still unknown (rec[3] is None) --
+                    # confirmed real bug 2026-09-02: a generic/shared
+                    # accessory code (e.g. "3899K2", a "Kit movimentazione
+                    # tavolo" reprinted near-identically on dozens of
+                    # unrelated collections' own pages throughout this
+                    # SAME section) kept inflating p_end to whichever
+                    # unrelated page it was last spotted on -- confirmed on
+                    # "Ellisse 3899K2": page_end recorded as 220 when the
+                    # code's own real (and only) content is a single line
+                    # on page 215, the other 5 "pages" belonging entirely
+                    # to OTHER collections' own re-mentions of the same
+                    # code. Once a priced page is locked in for a code, a
+                    # LATER occurrence elsewhere in the section is far more
+                    # likely to be exactly this shared-code noise than a
+                    # genuine multi-page continuation of THIS product's own
+                    # table (a real continuation page never needs its own
+                    # fresh "art." trigger to begin with -- it has no new
+                    # heading, just more price rows under the one already
+                    # found). Matches the precedent already established
+                    # for Belt/Belt Air's own second-pass fallback above,
+                    # which deliberately never touches rec[1] either, for
+                    # the same reason.
+                    if rec[3] is None:
+                        rec[1] = max(rec[1], page)
                     if not rec[2] and nm:
                         rec[2] = nm
                     if priced and rec[3] is None:
