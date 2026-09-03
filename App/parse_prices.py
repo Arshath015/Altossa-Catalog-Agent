@@ -5524,6 +5524,29 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
             dims.reverse()
             size = '×'.join(dims) if dims else None
 
+            # Any tokens still left in `remaining` after popping dims are a
+            # real row-level label ON Servoquadro_Servogiro SPECIFICALLY
+            # ("Laccato Opaco"/"Finiture Metallo", printed as the row's own
+            # leading text, not a separate heading line, confirmed via
+            # image) -- the exact thing distinguishing 2 otherwise-
+            # identical (code, fabric_tier) rows that the pre-existing
+            # ambiguous-price safety net was masking as a single unclear
+            # cell. Deliberately SCOPED to this one product, not applied
+            # shape_b_named-wide: a full-catalog before/after diff showed
+            # this "leftover = a real label" assumption breaks down hard
+            # elsewhere in this shared registry -- Ponti/Soffio allungabile/
+            # Soffio Up's own extendable-table rows leave genuinely messy,
+            # partially-numeric fragments in `remaining` ("H 257.7-ponte H
+            # 96-mod. H", "130 - con allunga intera"), and Delta fisso's
+            # own leftover was confirmed to just be the wrapped COLUMN
+            # HEADER text re-appearing ("L. Opaco / Essenza", literally
+            # duplicating fabric_tier), not a real per-row label at all.
+            # Matches this function's own established precedent (Ala's
+            # heading-direction fix, Spazioteca's corruption-risk
+            # exclusion) for a product-scoped exception over a blanket
+            # rule once the blanket version is shown unsafe.
+            row_label = ' '.join(remaining) if remaining and product_name == 'Servoquadro_Servogiro' else None
+
             any_price = False
             for column_label, cell in zip(columns, trailing):
                 if cell == '-':
@@ -5532,7 +5555,7 @@ def parse_file_pianca_shape_b_named(path, product_name, brand, all_headings=None
                 rows.append({
                     "brand": brand,
                     "product_name": product_name,
-                    "model_variant": None,
+                    "model_variant": row_label,
                     "variant_context": variant_context,
                     "size": size,
                     "fabric_tier": column_label,
@@ -10021,14 +10044,28 @@ def main():
     # code is absent; this changes nothing for rows that DO have a real
     # code (all Bolzan rows), since code already implies a specific size
     # there.
+    # model_variant is now included alongside code (not just in the no-code
+    # fallback key below it) -- confirmed real need on Servoquadro_Servogiro
+    # (2026-09-03): its "Laccato Opaco"/"Finiture Metallo" rows share the
+    # SAME code and fabric_tier but have genuinely different real prices,
+    # previously indistinguishable and correctly flagged ambiguous. Once
+    # that row-level label is captured into model_variant, the ambiguity is
+    # actually resolved (real, verified distinguishing text), not just
+    # masked -- but the old code-only key never looked at model_variant at
+    # all, so it would have stayed flagged regardless. Safe for every OTHER
+    # row: model_variant is None for the overwhelming majority of this
+    # file's own rows and constant within any one (product, code,
+    # fabric_tier) group wherever it IS set elsewhere, so adding it to the
+    # key only ever narrows a group when model_variant genuinely differs
+    # within it -- never merges or drops an existing real conflict.
     key_to_prices = {}
     for r in all_rows:
-        key = (r["product_name"], r["code"], r["fabric_tier"]) if r["code"] is not None \
+        key = (r["product_name"], r["code"], r["fabric_tier"], r["model_variant"]) if r["code"] is not None \
             else (r["product_name"], r["fabric_tier"], r["size"], r["model_variant"])
         key_to_prices.setdefault(key, set()).add(r["price_eur"])
     ambiguous_keys = {k for k, v in key_to_prices.items() if len(v) > 1}
     for r in all_rows:
-        key = (r["product_name"], r["code"], r["fabric_tier"]) if r["code"] is not None \
+        key = (r["product_name"], r["code"], r["fabric_tier"], r["model_variant"]) if r["code"] is not None \
             else (r["product_name"], r["fabric_tier"], r["size"], r["model_variant"])
         r["ambiguous"] = key in ambiguous_keys
 
