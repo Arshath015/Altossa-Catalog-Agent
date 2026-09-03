@@ -2939,6 +2939,40 @@ def _varaschini_find_flat_code_blocks(lines):
     return blocks
 
 
+def _wellness_therapy_parser(path, page_num, entries, brand):
+    """Wellness Therapy (catalogue)'s own COLLECTION_PARSER_OVERRIDES entry
+    -- routes through the standard Shape A parser (most of this collection
+    turned out to be ordinary cat. B-COM/C/D/E/Luxury tables once actually
+    checked against the real page image, e.g. Single Bed/Cushion), but
+    filters out one confirmed-wrong result first.
+
+    "Foot" (25045) has its own genuinely non-HPL/Ceramica material
+    vocabulary (Metallo Verniciato/Plexiglass/Resinato, confirmed via
+    image) that _varaschini_classify_top_tiers (the shared marker-based
+    materials-grid fallback, built for System's own HPL/Ceramica grades)
+    can't safely classify -- its own "Resinato" color-swatch list happens
+    to include a literal "Ardesia" color name, coincidentally matching
+    that classifier's Perla/Ardesia marker and mislabeling a real
+    "Resinato, EUR286" row as "HPL Perla/Ardesia". Discarded here
+    (converted to an honest flag) rather than shipped wrong -- a proper
+    fix needs the same dedicated materials-grid session already deferred
+    for the rest of this shape family (see varaschini_brand_state memory,
+    2026-09-03), not a one-off patch to shared classification logic.
+    """
+    rows, flags = parse_file_varaschini_shape_a(path, page_num, entries, brand)
+    bad_labels = {"HPL", "HPL Perla/Ardesia"}
+    kept_rows = []
+    for r in rows:
+        if r["product_name"] == "Wellness Therapy (catalogue) Foot" and r["fabric_tier"] in bad_labels:
+            flags.append((page_num, r["product_name"],
+                          f"art_code {r['code']}: materials-grid fallback produced an unreliable label "
+                          f"('{r['fabric_tier']}') for this collection's own non-HPL vocabulary -- "
+                          f"discarded rather than shipped wrong"))
+            continue
+        kept_rows.append(r)
+    return kept_rows, flags
+
+
 def parse_file_varaschini_shape_d(path, page_num, entries_for_page, brand="Varaschini"):
     """Shape D: dense flat SKU list, one flat price per code, no options
     table (Marketing Communication, Outdoor Cooking, Trama, Carpet Design,
@@ -9767,6 +9801,24 @@ def main():
             # parse_file_varaschini_teli_di_copertura's docstring.
             "Teli di Copertura": lambda path, page_num, entries, brand: parse_file_varaschini_teli_di_copertura(
                 str(base_dir / entries[0]["mini_pdf"]), page_num, entries, brand),
+            # Wellness Therapy's own composite shape label ("A+B+NONPRICED",
+            # preserved verbatim from the structural walk) was never a real
+            # SHAPE_PARSERS key, so its ENTIRE 27-product collection has
+            # been silently unrouted (0 rows, 0 flags -- skipped_wrong_shape
+            # every time) since the brand was first extracted -- confirmed
+            # 2026-09-03, not assumed from the composite label alone.
+            # Several of its own products (Single Bed, Cushion, Double Bed
+            # with Plexiglass support) are, once actually checked against
+            # the real page image, completely ordinary Shape A cat.
+            # B-COM/C/D/E/Luxury tables -- routing the whole collection
+            # through the standard Shape A parser resolves those for free
+            # and safely declines (a normal "materials-grid, not yet
+            # parsed" flag, same as any other collection) for the
+            # genuinely different shapes mixed into the same collection
+            # (Foot/Plexiglass Support's own structure-material flat
+            # price, Stone's own finish-color flat price) rather than
+            # guessing at them.
+            "Wellness Therapy (catalogue)": _wellness_therapy_parser,
             # Belt/Belt Air's composition codes (pages 129-131) share the
             # exact cat. B-COM/C/D/E/Luxury tier price table as Shape A --
             # only the BLOCK-BOUNDARY detection needs to differ (see
