@@ -2167,6 +2167,19 @@ def _varaschini_find_records(
             prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
             if "cover" in prefix_ctx:
                 continue
+            # "N pz - art. XXXX (WxH)" is a bundled-cushion cross-reference
+            # inside ANOTHER product's own entry (e.g. "1 pz - art. 2726
+            # (60x40)" printed under Emma's "Bergere COMFORT 23656"), not an
+            # independent product with its own price table -- confirmed on
+            # source pages for Bali (65x45)/art. 2728, Emma (60x40)/art.
+            # 2726, Belt/Belt Air (60x60)/art. 2716: none has any price row
+            # of its own anywhere. Same false-positive shape as "cover -"
+            # above (a real code's OWN mention elsewhere gets misread as a
+            # new product's heading); matches this section's existing
+            # "cover" guard rather than widening it, since the two contexts
+            # are visually and semantically distinct triggers.
+            if re.search(r"\bpz\b\s*-\s*$", prefix_ctx):
+                continue
             name_part = line[m.end():].strip()
             records.append((m.group(1).upper(), page_num, _varaschini_clean_name(name_part)))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
