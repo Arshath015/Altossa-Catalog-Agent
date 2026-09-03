@@ -3308,6 +3308,135 @@ def parse_file_varaschini_teli_di_copertura(pdf_path, page_num, entries_for_page
     return rows, flags
 
 
+def _varaschini_big_light_tsv_prices(pdf_path, page_num, entries_for_page, brand="Varaschini"):
+    """Big / Big Light's own "Base tavolino"/"Table base" flat-price
+    products (pages 141-158, e.g. 13610/13612/13612X/13614/13616/13616L/
+    13630/13630L/13632/13632L/13640/13642) -- confirmed via image these
+    are ordinary single-price items (one price per code, colors are
+    included finish CHOICES, not tiers), but the default line-based "art."
+    block finder can't reach them at all: this page family's own dimension
+    DIAGRAMS (plate/tube-height callouts, "Ø16"/"44"/"66" etc., confirmed
+    on p154's own raw text) are so dense that -layout's linearized text
+    interleaves hundreds of stray digit-shaped diagram tokens with the
+    real code/price text in an unrecoverable order -- the ORIGINAL
+    2026-08-24 "genuinely too cluttered" assessment holds, re-verified
+    directly rather than assumed still current.
+
+    Same TSV word-coordinate technique as Composizione Tavoli/Teli di
+    Copertura, adapted for THIS shape's own layout: code sits far LEFT,
+    its own price sits far RIGHT on the SAME physical row (confirmed
+    p154: code "13612" at left=32.6, its own price token pair at
+    left=672.5-697.9 -- a ~640-unit horizontal gap, nothing like
+    Composizione/Teli's narrow same-column pairing) -- so pairing is by
+    matching VERTICAL position (a tight ~11-unit row tolerance, same as
+    Composizione Tavoli's own "base code" branch) and taking the
+    LEFTMOST/only real price to the right, not "closest below in the same
+    column". Each of these pages also prints 2 accessory cross-reference
+    prices per code (Kit movimentazione tavolo, Protezione copri base) --
+    confirmed these always sit 40-100+ units further down the page than
+    the code's own real price (p154: main price row-gap ~4.5 units vs
+    accessory rows 70+ units away), safely outside the row tolerance, so
+    no dash-prefix exclusion is even needed here the way the line-based
+    parsers elsewhere in this file require.
+    """
+    tokens = _varaschini_tsv_tokens(pdf_path)
+    target_codes = {e["art_code"] for e in entries_for_page}
+
+    euro_tokens = [(l, t) for l, t, txt in tokens if txt.startswith("€")]
+    digit_tokens = [(l, t, txt) for l, t, txt in tokens
+                     if txt != "2026" and VARASCHINI_TSV_PRICE_DIGIT_RE.match(txt)]
+    prices = []
+    for el, et in euro_tokens:
+        best = None
+        for dl, dt, dtxt in digit_tokens:
+            if abs(dt - et) <= 8 and 0 <= (dl - el) <= 45:
+                if best is None or dl < best[0]:
+                    best = (dl, dt, dtxt)
+        if best:
+            dl, dt, dtxt = best
+            prices.append((dl, dt, dtxt))
+
+    code_tokens = [(l, t, txt) for l, t, txt in tokens
+                    if VARASCHINI_CODE_TOKEN.match(txt) and txt in target_codes]
+
+    # A code appearing MORE than once on its own recorded page is a real,
+    # confirmed danger sign here, not just noise -- found on 13692/13693's
+    # own page (146, a shared "Kit movimentazione tavolo"/"Protezione
+    # copri base" accessory-legend diagram other Base tavolino products
+    # cross-reference, not a standalone price table of its own): 4 and 3
+    # occurrences respectively, each near a DIFFERENT unrelated price,
+    # producing a confident-looking but WRONG value (EUR190/250 -- neither
+    # matches the real, confirmed EUR209/275 from where they're actually
+    # priced, p154's own accessory lines) when the row-pairing below just
+    # took whichever occurrence's row happened to have a nearby price.
+    # Every genuine "Base tavolino" code checked (13610/12/12X/14/16/16L/
+    # 30/30L/32/32L/40/42) appears EXACTLY once on its own page -- so
+    # requiring exactly one occurrence is a safe, real signal, not an
+    # arbitrary threshold.
+    from collections import Counter
+    occurrence_counts = Counter(txt for _, _, txt in code_tokens)
+
+    rows = []
+    flags = []
+    found_codes = set()
+    for l, t, txt in code_tokens:
+        if txt in found_codes:
+            continue
+        if occurrence_counts[txt] > 1:
+            continue
+        candidates = [(l2, t2, pr) for l2, t2, pr in prices if abs(t2 - t) <= 11 and l2 > l]
+        if not candidates:
+            continue
+        l2, t2, pr = min(candidates, key=lambda c: c[0])
+
+        found_codes.add(txt)
+        entry = next((e for e in entries_for_page if e["art_code"] == txt), None)
+        product_name = entry["product_name"] if entry else f"Big / Big Light {txt}"
+        rows.append({
+            "brand": brand,
+            "product_name": product_name,
+            "model_variant": product_name,
+            "variant_context": None,
+            "size": None,
+            "fabric_tier": None,
+            "tier_label": None,
+            "code": txt,
+            "price_eur": pr,
+            "source_pdf_page": page_num,
+        })
+
+    for entry in entries_for_page:
+        code = entry["art_code"]
+        if code not in found_codes:
+            flags.append((page_num, entry["product_name"],
+                           f"art_code {code} not found or no own-price located via TSV coordinate pass on this page"))
+
+    return rows, flags
+
+
+def _big_light_parser(path, page_num, entries, brand):
+    """Big / Big Light's own COLLECTION_PARSER_OVERRIDES entry. Most of
+    this collection (the 136T-series tables, etc.) already parses
+    correctly through the default Shape A/B dispatch -- this wrapper
+    tries that FIRST, unchanged, and only falls back to
+    _varaschini_big_light_tsv_prices (the diagram-clutter-safe TSV pass)
+    for whichever specific codes it still couldn't find, rather than
+    routing the whole collection through a different parser and risking
+    the working majority.
+    """
+    rows, flags = parse_file_varaschini_shape_a(path, page_num, entries, brand)
+    found = {r["code"] for r in rows}
+    still_missing = [e for e in entries if e["art_code"] not in found]
+    if still_missing:
+        tsv_rows, tsv_flags = _varaschini_big_light_tsv_prices(
+            str(Path(path).parent.parent.parent / still_missing[0]["mini_pdf"]), page_num, still_missing, brand)
+        resolved_names = {r["product_name"] for r in tsv_rows}
+        flags = [f for f in flags if f[1] not in resolved_names]
+        rows += tsv_rows
+        flags += tsv_flags
+    return rows, flags
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -9842,6 +9971,18 @@ def main():
             # price, Stone's own finish-color flat price) rather than
             # guessing at them.
             "Wellness Therapy (catalogue)": _wellness_therapy_parser,
+            # Big / Big Light's own "Base tavolino" flat-price sub-family
+            # (pages 141-158) sits on pages so diagram-cluttered that the
+            # default line-based block finder can't reach them at all
+            # (confirmed 2026-09-03, re-verified rather than assumed still
+            # true from the original 2026-08-24 note) -- see
+            # _big_light_parser's own docstring. Most of this collection
+            # (136T-series tables etc.) already parses correctly through
+            # the default dispatch, so this wrapper tries that FIRST and
+            # only falls back to the TSV-coordinate pass for whichever
+            # codes are still missing, rather than routing the whole
+            # collection through a different parser.
+            "Big / Big Light": _big_light_parser,
             # Belt/Belt Air's composition codes (pages 129-131) share the
             # exact cat. B-COM/C/D/E/Luxury tier price table as Shape A --
             # only the BLOCK-BOUNDARY detection needs to differ (see
