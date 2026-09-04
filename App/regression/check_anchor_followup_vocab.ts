@@ -203,8 +203,77 @@ const REJECT_CASES: RejectCase[] = [
   },
 ];
 
+/**
+ * OVERRIDE_GATE_CASES -- permanent regression for the catalogChatRoute.ts
+ * "deterministic anchor-vocab override" (added 2026-09-04) and its exact
+ * motivating repro: "give gambe price" right after a Pianca "Esse" turn
+ * returned a confident LlmIntent naming "Gamma" -- a real but entirely
+ * unrelated product, zero textual grounding anywhere in the query. The
+ * LLM's output had no structural signal marking it as wrong (a real,
+ * valid product_names entry, normal status), so this can't be caught by
+ * inspecting the LLM's answer after the fact -- the route now runs the
+ * SAME 4-part guard checked here independently, BEFORE trusting any LLM
+ * guess, whenever `!currentMessageNamesOwnProduct && effectiveLastProduct`
+ * already hold (see catalogChatRoute.ts's own doc comment for the full
+ * reasoning, including the accepted multi-turn-history blind spot this
+ * does NOT close).
+ *
+ * Each case asserts the 4 gate conditions directly (matches what the
+ * route computes) AND that CatalogChat.answer() -- what the override
+ * calls when the gate opens -- actually resolves correctly, so this
+ * fails loudly if either the gate's conditions or the underlying
+ * resolution ever regress.
+ */
+interface OverrideGateCase {
+  id: string;
+  brand: string;
+  query: string;
+  anchor: string;
+  expectGateOpen: boolean;
+  expectedProductName?: string;
+  expectMinRows?: number;
+  note: string;
+}
+
+const OVERRIDE_GATE_CASES: OverrideGateCase[] = [
+  {
+    id: 'gate-gamma-repro-fires-and-resolves-to-esse',
+    brand: 'Pianca',
+    query: 'give gambe price',
+    anchor: 'Esse',
+    expectGateOpen: true,
+    expectedProductName: 'Esse',
+    expectMinRows: 1,
+    note: 'The exact reported repro: a live LLM call confidently named "Gamma" for this query (a real, unrelated Pianca product, zero textual grounding for it in the query) -- confirmed "gambe" is real vocabulary on 8 different Pianca products (Domino, Forma, Alunna, Cora, Esse, Intro, Delta fisso, Esse Lounge), so the LLM had no way to deterministically prefer Esse either; only the anchor does. The gate must open (no competing name match, query fully explained by Esse\'s own vocabulary) and resolving via answer() must land on Esse, not Gamma or any other of those 8.',
+  },
+  {
+    id: 'gate-closed-when-message-names-different-product',
+    brand: 'Pianca',
+    query: 'give me Cora price',
+    anchor: 'Esse',
+    expectGateOpen: false,
+    note: 'Safety control: the message names a different, real product outright (matchProducts finds "Cora", and currentMessageNamesOwnProduct-equivalent detection also fires) -- the override must never engage here regardless of any stale anchor.',
+  },
+  {
+    id: 'gate-closed-when-vocab-check-fails',
+    brand: 'Pianca',
+    query: 'give xyzqwerty price',
+    anchor: 'Esse',
+    expectGateOpen: false,
+    note: 'Safety control mirroring guard-fuzzy-typo-tolerance-not-unbounded above: no competing name match, but the leftover word is genuinely unrelated to Esse\'s own vocabulary (not a bounded typo of it either) -- the gate must stay closed.',
+  },
+];
+
 function callAnswer(brand: string, query: string, lastProduct: string | null = null): ChatResult {
   return getCc(brand).answer(query, brand, null, lastProduct, null);
+}
+
+function evalOverrideGate(brand: string, query: string, anchor: string): boolean {
+  const cc = getCc(brand);
+  const namesOwnProduct = cc.detectNamedProductsInText(query).length > 0;
+  const noCompetingMatch = cc.matchProducts(query).length === 0;
+  const vocabExplained = cc.queryOnlySpecifiesAnchorProductDetails(query, anchor);
+  return !namesOwnProduct && noCompetingMatch && vocabExplained;
 }
 
 function main() {
@@ -240,8 +309,28 @@ function main() {
     console.log(`[${c.id.padEnd(36)}] ${ok ? 'ok' : 'FAIL'}  status=${resp.status}  candidates=${candidates.length}`);
   }
 
+  for (const c of OVERRIDE_GATE_CASES) {
+    const gateOpen = evalOverrideGate(c.brand, c.query, c.anchor);
+    let ok = gateOpen === c.expectGateOpen;
+    let detail = `gateOpen=${gateOpen}`;
+    if (ok && c.expectGateOpen) {
+      const resp = callAnswer(c.brand, c.query, c.anchor);
+      const rows = (resp.matches || []).length;
+      const resolvedOk = resp.product_name === c.expectedProductName && rows >= (c.expectMinRows ?? 1);
+      ok = resolvedOk;
+      detail += `  status=${resp.status}  product=${resp.product_name}  rows=${rows}`;
+      if (!resolvedOk) {
+        failures.push(`[${c.id}] "${c.query}" (anchor=${c.anchor}) -- gate opened correctly but answer() resolved to product_name=${resp.product_name} rows=${rows}, expected "${c.expectedProductName}" with >=${c.expectMinRows ?? 1} rows. ${c.note}`);
+      }
+    }
+    if (gateOpen !== c.expectGateOpen) {
+      failures.push(`[${c.id}] "${c.query}" (anchor=${c.anchor}) -- expected gate ${c.expectGateOpen ? 'OPEN' : 'CLOSED'}, got ${gateOpen ? 'OPEN' : 'CLOSED'}. ${c.note}`);
+    }
+    console.log(`[${c.id.padEnd(36)}] ${ok ? 'ok' : 'FAIL'}  ${detail}`);
+  }
+
   console.log('\n' + '='.repeat(70));
-  console.log(`Total cases: ${CASES.length + GUARD_CASES.length + REJECT_CASES.length}`);
+  console.log(`Total cases: ${CASES.length + GUARD_CASES.length + REJECT_CASES.length + OVERRIDE_GATE_CASES.length}`);
   console.log(`Failures: ${failures.length}  <-- must be 0`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
@@ -252,7 +341,7 @@ function main() {
     console.log('\nEXIT 1: anchor follow-up vocabulary regressed.');
     process.exit(1);
   }
-  console.log('\nEXIT 0: anchor follow-up vocabulary recognizes short real-variant words, tier_label words, Italian connector words, variant_context text, and scaled-typo near-misses -- and the anchor-over-trust / unbounded-fuzzy-match guards still hold.');
+  console.log('\nEXIT 0: anchor follow-up vocabulary recognizes short real-variant words, tier_label words, Italian connector words, variant_context text, and scaled-typo near-misses -- the anchor-over-trust / unbounded-fuzzy-match guards still hold -- and the route-level anchor-vocab override gate (Gamma repro) opens/closes correctly.');
 }
 
 main();

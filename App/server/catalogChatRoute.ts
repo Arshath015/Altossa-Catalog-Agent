@@ -163,6 +163,67 @@ router.post('/chat', async (req: Request, res: Response) => {
     ? null
     : (Array.isArray(lastCandidates) && lastCandidates.length > 0 ? lastCandidates : null);
 
+  // Deterministic anchor-vocab override, checked BEFORE the LLM call --
+  // closes a real gap found 2026-09-04: queryOnlySpecifiesAnchorProductDetails
+  // (see its own doc comment, catalogChat.ts) previously only ever ran
+  // once the WHOLE Groq key pool was down (the `!intent` branch below),
+  // so a live LLM call with an anchor present had NO equivalent
+  // protection at all. Confirmed real, not theoretical: "give gambe
+  // price" right after a Pianca "Esse" turn -- Esse's own real
+  // variant_context text -- returned a confident, structurally normal-
+  // looking LlmIntent naming "Gamma" (a real but entirely unrelated
+  // product, zero textual grounding for it anywhere in the query). There
+  // is no confidence signal on LlmIntent to detect this after the fact
+  // (checked llmIntent.ts -- product_names/size/fabric_tier/
+  // wants_full_list only), so this can't be a post-hoc "does the LLM's
+  // answer look weak" filter; it has to run independently of what the
+  // LLM would say.
+  //
+  // Gated on ALL FOUR of the following, not just the vocab check alone,
+  // because queryOnlySpecifiesAnchorProductDetails proves the query is
+  // CONSISTENT with the anchor, never that it's EXCLUSIVE to it --
+  // confirmed live: "give gambe price" independently passes this same
+  // check against Esse, Cora, AND Domino (3 unrelated real Pianca
+  // products all share real "gambe" vocabulary), so passing it alone is
+  // not sufficient grounds to override a fresh, differently-grounded
+  // resolution:
+  //   1. currentMessageNamesOwnProduct is false -- the message doesn't
+  //      already name something fresh (same gate effectiveLastProduct
+  //      itself already uses, just below).
+  //   2. effectiveLastProduct exists -- there's a real anchor to defer to.
+  //   3. matchProducts(message) is EMPTY -- the deterministic name/code
+  //      matcher independently finds ZERO candidates in the raw text.
+  //      This is the guard that keeps the override narrow: it only fires
+  //      when there is no OTHER textual signal at all pointing to any
+  //      product, so it can never suppress a genuinely different,
+  //      independently-grounded match (typo'd or exact) the deterministic
+  //      matcher (or, by extension, the LLM) would otherwise have found.
+  //   4. queryOnlySpecifiesAnchorProductDetails confirms every real word
+  //      left is explained by the anchor's own known vocabulary.
+  //
+  // Accepted, bounded residual risk (not closed by this guard, and not
+  // in scope to close here): the LLM sees the full `history` array
+  // across every turn, while this check only ever sees the single most
+  // recent `lastProduct`. A genuine multi-turn topic switch back to an
+  // OLDER product, expressed only in shared/generic vocabulary (no
+  // product name in the current message at all), would still be
+  // incorrectly pulled back to the most recent anchor here -- this
+  // exact blind spot already exists today in the `!intent` branch below
+  // (Groq-down fallback also only ever sees `lastProduct`), just rarely
+  // triggered; this change makes it reachable more often (any anchored,
+  // vocab-only follow-up, not just a full Groq outage) without changing
+  // its shape. Full multi-turn anchor tracking would be a separate,
+  // larger redesign.
+  if (!currentMessageNamesOwnProduct && effectiveLastProduct
+    && catalogChat.matchProducts(message).length === 0
+    && catalogChat.queryOnlySpecifiesAnchorProductDetails(message, effectiveLastProduct)) {
+    console.log(
+      `[anchor-vocab-override] message=${JSON.stringify(message)} anchor=${JSON.stringify(effectiveLastProduct)} ` +
+      `-- resolving deterministically without calling the LLM (query fully explained by anchor's own vocabulary, no competing name match)`
+    );
+    return res.json(catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct, effectiveLastCandidates));
+  }
+
   // Logged unconditionally (not just for multi-product calls) -- cheap,
   // and this is exactly the trail needed to catch a real recurrence of
   // the anchor-contamination hypothesis in production instead of trying

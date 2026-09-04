@@ -2592,7 +2592,7 @@ export class CatalogChat {
    * unrelated product name attempt), so this correctly returns false and
    * the caller falls through to the existing honest "couldn't find"
    * message, same as before this method existed. */
-  private queryOnlySpecifiesAnchorProductDetails(rawQuery: string, productName: string): boolean {
+  queryOnlySpecifiesAnchorProductDetails(rawQuery: string, productName: string): boolean {
     const stripped = stripNameFromQuery(normalize(rawQuery), normalize(productName));
     const tokens = tokenizeLoose(stripped);
     const productRows = this.prices.filter(r => r.product_name === productName);
