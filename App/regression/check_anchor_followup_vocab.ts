@@ -73,16 +73,30 @@
  * triggered under exactly that degraded state, which is why it matters.
  *
  * RUN WITH: npm run check-anchor-followup-vocab
- * Requires the dev server running (npm run dev:server).
+ *
+ * Calls CatalogChat.answer() directly (same deterministic path used in
+ * check_tier_isolation_stress.ts) instead of the HTTP route -- the route
+ * tries the LLM (extractIntent/Groq) FIRST and only falls through to this
+ * exact deterministic code (queryOnlySpecifiesAnchorProductDetails etc.)
+ * once the whole Groq key pool is exhausted, so hitting the route made
+ * this check's outcome depend on live Groq availability at call time: it
+ * FAILED both times Groq answered (the LLM has no equivalent anchor-vocab
+ * protection and doesn't reliably solve these specific edge cases) and
+ * PASSED every time Groq was unavailable and the real fix ran. Confirmed
+ * via 5 back-to-back re-runs with zero code changes (2 fail, 3 pass) plus
+ * git blame showing none of the relevant matching code was touched in the
+ * session that surfaced this -- a genuine flake, not a regression. Calling
+ * the deterministic function directly makes this check exercise the exact
+ * code the fix lives in, every time, regardless of Groq. Needs the data
+ * files but NOT a running server or any Groq key.
  */
 
-const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
+import { CatalogChat, ChatResult } from '../server/catalogChat';
 
-interface ChatResponse {
-  status?: string;
-  product_name?: string;
-  matches?: unknown[];
-  error?: string;
+const ccByBrand = new Map<string, CatalogChat>();
+function getCc(brand: string): CatalogChat {
+  if (!ccByBrand.has(brand)) ccByBrand.set(brand, new CatalogChat(`./data/${brand}`));
+  return ccByBrand.get(brand)!;
 }
 
 interface Case {
@@ -189,69 +203,41 @@ const REJECT_CASES: RejectCase[] = [
   },
 ];
 
-async function postChat(brand: string, message: string, lastProduct: string | null = null): Promise<ChatResponse> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(`${BASE_URL}/api/catalog/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        brand, message,
-        history: lastProduct ? [{ role: 'user', text: `${lastProduct} price` }, { role: 'assistant', text: '...' }] : [],
-        lastProduct, lastModelVariant: null, lastCandidates: null,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return { error: `HTTP ${res.status}` };
-    return await res.json();
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
-  }
+function callAnswer(brand: string, query: string, lastProduct: string | null = null): ChatResult {
+  return getCc(brand).answer(query, brand, null, lastProduct, null);
 }
 
-async function main() {
-  const probe = await postChat(CASES[0].brand, 'ping', CASES[0].lastProduct);
-  if (probe.error) {
-    console.error(`\nCannot reach ${BASE_URL}/api/catalog/chat (${probe.error}).`);
-    console.error('Start the server first: npm run dev:server\n');
-    process.exit(1);
-  }
-
+function main() {
   const failures: string[] = [];
 
   for (const c of CASES) {
-    const resp = await postChat(c.brand, c.query, c.lastProduct);
+    const resp = callAnswer(c.brand, c.query, c.lastProduct);
     const rows = (resp.matches || []).length;
     const ok = resp.product_name === c.expectedProductName && rows >= c.expectMinRows;
     if (!ok) {
-      failures.push(`[${c.id}] "${c.query}" (anchor=${c.lastProduct}) -- expected product_name="${c.expectedProductName}" with >=${c.expectMinRows} rows, got status=${resp.status || resp.error} product_name=${resp.product_name} rows=${rows}. ${c.note}`);
+      failures.push(`[${c.id}] "${c.query}" (anchor=${c.lastProduct}) -- expected product_name="${c.expectedProductName}" with >=${c.expectMinRows} rows, got status=${resp.status} product_name=${resp.product_name} rows=${rows}. ${c.note}`);
     }
     console.log(`[${c.id.padEnd(36)}] ${ok ? 'ok' : 'FAIL'}  status=${resp.status}  product=${resp.product_name}  rows=${rows}`);
-    await new Promise(r => setTimeout(r, 80));
   }
 
   for (const c of GUARD_CASES) {
-    const resp = await postChat(c.brand, c.query, c.lastProduct);
+    const resp = callAnswer(c.brand, c.query, c.lastProduct);
     const ok = resp.product_name !== c.mustNotBe;
     if (!ok) {
       failures.push(`[${c.id}] "${c.query}" (anchor=${c.lastProduct}) -- must NOT resolve to "${c.mustNotBe}", but it did. ${c.note}`);
     }
     console.log(`[${c.id.padEnd(36)}] ${ok ? 'ok' : 'FAIL'}  status=${resp.status}  product=${resp.product_name}`);
-    await new Promise(r => setTimeout(r, 80));
   }
 
   for (const c of REJECT_CASES) {
-    const resp = await postChat(c.brand, c.query, null);
-    const candidates = (resp as unknown as { candidates?: string[] }).candidates || [];
+    const resp = callAnswer(c.brand, c.query, null);
+    const candidates = resp.candidates || [];
     const bad = candidates.filter(cand => c.mustNotInclude.some(name => cand.includes(name)));
     const ok = bad.length === 0;
     if (!ok) {
       failures.push(`[${c.id}] "${c.query}" -- candidates must not include any of [${c.mustNotInclude.join(', ')}], but got: ${bad.join(', ')}. ${c.note}`);
     }
     console.log(`[${c.id.padEnd(36)}] ${ok ? 'ok' : 'FAIL'}  status=${resp.status}  candidates=${candidates.length}`);
-    await new Promise(r => setTimeout(r, 80));
   }
 
   console.log('\n' + '='.repeat(70));
