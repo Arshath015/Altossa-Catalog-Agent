@@ -2398,6 +2398,27 @@ def _varaschini_find_art_blocks(lines):
             # is never dash-prefixed in this catalog.
             if prefix_ctx.rstrip().endswith("-"):
                 continue
+            # "TOP BISTRO': per l'art. <SAME CODE>" is a real product's own
+            # SELF-referential explanatory note ("for article <code>, a
+            # 50x70 HPL/ceramic top is also available") -- confirmed on
+            # Tight p502 ("3785 ... TOP BISTRO': per l'art. 3785") and
+            # Plinto/Summer Set p404/p405/p453/p454's own identical note.
+            # When this mention lands on the SAME physical line as the
+            # code's own leading token (Tight's own layout, unlike
+            # Plinto/Summer Set where -layout happens to wrap the code onto
+            # a separate line), it creates a SECOND same-code trigger 1
+            # line after the first, truncating the block to just those 2
+            # lines -- well before the real price (confirmed: Tight's own
+            # 3785/3785L both lost their real EUR 660 price this way, the
+            # ONLY 2 of 9 catalog entries sharing this exact note where the
+            # self-reference happens to collide with the trigger line).
+            # Excluding it is safe everywhere else this note appears too:
+            # it only ever REMOVES a redundant second trigger for a code
+            # that already has an earlier, real trigger -- never narrows an
+            # already-working block, only ever widens one (confirmed via a
+            # full brand-wide before/after diff before this was trusted).
+            if "per l'" in prefix_ctx:
+                continue
             triggers.append((i, m.group(1).upper()))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
             found = False
