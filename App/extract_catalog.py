@@ -2180,6 +2180,29 @@ def _varaschini_find_records(
             # are visually and semantically distinct triggers.
             if re.search(r"\bpz\b\s*-\s*$", prefix_ctx):
                 continue
+            # General "- art. XXXX" dash-prefixed cross-reference guard --
+            # ported from parse_prices.py's _varaschini_find_art_blocks
+            # (added there in commit 7baa2d8), which already excludes ANY
+            # dash-immediately-before-"art." occurrence from being mistaken
+            # for a real tier price during price-scanning, not just the
+            # "cover"/"N pz -" cases already guarded above. That fix was
+            # never ported to THIS function (the one that actually creates
+            # catalog_index.json entries), so accessory cross-references
+            # using this catalog's general "<accessory name> - art. XXXX"
+            # convention (handling-kit, charging-base, and other component
+            # call-outs printed inline in a DIFFERENT product's own price
+            # block -- confirmed on Big In&Out p161 "Kit movimentazione
+            # tavolo - art. 3899K2", Cricket p176 "Base ricarica 1 posizione
+            # - art. 8001R1", Outdoor Cooking p389 "cover - art. 9456C")
+            # kept creating phantom catalog_index.json entries with their
+            # own bogus page range and zero real price of their own -- the
+            # accessory's real price is already correctly captured under
+            # its OWNING product's block, not lost by this exclusion. A
+            # genuine product's own "art. CODE" trigger is never
+            # dash-prefixed in this catalog (same invariant the
+            # parse_prices.py guard already relies on).
+            if prefix_ctx.rstrip().endswith("-"):
+                continue
             name_part = line[m.end():].strip()
             records.append((m.group(1).upper(), page_num, _varaschini_clean_name(name_part)))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
