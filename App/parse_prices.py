@@ -2655,9 +2655,29 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # see VARASCHINI_OUTFIT_COVER_RE's own comment for why
                 # "outfit cover" moved from an explicit exception here to an
                 # exclusion, matching solo scocca/only frame's treatment.
+                # "surcharge" (e.g. Sunmoon's own "4-wheel surcharge (2 with
+                # brakes and 2 without) € 275") is a flat named add-on price
+                # with no cat.-tier label of its own, always printed on the
+                # ENGLISH TRANSLATION line (its Italian "maggiorazione..."
+                # line never shares a line with its own price) -- confirmed
+                # real gap: all 7 Sunmoon products (Tatami/Vis a Vis/Daybed/
+                # 4 Gazebo variants) have an otherwise-completely-clean
+                # 5-label/5-price cat.B-COM/C/D/E/Luxury block, but this
+                # extra price inflated the count to 6, tripping the
+                # label/price-count mismatch guard and silently dropping
+                # all 5 real rows. Checked catalog-wide before adding this
+                # (only 13 "surcharge" occurrences total): the other 6 are
+                # either already excluded by the "- art." rule just above
+                # (Tight p502's own sea-use surcharge) or sit on Outdoor
+                # Cooking's flat-price pages, which this Shape A tier-block
+                # scan never reaches at all (a different, non-tier shape,
+                # parsed by a separate function) -- confirmed via direct
+                # check that none of Outdoor Cooking's own already-correct
+                # rows come from this code path.
                 prefix = low[:m.start()]
                 if ("cover" in prefix or re.search(r"-\s*art\.?\s", prefix)
-                        or "solo scocca" in prefix or "only frame" in prefix):
+                        or "solo scocca" in prefix or "only frame" in prefix
+                        or "surcharge" in prefix):
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
