@@ -2203,6 +2203,25 @@ def _varaschini_find_records(
             # parse_prices.py guard already relies on).
             if prefix_ctx.rstrip().endswith("-"):
                 continue
+            # Emma/Emma Cross's own composition-diagram pages (259/301)
+            # print "art. 236MA1 art. 236MA2 ... optional cushions pag.
+            # 572 art. 236MG1" as a literal cross-reference to their real
+            # optional-cushion price table -- confirmed via direct page
+            # read AND a full-catalog price check: 236MA1/236MA2 already
+            # have real, complete price rows under "Cuscini e Tessuti cm
+            # 50 x 30.../cm 40 x 40...", so this diagram mention is a true
+            # duplicate with a real home elsewhere, not an unpriced
+            # component (unlike the OTHER ~66 codes on these same 2 pages,
+            # which are genuinely never priced anywhere and correctly stay
+            # known_gap -- see flag_triage.json). Deliberately hand-gated
+            # by exact (page, code), not a general "code priced elsewhere"
+            # rule -- a catalog-wide version of that rule was investigated
+            # and rejected (reaches into Belt/Belt Air, Teli di Copertura,
+            # and the Tight/Basi Tavolini/Composizione Tavoli tangle, 3
+            # separately-scoped areas), same precedent as Ala's/Scacco's
+            # own per-product-scoped fixes elsewhere in this codebase.
+            if page_num in (259, 301) and m.group(1).upper() in ('236MA1', '236MA2'):
+                continue
             name_part = line[m.end():].strip()
             records.append((m.group(1).upper(), page_num, _varaschini_clean_name(name_part)))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
