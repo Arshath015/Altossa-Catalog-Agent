@@ -2477,6 +2477,92 @@ def _varaschini_find_belt_composition_blocks(lines, target_codes):
     return blocks
 
 
+def _varaschini_find_belt_module_blocks(lines):
+    """Block finder for Belt/Belt Air's per-module price pages (every page
+    EXCEPT the composition-summary pages 129-131, which stay on
+    _varaschini_find_belt_composition_blocks above, unchanged).
+
+    Root-caused 2026-09-05: the module pages were, until now, ALSO routed
+    through _varaschini_find_belt_composition_blocks with target_codes
+    widened to the WHOLE collection's known catalog_index.json codes
+    ("belt_all_codes") -- correct for recognizing a second real product
+    sharing one page (e.g. p104's 2492 then 2493), but blind BY
+    CONSTRUCTION to any code that was never added to catalog_index.json in
+    the first place. Every module's own page also prints a real, separate
+    "Outfit Cover" replacement-cover accessory as a bare trailing code
+    (e.g. p112's "22103C OUTFIT COVER  € 638", right after 24903S's own
+    5-tier table) -- these accessory codes were never discovered/indexed
+    as their own products, so target_codes-membership could never
+    recognize them as a block boundary, and the block-finder kept
+    absorbing that trailing line into the PRECEDING module's own block.
+    VARASCHINI_OUTFIT_COVER_RE then found that "OUTFIT COVER" text still
+    sitting inside the module's own block_text and emitted it as if it
+    were that module's own row -- a real price, attributed to the wrong
+    product's code. Confirmed via direct page reads (p74, p104, p112,
+    p122, ...) and a full-collection dry run before this fix touched
+    anything: 90 rows, across 22 catalog_index-known products (152 total
+    in the collection), carried this wrong "Outfit Cover" attribution --
+    NOT limited to the 24 products that were ever flag-triaged, since a
+    stray extra row never zeroes out a product's own row count and so
+    never trips the "empty product" flag that would have surfaced it.
+
+    Fix: discover triggers straight from the TEXT itself (any token
+    matching VARASCHINI_CODE_TOKEN's shape, regardless of catalog_index
+    membership -- same principle as _varaschini_find_flat_code_blocks's
+    own documented reversion of an identical target_codes-only approach
+    for Cuscini e Tessuti), not from a pre-known code allowlist. This
+    naturally re-solves the ORIGINAL 2026-08-23 multi-product-per-page
+    problem too (2492 and 2493 both get their own real trigger straight
+    from the text, since both are genuine "CODE + content" lines) without
+    needing belt_all_codes at all, while ALSO correctly closing a
+    module's block at its own trailing "Outfit Cover" line, since that
+    line's leading code (bare digits + letters, e.g. "22103C") matches
+    the exact same shape.
+
+    Deliberately NOT restricted to same-line content (a stricter
+    "has_later_content" guard, mirroring Cuscini's own wrapped-price
+    safeguard, was tried and reverted -- confirmed via a full scan of
+    every Belt/Belt Air module page that exactly ONE line in the whole
+    collection is a code-shaped token totally alone on its own line with
+    no other content until the NEXT line: p122's real, already-correct
+    "2736" (Cuscino/Cushion, whose own descriptive text prints one line
+    below rather than beside it) -- a same-line-content requirement would
+    have wrongly rejected this real code's own trigger. No stray/wrapped
+    bare price-digit run masquerading as a code-shaped token was found
+    anywhere in the collection (unlike Cuscini/Bali's own confirmed
+    wrapped-price artifact), so no such guard is needed here.
+
+    Page-footer lines ("112 - VARASCHIN EXPORT 2026") are excluded
+    explicitly -- their leading page number also matches
+    VARASCHINI_CODE_TOKEN's shape and would otherwise register as a
+    (harmless but confusing) extra trigger.
+
+    Verified via a full old-vs-new dry run across the entire non-
+    composition-page Belt/Belt Air collection before this function
+    replaced the old call: 90 wrong "Outfit Cover" rows removed, 0 rows
+    added anywhere, all other 718 rows (every real cat. B-COM/C/D/E/
+    Luxury tier, every frame-only/solo-scocca row, every already-correct
+    product including 2736 and every multi-product-per-page pair)
+    byte-identical before and after.
+    """
+    triggers: list[tuple[int, str]] = []
+    for i, raw in enumerate(lines):
+        stripped = raw.strip()
+        if not stripped or "VARASCHIN EXPORT" in stripped:
+            continue
+        first_tok = stripped.split()[0]
+        if VARASCHINI_CODE_TOKEN.match(first_tok):
+            triggers.append((i, first_tok))
+    triggers.sort(key=lambda t: t[0])
+
+    blocks = {}
+    for idx, (i, code) in enumerate(triggers):
+        end = triggers[idx + 1][0] if idx + 1 < len(triggers) else len(lines)
+        if code not in blocks:
+            blocks[code] = (i, end)
+    return blocks
+
+
 def _varaschini_classify_top_tiers(block_lines, prices_found):
     """Classify a "no cat.-label, multiple unclaimed prices" block as a
     TOP-MATERIAL price grid (HPL / HPL Perla-Ardesia premium edge /
@@ -10046,7 +10132,6 @@ def main():
         # shape->parser map can't express this (both collections share the
         # shape "A" key but need different block_finder arguments), hence
         # this second, more specific lookup checked first.
-        belt_all_codes = {p["art_code"] for p in products if p["collection"] == "Belt / Belt Air"}
 
         COLLECTION_PARSER_OVERRIDES = {
             "Cuscini e Tessuti": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
@@ -10119,47 +10204,39 @@ def main():
             # exact cat. B-COM/C/D/E/Luxury tier price table as Shape A --
             # only the BLOCK-BOUNDARY detection needs to differ (see
             # _varaschini_find_belt_composition_blocks), not the tier-
-            # extraction logic itself.
-            #
-            # target_codes is deliberately EVERY Belt/Belt Air art_code in
-            # the whole collection, not just `entries` (this page's own
-            # catalog_index.json-anchored subset) -- confirmed 2026-08-23:
-            # many Belt pages hold 2 products (e.g. p104: 2492 then 2493)
-            # sharing ONE "art ." trigger between them, so only the FIRST
-            # product ever gets its own catalog_index.json entry pointed at
-            # that page (see extract_catalog.py's own page-anchor fix and
-            # its documented, deliberately-NOT-fixed-here sibling gap: a
-            # bare second code with no trigger of its own is invisible to
-            # discovery). Scoping target_codes to `entries` alone means the
-            # block finder never even LOOKS for "2493" on page 104, so
-            # 2492's own block still ran to end-of-page, silently absorbing
-            # 2493's entire price ladder plus 2 stray "OUTFIT COVER"
-            # accessory prices (confirmed exact match: 5 real tier labels +
-            # 5 bled-in ones = 10, 5+5+2 stray prices = 12 -- exactly the
-            # "10 labels vs 12 prices" mismatch this was flagged as).
-            # Widening to the full collection fixes this without touching
-            # discovery at all: the block finder just needs to KNOW 2493 is
-            # a real code so it can split on it wherever it happens to
-            # appear as the first token of its own line -- it doesn't need
-            # catalog_index.json to already agree that's this page's entry.
-            # NOT widened on pages 129-131 (the composition-summary pages
-            # this function was originally built for) -- confirmed
-            # 2026-08-23: those pages list, for each composition, which
-            # OTHER codes it's assembled from ("249C5", "2494", "2493", ...
-            # as a bare ingredient list), not a new product's own price
-            # block starting. Widening target_codes there let an
+            # extraction logic itself. Composition pages list, for each
+            # composition, which OTHER codes it's assembled from ("249C5",
+            # "2494", "2493", ... as a bare ingredient list) -- these are
+            # NOT a new product's own price block starting, so this range
+            # deliberately keeps the narrower target_codes-membership
+            # finder, scoped to just `entries` (the compositions actually
+            # indexed on THIS page), rather than the shape-based module
+            # finder below: confirmed 2026-08-23 that letting an
             # unrelated-but-real Belt code appearing mid-ingredient-list
-            # look like a fresh block boundary, truncating 249C4C/249C5C's
-            # own block before it ever reached its own real price line --
-            # a regression this exact page range's own dedicated
-            # entries_for_page scoping (the ORIGINAL, correct behavior)
-            # never had, since it only ever considers the small set of
-            # codes actually discovered as compositions on THIS page.
+            # look like a fresh block boundary truncates 249C4C/249C5C's
+            # own block before it ever reaches its own real price line.
+            #
+            # All OTHER Belt/Belt Air pages (the per-module price pages)
+            # use _varaschini_find_belt_module_blocks instead -- see its
+            # own docstring for the 2026-09-05 root-cause fix (a real
+            # "Outfit Cover" replacement-cover accessory's own price was
+            # being silently absorbed into the PRECEDING module's block
+            # and mislabeled under its code, since that accessory's code
+            # was never added to catalog_index.json and the old target-
+            # codes-membership finder was blind to any code it didn't
+            # already know). Discovering triggers straight from the text's
+            # own code-shaped tokens (same principle as
+            # _varaschini_find_flat_code_blocks) also naturally handles
+            # the original 2026-08-23 problem this override exists for
+            # (e.g. p104's 2492 then 2493 sharing one page) without
+            # needing a whole-collection code allowlist at all.
             "Belt / Belt Air": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
                 path, page_num, entries, brand,
-                block_finder=lambda lines: _varaschini_find_belt_composition_blocks(
-                    lines,
-                    {e["art_code"] for e in entries} if 129 <= page_num <= 131 else belt_all_codes,
+                block_finder=(
+                    (lambda lines, entries=entries: _varaschini_find_belt_composition_blocks(
+                        lines, {e["art_code"] for e in entries}))
+                    if 129 <= page_num <= 131
+                    else _varaschini_find_belt_module_blocks
                 )),
         }
         # Collections excluded from Shape D even though still labeled "D"
