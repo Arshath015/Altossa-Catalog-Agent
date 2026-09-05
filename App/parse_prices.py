@@ -5435,6 +5435,13 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
         'Struttura esterna Lucido Sp. — Frontali Lucido Sp.',
         'Vassoio L. Opaco',
     ],
+    # Aria (Outdoor), real PDF page 6 -- 2 named columns, NOT a finish
+    # tier pair: "Struttura" (frame-only chair price) vs "Tappetino"
+    # (seat-mat add-on price). Confirmed via direct row inspection each
+    # code (OAR02, OAR03, OAR03C) appears exactly once, price present in
+    # only one of the 2 columns per row -- no repeat-code-different-price
+    # danger, safe for the simple registry.
+    ('Struttura', 'Tappetino'): ['Struttura', 'Tappetino'],
 }
 
 _PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
