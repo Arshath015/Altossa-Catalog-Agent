@@ -8060,7 +8060,7 @@ def parse_file_pianca_primo_dim_labeled(path, product_name, brand, all_headings=
 # rather than assumed to match this shape just because they're also beds.
 # ---------------------------------------------------------------------------
 
-_PIANCA_LETTI_HEADER_RE = re.compile(r'^L\s+P\s+CODICI$|^L\s+H\s+P\s+CODICI$')
+_PIANCA_LETTI_HEADER_RE = re.compile(r'^L\s+P\s+CODICI$|^L\s+H\s+P\s+CODICI$|^H\s+P\s+CODICI$')
 
 
 def _pianca_letti_tier_letters_above(lines, header_idx, lookback=12):
@@ -8097,6 +8097,98 @@ def _pianca_letti_tier_letters_above(lines, header_idx, lookback=12):
     return None
 
 
+# Named-tier variant of the same wrapped Letti-tier header shape -- found
+# 2026-09-05 while investigating CollezioneNotte/CollezioneGiorno's last 10
+# genuine known_gap products (Spillo, Pedane, Pianali, C, Accessori
+# (CollezioneGiorno), Segno, Grafico, Spazio Composto). Structurally
+# IDENTICAL to _pianca_letti_tier_letters_above's own shape (tier labels
+# print on their own line ABOVE the "L/H P CODICI" header, same code+dash-
+# skip convention) -- the only difference is the tier labels are real
+# FINISH NAMES (e.g. "Laccato Opaco", "Essenza", "Pelle Sintetica Nera")
+# instead of the A/B/C/H/P/Q letter ladder, so the letter-only search never
+# recognizes them (confirmed: 0 rows lost from the letter path for any of
+# these 8, same as base Shape A never recognizing the letter-ladder shape
+# in the first place).
+#
+# A registry of individually-verified TRAILING-token signatures, not a
+# general column-alignment parser -- same precedent and same reasoning as
+# _PIANCA_SHAPEB_NAMED_HEADERS (an unverified free-text column parser risks
+# misreading noise as real tier names; every key here was checked against
+# its own real source page before being added). Matched by TRAILING tokens
+# of a candidate line, same as the letter search, for the same reason
+# confirmed real here too: C's own tier line has prose text glued onto the
+# SAME physical line before the tier names ("Nei moduli C tipo X e tipo Y
+# ... non è possibile inserire moduli P 25.   Laccato Opaco   Essenza
+# Lucido Sp."), and Segno's has "Di serie: parziale" similarly prefixed.
+#
+# IMPORTANT COLLISION GUARD CONFIRMED BEFORE TRUSTING THIS BROADLY: "Moduli
+# a giorno"'s own "Divisori legno" sub-table (page 257) prints the EXACT
+# same "Laccato Opaco / Essenza" signature above an "H P CODICI" line --
+# but this is a DIFFERENT, previously-unparsed sub-table of that product
+# (confirmed via full before/after diff: this fix adds NEW rows for that
+# specific sub-table, 0 rows changed/removed anywhere else in the product
+# or catalog), not a duplicate of already-working rows. Any future
+# signature added to this registry must get the same full-catalog diff
+# check, not just a check against the specific product it was found for.
+_PIANCA_LETTI_NAMED_TIERS: dict[tuple[str, ...], list[str]] = {
+    # Spillo (p25), Pianali (p79), "Moduli a giorno"/Divisori legno (p257)
+    ('Laccato', 'Opaco', 'Essenza'): ['Laccato Opaco', 'Essenza'],
+    # Pedane Lineari H 5 (p78) -- the tier line wraps: "Materico L. Opaco
+    # ... Lucido Sp." then "Essenza" alone on the next line, confirmed via
+    # direct page read to be ONE combined middle tier ("L. Opaco/Essenza"
+    # priced identically), not a 4th independent column -- the row data
+    # itself only ever prints 3 prices per code, matching this 3-name list.
+    ('Materico', 'L.', 'Opaco', 'Lucido', 'Sp.'): ['Materico', 'L. Opaco/Essenza', 'Lucido Sp.'],
+    # C (p80-81) -- 3 fully independent tiers, no wrap (all 3 names print
+    # on the SAME line as each other, just with prose text before them).
+    ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Sp.'): ['Laccato Opaco', 'Essenza', 'Lucido Sp.'],
+    # Accessori (CollezioneGiorno) p105 -- single named tier. Safe with no
+    # length floor (unlike the letter search's floor of 2, which exists
+    # specifically because a bare letter like "A" is common ambiguous
+    # Italian text) -- a real multi-word fabric/finish name is not the same
+    # false-positive risk class.
+    ('Pelle', 'Sintetica', 'Nera'): ['Pelle Sintetica Nera'],
+    # Accessori (CollezioneGiorno) p106 -- single named tier.
+    ('Frassino', 'Nero'): ['Frassino Nero'],
+    # Segno (p118) -- 3 fully independent tiers, no wrap.
+    ('Laccato', 'Opaco', 'Essenza', 'Lucido', 'Spazzolato'): ['Laccato Opaco', 'Essenza', 'Lucido Spazzolato'],
+    # Grafico (p143) -- 2 tiers.
+    ('Laccato', 'Opaco', 'Finiture', 'Metallo'): ['Laccato Opaco', 'Finiture Metallo'],
+    # Spazio Composto (p138, p140) -- 2 tiers; "Vetro Metallizzato"/
+    # "Specchio" print on their own following lines as alternate-finish
+    # sub-options WITHIN the "Vetro Marmo" tier (same price, confirmed via
+    # direct page read: every row prints exactly 2 prices), not separate
+    # columns -- deliberately not part of this signature.
+    ('Vetro', 'Laccato', 'Vetro', 'Marmo'): ['Vetro Laccato', 'Vetro Marmo'],
+}
+
+
+def _pianca_letti_named_tiers_above(lines, header_idx, lookback=12):
+    """Same search shape as _pianca_letti_tier_letters_above (trailing
+    tokens of a line within `lookback` lines above the header), but against
+    _PIANCA_LETTI_NAMED_TIERS instead of the fixed letter ladder. Tries the
+    LONGEST trailing-token window first so a longer registered signature
+    (e.g. C's 5-token 3-tier line) isn't shadowed by a shorter one that
+    happens to also be registered (e.g. Spillo's 3-token 2-tier line) --
+    none currently overlap as a real trailing SUBSET of another, but this
+    keeps the same safety order as the letter search's own longest-first
+    scan regardless. Returns None if nothing in the window matches (safe --
+    the caller leaves this header unrecognized rather than guessing)."""
+    max_sig_len = max(len(k) for k in _PIANCA_LETTI_NAMED_TIERS)
+    for k in range(1, lookback + 1):
+        idx = header_idx - k
+        if idx < 0:
+            break
+        tokens = lines[idx].strip().split()
+        if not tokens:
+            continue
+        for n in range(min(max_sig_len, len(tokens)), 0, -1):
+            hit = _PIANCA_LETTI_NAMED_TIERS.get(tuple(tokens[-n:]))
+            if hit is not None:
+                return hit
+    return None
+
+
 _PIANCA_WXH_SIZE_RE = re.compile(r'^\d{2,3}x\d{2,3}$')
 
 
@@ -8125,10 +8217,14 @@ def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, h
             i += 1
             continue
         tier_letters = _pianca_letti_tier_letters_above(lines, i)
+        tier_names = None
         if tier_letters is None:
+            tier_names = _pianca_letti_named_tiers_above(lines, i)
+        if tier_letters is None and tier_names is None:
             i += 1
             continue
-        n_cols = len(tier_letters)
+        tier_values = tier_letters if tier_letters is not None else tier_names
+        n_cols = len(tier_values)
 
         i += 1
         blank_run = 0
@@ -8164,6 +8260,15 @@ def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, h
                         and re.match(r'^[A-Z0-9]{1,6}$', pre_tokens[-1])):
                     code = f"{pre_tokens[-3]} * {pre_tokens[-1]}"
                     pre_tokens = pre_tokens[:-3]
+                # Literal "X/Y/Z" suffix (Spazio Composto/Grafico's own
+                # left/center/right module-position convention, e.g. "46522
+                # X/Y/Z") -- same "preserve the literal printed suffix"
+                # philosophy as the "* <letter>" wildcard case above, not a
+                # real distinguishing code component to resolve.
+                elif (len(pre_tokens) >= 2 and pre_tokens[-1] == 'X/Y/Z'
+                        and _PIANCA_CODE_RE.match(pre_tokens[-2]) and re.search(r'\d', pre_tokens[-2])):
+                    code = f"{pre_tokens[-2]} X/Y/Z"
+                    pre_tokens = pre_tokens[:-2]
                 elif _PIANCA_CODE_RE.match(pre_tokens[-1]) and re.search(r'\d', pre_tokens[-1]):
                     code = pre_tokens[-1]
                     pre_tokens = pre_tokens[:-1]
@@ -8189,7 +8294,7 @@ def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, h
                     break
 
             any_price = False
-            for letter, cell in zip(tier_letters, trailing):
+            for tier_value, cell in zip(tier_values, trailing):
                 if cell == '-':
                     continue
                 any_price = True
@@ -8199,8 +8304,8 @@ def parse_file_pianca_letti_tier(path, product_name, brand, all_headings=None, h
                     "model_variant": None,
                     "variant_context": variant_context,
                     "size": size,
-                    "fabric_tier": letter,
-                    "tier_label": "Category",
+                    "fabric_tier": tier_value,
+                    "tier_label": "Category" if tier_letters is not None else "Finish",
                     "code": code,
                     "price_eur": cell,
                     "source_pdf_page": page_of_line[i],

@@ -1288,6 +1288,15 @@ const CASES: Case[] = [
     expectedVariantContext: 'Comò',
     note: 'Guards a real, confirmed-via-image nuance: one single table occurrence (Comodino/Comò H62) prints "Comodino" for its first 2 groups then switches to "Comò" partway through, all under one continuous CODICI header -- category is genuinely per-group, not per-table-occurrence.',
   },
+  {
+    id: 'pedane-named-tier-wrapped-letti-shape',
+    query: 'Pedane price',
+    productName: 'Pedane',
+    code: '46163',
+    expectedPrice: '57',
+    expectedTier: 'Materico',
+    note: 'Resolved 2026-09-05 (graduates the PRE-EXISTING "guard-pedane-not-corrupted" REJECT_CASES entry below, same as Icaro/Ettorino before it -- that guard\'s own "Pedane is a real 3-column table, must stay at 0 rows" note turned out to describe a real table this session finally built support for, not a permanent block). Root cause: parse_file_pianca_letti_tier already correctly recognized the "L (H) P CODICI" header shape with tier labels wrapped onto their own line above it, but only for the LETTERED A/B/C/H/P/Q ladder -- never for real NAMED finish tiers (here: Materico / L. Opaco/Essenza / Lucido Sp., confirmed via direct page 78 read, the middle tier a genuine 2-finish-option-same-price merge, not a 4th column). Fixed by adding a hand-verified named-tier registry (_PIANCA_LETTI_NAMED_TIERS) checked as a fallback whenever the letter search fails. Verified via full-catalog before/after diff before trusting this broadly: 0 rows changed/removed on any of the 12 products this touched across the whole Pianca catalog (including "Moduli a giorno", which shares this EXACT tier-header text on an unrelated sub-table -- confirmed its own 12 pre-existing rows survive byte-identical). 45 real codes x 3 tiers = 135 rows (arithmetic independently re-verified against the source page: 15 L-values x 3 P-groups = 45, not the 42 first assumed -- always recount against the real page, not memory).',
+  },
 ];
 
 interface RejectCase {
@@ -1301,11 +1310,6 @@ const REJECT_CASES: RejectCase[] = [
     id: 'guard-scacco-top-collision-not-mislabeled',
     productName: 'Scacco',
     note: 'Root-cause guard for a real near-miss caught while building the CollezioneGiorno remainder batch: Scacco and Abaco BOTH derive the bare shape_b_named key (\'Top\',) but have genuinely DIFFERENT real column labels (Scacco: Linoleum/V. Laccato; Abaco: Cuoio Rigenerato.../Vetro Marmo...) that happen to share the same column COUNT (2) -- the existing row-shape safety check only validates trailing price COUNT, not label correctness, so this would NOT have been caught automatically; only found by checking the bonus match\'s own source image after adding the key. Neither was added to the registry as a result -- Scacco must stay at 0 rows (still correctly known_gap) until both sides get a real product-scoped fix, not a flat catalog-wide key.',
-  },
-  {
-    id: 'guard-pedane-not-corrupted',
-    productName: 'Pedane',
-    note: 'Same class of guard as Icaro -- Pedane is a real 3-column table. Must stay at 0 rows.',
   },
 ];
 
