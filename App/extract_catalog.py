@@ -2230,6 +2230,34 @@ def _varaschini_find_records(
                 cand_line = lines[j].strip()
                 if not cand_line:
                     continue
+                # A bare "art." trigger near the bottom of a page, with no
+                # real code between it and the page's own printed footer
+                # ("258 - VARASCHIN EXPORT 2026"), let this lookahead reach
+                # the footer line itself -- its leading page number matches
+                # _VARASCHINI_CODE_TOKEN's shape just as well as a real
+                # code, and the trailing "VARASCHIN EXPORT 2026" text then
+                # got captured as that "code"'s own name. Confirmed 7 real
+                # instances in the current catalog (2026-09-05): Belt/Belt
+                # Air p102/p103, Emma p258/p259, Emma Cross p300/p301,
+                # Wellness Therapy p525 -- all genuine index/diagram pages
+                # with zero real price content, 0 rows either way, but a
+                # phantom product_name/art_code pair that's never a real
+                # product (same false-positive CLASS, not scope, as
+                # VARASCHINI_FALSE_POSITIVE_CODES's own p130 footer-number
+                # precedent, which only catches p130 specifically because
+                # that page's footer happens to land in a different
+                # detector's own left-aligned column check -- this one is
+                # the general text-content match, so it's checked here
+                # rather than added to that page-specific set). This was
+                # the "KNOWN FOLLOW-UP (found 2026-08-21, not yet fixed)"
+                # case documented in _varaschini_full_text_by_page's own
+                # docstring -- p525's entry had been hand-removed from
+                # catalog_index.json as a one-off stopgap, which a later
+                # full regeneration silently undid (confirmed: back in the
+                # catalog before this fix). Root-caused and fixed here
+                # instead, general and reproducible, not another one-off.
+                if "VARASCHIN EXPORT" in cand_line:
+                    continue
                 first_tok = cand_line.split()[0] if cand_line.split() else ""
                 if _VARASCHINI_CODE_TOKEN.match(first_tok) or (extra_code_re and extra_code_re.match(first_tok)):
                     rest = cand_line[len(first_tok):].strip()
@@ -2242,6 +2270,8 @@ def _varaschini_find_records(
                 for j in range(i - 1, max(i - 3, -1), -1):
                     cand_line = lines[j].strip()
                     if not cand_line:
+                        continue
+                    if "VARASCHIN EXPORT" in cand_line:
                         continue
                     first_tok = cand_line.split()[0] if cand_line.split() else ""
                     if _VARASCHINI_CODE_TOKEN.match(first_tok) or (extra_code_re and extra_code_re.match(first_tok)):
