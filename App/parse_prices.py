@@ -2807,6 +2807,27 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 if ("solo tavolo" in prefix or "only table" in prefix) and any(
                         "cover" in block_lines[k].lower() for k in range(max(0, li - 3), li)):
                     continue
+                # Victor p521's own "3867L" cover line is a THIRD, still
+                # different variant of the same accessory: "COVER" (line
+                # 71) sits BETWEEN "SOLO TAVOLO" (line 70, before) and
+                # "ONLY TABLE" (line 73, after) rather than immediately
+                # before the price like every other instance -- and its
+                # own price line has neither "art." prefix nor "solo
+                # tavolo"/"only table" text of its own, just the bare code
+                # "9C5130" directly before its price (with a bled-in
+                # "Dark Brown" STRUTTURA color name trailing it). Checked
+                # catalog-wide (206 "COVER...art. 9CXXXX" occurrences
+                # across ~100 pages) before adding this: every other
+                # instance correctly keeps its "art." prefix, already
+                # caught by the dash/cover checks above -- this is the
+                # ONLY bare-code-no-"art." case anywhere in the catalog,
+                # not a pattern needing a general rule. Hand-verified,
+                # narrowly scoped to this exact code (same precedent as
+                # VARASCHINI_FALSE_POSITIVE_CODES), not extending the
+                # "solo tavolo"/"only table" lookback above to avoid
+                # guessing at a shape only ever seen once.
+                if prefix.strip() == "9c5130":
+                    continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
             # Fallback: a page with a "COLLEZIONI ABBINABILI / MATCHABLE
