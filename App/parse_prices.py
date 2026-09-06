@@ -2766,6 +2766,15 @@ def _varaschini_classify_dual_material_top_tiers(block_lines, prices_found):
         segment = "\n".join(block_lines[prev_li:li + 1]).lower()
         if "bocciardata" in segment:
             tier = "Ceramica Bocciardata"
+        elif "teak" in segment:
+            # Link's own 4th TOP-material tier (solid Teak wood top,
+            # distinct from the Alluminio/Legno LEGS-material choice this
+            # same word can also describe -- see this function's own
+            # module-level caller comment for why that collision is
+            # confirmed NOT a risk here: the LEGS-material "Teak" swatch
+            # entry always prints AFTER every real TOP-tier price on
+            # every Link page checked, never inside an earlier segment).
+            tier = "Teak"
         elif "perla" in segment or "ardesia" in segment or "black edge" in segment:
             tier = "HPL Perla/Ardesia"
         elif "hpl" in segment or not tiers:
@@ -3002,9 +3011,34 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 k2_pos = low.rfind("3899k2", 0, m.start())
                 near_k2 = (k2_pos != -1 and (m.start() - (k2_pos + 6)) <= 100
                            and code.upper() != "3899K2")
-                if (near_cover or near_dash_art or near_k2
+                # "3899K1" -- same accessory as 3899K2 (Kit movimentazione
+                # tavolo/Table handling kit, EUR110 not EUR124 -- Link's own
+                # older/lower price point for the same item), but WHOLE-
+                # LINE not windowed: unlike 3899K2, exhaustively confirmed
+                # ZERO catalog-wide occurrences of "3899k1" sharing a line
+                # with 2+ prices, so there's no real-tier-price collision
+                # risk a proximity window would need to guard against here
+                # (e.g. Link's own 22201/2220L: "art. 3899K1 € 110" is the
+                # ONLY price on that physical line).
+                near_k1 = "3899k1" in prefix and code.upper() != "3899K1"
+                # "table handling kit" (whole-line, not windowed): Link's
+                # own p362 (2220) is the ONE catalog-wide instance where
+                # this accessory's own price (EUR110) sits alone on this
+                # exact English-label line with no "- art." dash-prefix of
+                # its own (its "art. 3899K1" trigger is one line ABOVE,
+                # unglued -- a layout quirk not seen anywhere else this
+                # accessory appears). Exhaustively checked (not sampled)
+                # every "table handling kit" occurrence catalog-wide with
+                # a price on the SAME line: exactly 1 (this one). NOT
+                # extended to the Italian "Kit movimentazione tavolo" --
+                # confirmed that phrase routinely shares a line with a
+                # REAL, large tier price on System's own pages (p417/478-
+                # 483, values in the thousands), so it carries no reliable
+                # signal the way the English label's isolated occurrence
+                # here does.
+                if (near_cover or near_dash_art or near_k2 or near_k1
                         or "solo scocca" in prefix or "only frame" in prefix
-                        or "surcharge" in prefix):
+                        or "surcharge" in prefix or "table handling kit" in prefix):
                     continue
                 # "COVER / SOLO TAVOLO / ONLY TABLE ... art. XXXX € YYY" (a
                 # table-only replacement-cover accessory, distinct from
@@ -3565,6 +3599,32 @@ def _varaschini_emma_parser(path, page_num, entries, brand):
     if page_num == 260:
         return _varaschini_emma_coffee_table_iroko_parser(path, page_num, entries, brand)
     return parse_file_varaschini_shape_a(path, page_num, entries, brand)
+
+
+def _varaschini_link_parser(path, page_num, entries, brand):
+    """Link's own COLLECTION_PARSER_OVERRIDES entry. Unlike Emma, all 14
+    of Link's own pages (362-375, 28 codes total) need the SAME treatment
+    -- try_dual_material_top_tiers=True plus "3899K1"/"3899K2" excluded as
+    block triggers -- confirmed via page image + text read across a
+    representative sample (362/363/364/367/368) covering all 3 real sub-
+    shapes this collection actually has (see _varaschini_classify_dual_
+    material_top_tiers' own new "teak" marker comment): standard Fixed
+    tables get 4 tiers (HPL/HPL Perla-Ardesia/Teak/Ceramica Bocciardata),
+    "E"-suffix Fixed tables get 3 (no Teak option), Extendable tables get
+    2 (HPL/HPL Perla-Ardesia only, no Teak or Ceramica) -- the shared
+    classifier already handles all 3 without any per-shape branching here,
+    since it accepts however many real pairs it finds.
+
+    Confirmed via the same catalog-wide re-test as Emma's own p249/250
+    that a page-scoped (not collection-wide-by-default, not catalog-wide)
+    trigger exclusion is required -- each of Link's 14 pages contains
+    ONLY that page's own base+L code pair (confirmed no third product's
+    boundary is at risk), so scoping to "any Link page" is equivalent to
+    scoping to each individual page here.
+    """
+    return parse_file_varaschini_shape_a(
+        path, page_num, entries, brand, try_dual_material_top_tiers=True,
+        block_finder=lambda lines: _varaschini_find_art_blocks(lines, extra_trigger_exclusions={"3899K1", "3899K2"}))
 
 
 def _wellness_therapy_parser(path, page_num, entries, brand):
@@ -10790,6 +10850,7 @@ def main():
             # own 4 table codes.
             "Dolmen": _varaschini_dolmen_parser,
             "Emma": _varaschini_emma_parser,
+            "Link": _varaschini_link_parser,
             # Ellisse deliberately has NO override here. Its 2401-2406
             # family needs try_dual_material_top_tiers PLUS a per-page
             # (not per-collection) trigger exclusion for "3899K2" -- see
