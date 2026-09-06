@@ -2498,10 +2498,20 @@ def _varaschini_find_belt_composition_blocks(lines, target_codes):
     return blocks
 
 
-def _varaschini_find_belt_module_blocks(lines):
+def _varaschini_find_bare_code_blocks(lines):
     """Block finder for Belt/Belt Air's per-module price pages (every page
     EXCEPT the composition-summary pages 129-131, which stay on
-    _varaschini_find_belt_composition_blocks above, unchanged).
+    _varaschini_find_belt_composition_blocks above, unchanged). Renamed
+    2026-09-06 from _varaschini_find_belt_module_blocks once reused for
+    Copacabana's own page 552 (2 umbrella codes, ZERO "art." triggers
+    anywhere on the page -- the default _varaschini_find_art_blocks found
+    only the "ART." column header's own bare-"art." lookahead, giving
+    exactly one trigger for the whole page and letting the first code's
+    block silently swallow the second code's price too). The underlying
+    mechanism (discover triggers from the text's own code-shaped tokens,
+    not from any target_codes allowlist or "art." requirement) was never
+    actually Belt-specific -- confirmed safe to reuse via a full
+    brand-wide before/after diff, same discipline as its first use.
 
     Root-caused 2026-09-05: the module pages were, until now, ALSO routed
     through _varaschini_find_belt_composition_blocks with target_codes
@@ -10280,7 +10290,7 @@ def main():
             # own block before it ever reaches its own real price line.
             #
             # All OTHER Belt/Belt Air pages (the per-module price pages)
-            # use _varaschini_find_belt_module_blocks instead -- see its
+            # use _varaschini_find_bare_code_blocks instead -- see its
             # own docstring for the 2026-09-05 root-cause fix (a real
             # "Outfit Cover" replacement-cover accessory's own price was
             # being silently absorbed into the PRECEDING module's block
@@ -10299,8 +10309,32 @@ def main():
                     (lambda lines, entries=entries: _varaschini_find_belt_composition_blocks(
                         lines, {e["art_code"] for e in entries}))
                     if 129 <= page_num <= 131
-                    else _varaschini_find_belt_module_blocks
+                    else _varaschini_find_bare_code_blocks
                 )),
+            # Copacabana's own page 552 has exactly 2 umbrella codes (4754,
+            # 4756) and ZERO "art." occurrences anywhere -- the default
+            # _varaschini_find_art_blocks's only trigger came from the
+            # page's bare "ART." column header, giving ONE trigger for the
+            # whole page and letting 4754's block silently swallow 4756's
+            # own price too (confirmed: both codes print an identical,
+            # unambiguous single flat price, EUR 6.050 each, verified
+            # against the real page image -- no tier structure, no
+            # ambiguity in what either price means, purely a missing block
+            # boundary). 4756 was also never added to catalog_index.json at
+            # all (no "art." trigger for extract_catalog.py's own discovery
+            # pass to find either) -- added by hand here, individually
+            # verified against the source image (same construction, EUR
+            # 6.050, a genuinely different physical size from 4754: W157
+            # 1/2 x H119 1/4 x D145 5/8 vs 4754's W137 3/4 x H119 1/4 x
+            # D155 1/2). Checked first whether this is systemic: scanned
+            # all 74 Shape B collection entries -- the adjacent, similarly-
+            # structured "Amalfi Cemento naturale" (p551, single umbrella
+            # code) is already correctly priced, confirming this 2-codes-
+            # zero-triggers gap is isolated to Copacabana's own page, not a
+            # broader pattern needing a wider fix.
+            "Copacabana": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
+                path, page_num, entries, brand,
+                block_finder=_varaschini_find_bare_code_blocks),
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
