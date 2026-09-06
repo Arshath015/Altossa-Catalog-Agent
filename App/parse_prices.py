@@ -2624,7 +2624,23 @@ def _varaschini_classify_top_tiers(block_lines, prices_found):
     tiers = []
     for li, _pos, price in prices_found:
         segment = "\n".join(block_lines[prev_li:li + 1]).lower()
-        if "ceramica" in segment or "bocciardata" in segment:
+        # Deliberately checks "bocciardata" alone, NOT "ceramica" -- many
+        # products' own generic "Top Hpl/Ceramica" material-description
+        # label (distinct from the real "CERAMICA BOCCIARDATA" section
+        # header) also contains "ceramica" and, when it lands inside an
+        # EARLIER price's own segment due to -layout's column bleed,
+        # wrongly classified that price as Ceramica Bocciardata too --
+        # confirmed on Emma Cross p302 ("Top Hpl/Ceramica" bleeding into
+        # the HPL Perla/Ardesia tier's own segment, producing 2 duplicate
+        # "Ceramica Bocciardata" tiers instead of 3 distinct ones, safely
+        # caught by the duplicate-tiers check below rather than shipped
+        # wrong, but still blocking a real, correct classification).
+        # "bocciardata" alone is equally reliable -- confirmed present on
+        # all 134 pages using this real section header, immediately
+        # adjacent to "CERAMICA" even when -layout wraps it onto its own
+        # line, and never co-occurring with the generic "Hpl/Ceramica"
+        # description anywhere in the catalog.
+        if "bocciardata" in segment:
             tier = "Ceramica Bocciardata"
         elif "perla" in segment or "ardesia" in segment or "black edge" in segment:
             tier = "HPL Perla/Ardesia"
