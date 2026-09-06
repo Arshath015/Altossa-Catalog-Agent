@@ -2417,19 +2417,32 @@ def _varaschini_find_art_blocks(lines, extra_trigger_exclusions=None):
     extra_trigger_exclusions: optional set of UPPERCASE codes to treat as
     never-a-trigger, on top of the built-in cover/dash/self-reference
     rules below. Defaults to None (no change from prior behavior).
-    Deliberately NOT a blanket exclusion for "3899K1"/"3899K2" (the
-    "Kit movimentazione tavolo / Table handling kit" accessory) even
-    though it's usually safe to drop as a trigger when not dash-prefixed
-    -- confirmed via a full brand-wide dry run that doing so UNCONDITIONALLY
-    regressed 163 rows across System Star/Kolonaki/Plinto/Gianna/Flexion/
-    Big-Big Light/Emma, where this exact code's own trigger is a genuinely
-    NEEDED block boundary for some OTHER product on the same page (removing
-    it let an earlier block run too far and swallow real content). Only
-    Ellisse's own p215/217/218/219/220 need it excluded, where this code's
-    trigger was truncating the SAME product's own block before it reached
-    its own Ceramica-tier prices sharing that code's exact physical line --
-    passed in explicitly by Ellisse's own COLLECTION_PARSER_OVERRIDES entry,
-    not a global default.
+
+    Deliberately NOT a blanket default exclusion for "3899K1"/"3899K2"
+    (the "Kit movimentazione tavolo / Table handling kit" accessory).
+    Re-tested this directly 2026-09-06 (per standing rule: a "regressed"
+    claim is not proof, re-verify before acting on it) -- a first,
+    naive re-test (comparing block DICT KEYS between old/new) wrongly
+    looked clean; only checking per-key VALUES for codes present in BOTH
+    versions caught the real picture: excluding these two codes shifts
+    112 block boundaries across 8+ collections (Big/Big Light, Ellisse,
+    Emma, Link, Gianna, Kolonaki/Plinto, a 2220-series collection, a
+    24680-series collection, System's 244S-series) -- every shift is an
+    EXTENSION (the block runs further before the next trigger). Some of
+    these are genuine recoveries (confirmed on Emma's own 23680/80L/81/
+    81L, Gianna's 257T14/15 -- the block was truncating before reaching a
+    real, page-image-verified 3rd tier price). At least one is a
+    confirmed REGRESSION (Ellisse's own 2406/2406L, which was already
+    correctly resolving 2 tiers -- extending its block picks up an
+    unrelated stray total price and the Kit's own accessory price
+    instead, see App/regression/flag_triage.json's Ellisse 2401-2405/L
+    notes for the full prior diagnosis). Given genuinely mixed correct/
+    incorrect outcomes across many collections, this needs individual
+    per-collection (often per-page) verification before enabling --
+    exactly the "narrow hand-verified exclusion" discipline used
+    elsewhere in this file, not a blanket default. Pass explicitly via a
+    collection's own COLLECTION_PARSER_OVERRIDES entry only once that
+    collection's own affected pages have been individually checked.
     """
     exclusions = extra_trigger_exclusions or set()
     triggers = []
@@ -2899,28 +2912,46 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
             low = bl.lower()
             line_had_euro_price = False
             for m in VARASCHINI_PRICE_RE.finditer(bl):
-                # whole-line-prefix check, not a short lookback window --
-                # "cover - art. 9451C               €      226" routinely
-                # has 20-30+ padding characters between "cover" and its
-                # price, wider than a naive fixed window (confirmed bug:
-                # this exact gap let 6 "cover" prices get miscounted as a
-                # real 6th tier before being caught here).
-                # Also exclude any OTHER dash-prefixed "- art. XXXX"
-                # accessory cross-reference on the same line (e.g. "Lampada
-                # Outdoor Lighting - art. 8001 € 384"), not just "cover" --
-                # confirmed on Tibidabo p497's "14250" (Pouf): extending
-                # this block's boundary to stop the SAME dash-prefixed
-                # pattern from being mistaken for a new trigger (see
-                # _varaschini_find_art_blocks) also pulled 2 accessory
-                # prices into this block's scan range, turning a clean
-                # 5-labels/5-prices match into a 5-vs-7 mismatch that
-                # silently dropped all 5 real rows.
+                # PROXIMITY window (not whole-line-prefix) for "cover"/dash-
+                # prefixed "- art. XXXX" accessory cross-references (e.g.
+                # "cover - art. 9451C € 226", "Lampada Outdoor Lighting -
+                # art. 8001 € 384"). An earlier whole-line-prefix version of
+                # this check (see git history around 2026-08-12/13) existed
+                # because a short fixed lookback window was once tried and
+                # failed -- "cover - art. 9451C               €      226"
+                # routinely has 20-30+ padding characters between "cover"
+                # and its OWN price, wider than that first naive window.
+                # But whole-line-prefix is too wide in the opposite
+                # direction: confirmed 2026-09-06 on Emma's own dual-
+                # material 3-tier grid (23670/71/72/73 Tavolino, 23680/80L/
+                # 81/81L Fixed table) that a REAL 3rd/Ceramica-tier price
+                # can share the SAME physical text line as an earlier
+                # "cover - art. XXXX" accessory mention -- whole-line-prefix
+                # silently discarded that real price, undercounting the
+                # block to 4 (of 6) unclaimed prices and hard-flagging it
+                # as an unresolved materials-grid gap. Exhaustively checked
+                # (not sampled) every "cover"/dash-art line catalog-wide
+                # with 2+ prices on it -- only 6 such lines total -- and
+                # found a clean, consistent 150+ char gap on every one: the
+                # accessory's own price always sits 30-60 chars after the
+                # marker; a real tier price sharing the line always sits
+                # 210+ chars after it. A 100-char proximity window clears
+                # the confirmed 30-60 char case with room to spare while
+                # staying far short of the 210+ char real-price case, for
+                # every instance checked (also recovers Babylon's own
+                # 1748/1749 and Emma's own 236M23D, which hit the identical
+                # pattern but weren't part of the original investigation).
                 # "solo scocca"/"only frame" (see VARASCHINI_FRAME_ONLY_RE)
                 # and "outfit cover" (see VARASCHINI_OUTFIT_COVER_RE) are
                 # both captured separately above, not as cat.-tier prices --
                 # see VARASCHINI_OUTFIT_COVER_RE's own comment for why
                 # "outfit cover" moved from an explicit exception here to an
                 # exclusion, matching solo scocca/only frame's treatment.
+                # Left as whole-line-prefix (not windowed) since an
+                # identical exhaustive catalog-wide scan found ZERO lines
+                # where either shares a line with 2+ prices -- no proximity
+                # ambiguity exists for them the way it does for cover/dash-
+                # art, so windowing them would only add unverified risk.
                 # "surcharge" (e.g. Sunmoon's own "4-wheel surcharge (2 with
                 # brakes and 2 without) € 275") is a flat named add-on price
                 # with no cat.-tier label of its own, always printed on the
@@ -2939,9 +2970,39 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # scan never reaches at all (a different, non-tier shape,
                 # parsed by a separate function) -- confirmed via direct
                 # check that none of Outdoor Cooking's own already-correct
-                # rows come from this code path.
+                # rows come from this code path. Also left as whole-line
+                # (0 multi-price-line occurrences confirmed).
+                # Same proximity-window treatment for "3899K2" ("Kit
+                # movimentazione tavolo"/"Table handling kit" -- always
+                # EUR124, a separate accessory) as "cover"/dash-art just
+                # above, same reasoning: exhaustively checked (not
+                # sampled) EVERY "3899K1"/"3899K2" line catalog-wide with
+                # 2+ prices on it -- only 15 such lines total, all
+                # "3899K2" (never "3899K1") -- and found the identical
+                # clean 130+ char gap on every one: the accessory's own
+                # EUR124 always sits 14-20 chars after the marker; a real
+                # tier price sharing the line always sits 154-197 chars
+                # after it. Confirmed this recovers Emma's own dual-
+                # material 3-tier Fixed-table family (23680/80L/81/81L)
+                # and Gianna's own 257T14/257T15 (independently truncated
+                # by the SAME pattern despite that collection believed
+                # already closed) once paired with the page-scoped block-
+                # trigger exclusion each of those collections' own
+                # COLLECTION_PARSER_OVERRIDES entry passes -- this price-
+                # level window alone is not sufficient without that
+                # trigger fix too, since the block must first reach the
+                # line for this check to ever see it.
                 prefix = low[:m.start()]
-                if ("cover" in prefix or re.search(r"-\s*art\.?\s", prefix)
+                cover_pos = low.rfind("cover", 0, m.start())
+                near_cover = cover_pos != -1 and (m.start() - cover_pos) <= 100
+                dash_art_end = None
+                for dm in re.finditer(r"-\s*art\.?\s", prefix):
+                    dash_art_end = dm.end()
+                near_dash_art = dash_art_end is not None and (m.start() - dash_art_end) <= 100
+                k2_pos = low.rfind("3899k2", 0, m.start())
+                near_k2 = (k2_pos != -1 and (m.start() - (k2_pos + 6)) <= 100
+                           and code.upper() != "3899K2")
+                if (near_cover or near_dash_art or near_k2
                         or "solo scocca" in prefix or "only frame" in prefix
                         or "surcharge" in prefix):
                     continue
@@ -3351,6 +3412,159 @@ def _varaschini_dolmen_parser(path, page_num, entries, brand):
                               f"expected exactly ['638', '803'] near 'Prolunga aggiuntiva 60x100', "
                               f"found {ext_prices[:2]} -- skipped rather than guessing"))
     return rows, flags
+
+
+def _varaschini_emma_coffee_table_iroko_parser(path, page_num, entries, brand):
+    """236M33/236M34 (p260, Emma's own "Coffee table" pair) -- a genuinely
+    different 3rd sub-shape from Emma's other dual-material tables, not
+    just a variation the shared classifier can absorb. Confirmed via page
+    image: 3 ordinary dual-material (Struttura Alluminio/Struttura Iroko)
+    tiers (HPL, HPL Perla/Ardesia, Ceramica Bocciardata) PLUS a 4th "Top
+    Iroko" option that is genuinely ONLY available on an Iroko structure
+    -- the page prints "SOLO SU STRUTTURA IROKO / NON DISPONIBILE" for
+    the Alluminio-structure cell of that tier, a real product constraint,
+    not a missing price. This gives exactly 7 real prices per code (3
+    pairs + 1 single), which _varaschini_classify_dual_material_top_tiers
+    correctly refuses (it requires an even count) rather than guess at.
+
+    Hand-verified, narrowly scoped to this exact 7-price shape -- declines
+    (same "never guess" flag as the standard path) if the count doesn't
+    match exactly, or the leftover 7th price isn't adjacent to the
+    "NOT AVAILABLE"/"NON DISPONIBILE" marker text confirmed on both
+    codes, or the first 6 don't classify into 3 clean tiers. Uses this
+    page's own real terminology ("Struttura Alluminio"/"Struttura Iroko")
+    for variant_context rather than reusing "Gambe Alluminio"/"Gambe
+    Legno" from Emma's other dual-material products (23670-family/23680-
+    family) -- confirmed via page image this page prints "STRUTTURA", not
+    "GAMBE", so the accurate label differs even though the underlying
+    mechanism (2 prices per tier, aluminium vs. wood) is the same.
+    """
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    blocks = _varaschini_find_art_blocks(lines)
+    rows = []
+    flags = []
+    for entry in entries:
+        code = entry["art_code"]
+        product_name = entry["product_name"]
+        if code not in blocks:
+            flags.append((page_num, product_name, f"art_code {code} not found via _varaschini_find_art_blocks block detection on its recorded page"))
+            continue
+        start, end = blocks[code]
+        block_lines = lines[start:end]
+        dim_m = VARASCHINI_DIMENSION_RE.search("\n".join(block_lines))
+        size = dim_m.group(0).strip() if dim_m else None
+
+        prices_found = []
+        for li, bl in enumerate(block_lines):
+            low = bl.lower()
+            for m in VARASCHINI_PRICE_RE.finditer(bl):
+                prefix = low[:m.start()]
+                cover_pos = low.rfind("cover", 0, m.start())
+                near_cover = cover_pos != -1 and (m.start() - cover_pos) <= 100
+                dash_art_end = None
+                for dm in re.finditer(r"-\s*art\.?\s", prefix):
+                    dash_art_end = dm.end()
+                near_dash_art = dash_art_end is not None and (m.start() - dash_art_end) <= 100
+                if near_cover or near_dash_art:
+                    continue
+                prices_found.append((li, m.start(), m.group(1)))
+
+        if len(prices_found) != 7:
+            flags.append((page_num, product_name,
+                           f"{len(prices_found)} unlabeled prices found for art_code {code}, expected exactly 7 "
+                           f"(3 dual-material tiers + 1 Iroko-top-only price) for this collection's coffee-table "
+                           f"shape -- skipped rather than guessed"))
+            continue
+
+        pair_prices = prices_found[:6]
+        iroko_li, _iroko_pos, iroko_price = prices_found[6]
+        nearby_text = "\n".join(block_lines[max(0, iroko_li - 3):iroko_li + 1]).upper()
+        if "NOT AVAILABLE" not in nearby_text and "NON DISPONIBILE" not in nearby_text:
+            flags.append((page_num, product_name,
+                           f"7 unlabeled prices found for art_code {code} but the 7th didn't match the expected "
+                           f"Iroko-top-only marker text -- skipped rather than guessed"))
+            continue
+
+        dual_tiers = _varaschini_classify_dual_material_top_tiers(block_lines, pair_prices)
+        if not dual_tiers:
+            flags.append((page_num, product_name,
+                           f"7 unlabeled prices found for art_code {code} but the first 6 didn't classify into 3 "
+                           f"clean dual-material tiers -- skipped rather than guessed"))
+            continue
+
+        for tier_label, price_a, price_b in dual_tiers:
+            for material, price in (("Struttura Alluminio", price_a), ("Struttura Iroko", price_b)):
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": product_name,
+                    "variant_context": material,
+                    "size": size,
+                    "fabric_tier": tier_label,
+                    "tier_label": "TOP",
+                    "code": code,
+                    "price_eur": price,
+                    "source_pdf_page": page_num,
+                })
+        rows.append({
+            "brand": brand,
+            "product_name": product_name,
+            "model_variant": product_name,
+            "variant_context": "Struttura Iroko",
+            "size": size,
+            "fabric_tier": "Iroko",
+            "tier_label": "TOP",
+            "code": code,
+            "price_eur": iroko_price,
+            "source_pdf_page": page_num,
+        })
+    return rows, flags
+
+
+def _varaschini_emma_parser(path, page_num, entries, brand):
+    """Emma's own COLLECTION_PARSER_OVERRIDES entry. Emma's ~100 entries
+    are mostly ordinary Shape A products (chairs/sofas/daybeds/etc, not
+    materials-grid at all) -- this only special-cases the 3 pages
+    individually verified 2026-09-06 to need non-default handling, and
+    falls through to plain standard Shape A for every other page so
+    nothing else in this large collection is affected.
+
+    p240/241 (23670/71/72/73, "Tavolino"): ordinary dual-material 3-tier
+    grid, needs try_dual_material_top_tiers=True but no trigger exclusion
+    -- confirmed via page image + text read these pages have no "3899K2"
+    block-truncation issue (only System's own p240/241 already worked
+    once the shared "cover"/dash-art price-scan exclusion was widened
+    from a whole-line-prefix check to a proximity window, see that
+    check's own comment for the full 6-line-catalog-wide verification).
+
+    p249/250 (23680/80L/81/81L, "Fixed table"): same dual-material 3-tier
+    grid, but ALSO needs "3899K2" excluded as a block trigger -- confirmed
+    via page image + text read the real 3rd/Ceramica tier price is glued
+    onto the SAME line as the "Kit movimentazione tavolo" accessory's own
+    trigger, one line before the block would otherwise end. Scoped to
+    just these 2 pages (not a collection- or catalog-wide default): a
+    catalog-wide re-test of this exact exclusion found it shifts 112
+    block boundaries across 8+ OTHER collections, some genuine recoveries
+    but at least one confirmed regression (Ellisse's own already-correct
+    2406/2406L) -- see _varaschini_find_art_blocks's own
+    extra_trigger_exclusions docstring. Confirmed these 2 pages contain
+    ONLY 23680/23680L and 23681/23681L respectively (no third product
+    whose own boundary this exclusion could disturb).
+
+    p260 (236M33/236M34, "Coffee table"): a 3rd, genuinely different
+    shape -- see _varaschini_emma_coffee_table_iroko_parser's own
+    docstring.
+    """
+    if page_num in (240, 241):
+        return parse_file_varaschini_shape_a(path, page_num, entries, brand, try_dual_material_top_tiers=True)
+    if page_num in (249, 250):
+        return parse_file_varaschini_shape_a(
+            path, page_num, entries, brand, try_dual_material_top_tiers=True,
+            block_finder=lambda lines: _varaschini_find_art_blocks(lines, extra_trigger_exclusions={"3899K2"}))
+    if page_num == 260:
+        return _varaschini_emma_coffee_table_iroko_parser(path, page_num, entries, brand)
+    return parse_file_varaschini_shape_a(path, page_num, entries, brand)
 
 
 def _wellness_therapy_parser(path, page_num, entries, brand):
@@ -10575,6 +10789,7 @@ def main():
             # 1820A) price alongside the normal Shape A parse of Dolmen's
             # own 4 table codes.
             "Dolmen": _varaschini_dolmen_parser,
+            "Emma": _varaschini_emma_parser,
             # Ellisse deliberately has NO override here. Its 2401-2406
             # family needs try_dual_material_top_tiers PLUS a per-page
             # (not per-collection) trigger exclusion for "3899K2" -- see
