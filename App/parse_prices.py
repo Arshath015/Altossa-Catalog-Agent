@@ -10482,6 +10482,172 @@ def parse_file_pianca_norma_collezionenotte_gruppi(path, product_name, brand, al
 
 
 # ---------------------------------------------------------------------------
+# Spazio (CollezioneNotte)'s own "Comodini e settimanali" table (p127) --
+# genuinely its own dedicated shape, same standing rule as Cornice below.
+# Confirmed via page image: 8 price columns under 3 "Struttura" parent
+# groups (Materico/Laccato Opaco Essenza/Lucido Spazzolato). Only the 1st
+# column ("Materico") has an unambiguous exact sub-column name -- the
+# exact split of the remaining 7 across the other 2 Struttura groups could
+# NOT be resolved with confidence from either the image (small, crowded
+# header text) or the -layout text (column x-positions are evenly spaced,
+# no spacing gap marks the group boundary). Rather than guess a specific
+# split and risk a wrong TIER LABEL on a correct price, followed the exact
+# precedent already established in this file for identical uncertainty
+# (Brema/Grafica's own wardrobe-family columns above, see their own
+# comments): name column 1 exactly, use an honest positional fallback
+# ("Frontali N") for the rest instead of fabricating false precision.
+#
+# H (height, printed ONCE per block on the block's own LAST row only, not
+# per-row) is borrowed the same way Atlante's own L is (see that parser's
+# own comment) -- confirmed via direct text inspection this table follows
+# the identical convention: 4 blocks (Comodino H40 x8 codes, Comodino H50
+# x4, Settimanale H80 x6, Settimanale H100 x6), each ending in a row whose
+# OWN leading token count is 3 (H+L+P) instead of the normal 2 (L+P).
+#
+# Codes are a real, already-solved shape (_pianca_wardrobe_consume_code's
+# own embedded-wildcard case, "4 * 2Y4" style, confirmed identical to the
+# armadi-family wildcard already handled there) -- reused directly rather
+# than re-implementing code recognition.
+_PIANCA_SPAZIO_COMODINI_COLUMNS = ['Materico'] + [f'Frontali {i}' for i in range(2, 9)]
+
+
+def _pianca_spazio_comodini_row_scan(lines, page_of_line, header_idx, product_name, brand, rows, flags):
+    n_cols = len(_PIANCA_SPAZIO_COMODINI_COLUMNS)
+    i = header_idx + 1
+    blank_run = 0
+    # The table's OWN first block (Comodino H40) has no row-type label
+    # PRECEDING it at all -- "Comodino" only appears in the text AFTER
+    # H40's own last row (it's a single tall rotated caption spanning
+    # both the H40 and H50 Comodino sub-blocks in the source layout,
+    # confirmed via page image), so a pure forward-carry would wrongly
+    # leave H40's own rows with no row_type. Confirmed via image this
+    # first block is genuinely "Comodino" too (matching the very first
+    # label the forward-carry finds regardless) -- initialize from that
+    # same first-found label rather than leaving it unset.
+    row_type = next((lines[j].strip() for j in range(i, min(i + 60, len(lines)))
+                      if lines[j].strip() in ('Comodino', 'Settimanale')), None)
+    pending_block = []
+
+    def flush(h_val):
+        for r in pending_block:
+            size = f"{h_val}×{r['L']}×{r['P']}"
+            any_price = False
+            for column_label, cell in zip(_PIANCA_SPAZIO_COMODINI_COLUMNS, r['trailing']):
+                if cell == '-':
+                    continue
+                any_price = True
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": None,
+                    "variant_context": r['row_type'],
+                    "size": size,
+                    "fabric_tier": column_label,
+                    "tier_label": "Finish",
+                    "code": r['code'],
+                    "price_eur": cell,
+                    "source_pdf_page": r['page'],
+                })
+            if not any_price:
+                flags.append((r['page'], product_name, f"no price rows found for code {r['code']}"))
+
+    while i < len(lines) and blank_run < 20:
+        raw_line = lines[i]
+        stripped = raw_line.strip()
+        if stripped == '':
+            blank_run += 1
+            i += 1
+            continue
+        if 'CODICI' in stripped or stripped.split()[-2:] == ['L', 'P']:
+            break  # a genuinely different table's own header
+        blank_run = 0
+        if stripped in ('Comodino', 'Settimanale'):
+            row_type = stripped
+            i += 1
+            continue
+        matches = list(re.finditer(r'\S+', raw_line))
+        tokens = [m.group() for m in matches]
+        positions = [m.start() for m in matches]
+        if len(tokens) <= n_cols or not all(_PIANCA_PRICE_CELL_RE.match(t) for t in tokens[-n_cols:]):
+            i += 1
+            continue
+        trailing = tokens[-n_cols:]
+        if not any(t != '-' for t in trailing):
+            i += 1
+            continue
+        leading = tokens[:-n_cols]
+        leading_positions = positions[:-n_cols]
+        code = None
+        code_len = 0
+        for candidate_len in (3, 1):
+            if len(leading) >= candidate_len:
+                candidate = _pianca_wardrobe_consume_code(leading[len(leading) - candidate_len:])
+                if candidate is not None:
+                    code = candidate
+                    code_len = candidate_len
+                    break
+        if code is None:
+            flags.append((page_of_line[i], product_name, f"spazio-comodini row shape mismatch (code not recognized), skipped: {stripped[:120]!r}"))
+            i += 1
+            continue
+        dims = leading[:len(leading) - code_len]
+        dims_positions = leading_positions[:len(leading_positions) - code_len]
+        if not (len(dims) in (2, 3) and all(re.match(r'^\d+(\.\d+)?$', d) for d in dims)):
+            flags.append((page_of_line[i], product_name, f"spazio-comodini row shape mismatch (L/P/H dims not recognized), skipped: {stripped[:120]!r}"))
+            i += 1
+            continue
+        # A 3rd leading numeric token is genuinely this block's own H value
+        # ONLY when it sits in the confirmed real-H left-margin column
+        # (position < 10 -- every one of the 4 real H values checked sits
+        # at column 1-2). A stray diagram-icon dimension callout (the
+        # cabinet drawer-height annotations, e.g. "20"/"20"/"30") can ALSO
+        # land as a 3rd leading numeric token on some rows, but always much
+        # further right (column ~21-22, confirmed via direct position
+        # measurement across all 8 occurrences on this page) -- same
+        # "position-gate the outer numeric pop" danger already documented
+        # for People (SistemiGiorno) elsewhere in this file, confirmed
+        # real here too rather than assumed safe by analogy.
+        h_val = dims[0] if len(dims) == 3 and dims_positions[0] < 10 else None
+        l_val, p_val = dims[-2], dims[-1]
+        pending_block.append({'code': code, 'L': l_val, 'P': p_val, 'trailing': trailing,
+                               'row_type': row_type, 'page': page_of_line[i]})
+        if h_val is not None:
+            flush(h_val)
+            pending_block = []
+        i += 1
+    if pending_block:
+        flags.append((pending_block[0]['page'], product_name,
+                      f"spazio-comodini block never found its own H (block height) value, {len(pending_block)} row(s) skipped rather than guessed"))
+    return i
+
+
+def parse_file_pianca_spazio_collezionenotte_comodini(path, product_name, brand, all_headings=None, heading_text=None):
+    """See module comment above for scope. Only the 'Comodini e
+    settimanali' table (p127) -- the rest of this 13-page product's own
+    other table shapes (Comò, the various 'Maniglia ... Struttura x3'
+    wardrobe-danger-style tables) are separate, not-yet-attempted work,
+    left correctly flagged/unresolved rather than guessed at here."""
+    if product_name != 'Spazio (CollezioneNotte)':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    rows = []
+    flags = []
+    for i, line in enumerate(lines):
+        if line.split() == ['H', 'Comodino', 'L', 'P']:
+            _pianca_spazio_comodini_row_scan(lines, page_of_line, i, product_name, brand, rows, flags)
+    return rows, flags
+
+
+# ---------------------------------------------------------------------------
 # Cornice (Spazi-10) -- genuinely its own dedicated shape, per this
 # project's standing rule that a structurally different 2-axis grid gets
 # its own function rather than being forced through the wardrobe-danger
@@ -10723,6 +10889,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_alfa_tatami,
         parse_file_pianca_dedalo_madie,
         parse_file_pianca_norma_collezionenotte_gruppi,
+        parse_file_pianca_spazio_collezionenotte_comodini,
     ]
     armadi_idx = sub_parsers.index(parse_file_pianca_armadi_danger)
     results = [p(path, product_name, brand, all_headings, heading_text) for p in sub_parsers]
