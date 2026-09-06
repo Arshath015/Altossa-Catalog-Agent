@@ -2360,6 +2360,28 @@ VARASCHINI_TIER_LABEL_RE_BARE = re.compile(
 VARASCHINI_PRICE_RE = re.compile(r"€[\s\x00-\x1f]*([\d][\d.,]*)")
 VARASCHINI_DIMENSION_RE = re.compile(r"W\s*[\d /]+[\"”]\s*-\s*H\s*[\d /]+[\"”]\s*-\s*D\s*[\d /]+[\"”]")
 
+# Flexion's own "COVER ... cover - art. XXXX" replacement-cover price
+# wraps onto a DIFFERENT physical line from its "cover - art." label (the
+# label itself carries no price of its own), confirmed on p330 (codes
+# 25170/25171) and p332 (code 25176). A general "off-column price near a
+# cover reference" rule was tried and reverted: several OTHER Varaschini
+# products (e.g. Emma's own dual-material Daybed/Divano/Dormeuse grids,
+# p232) legitimately have TWO real price columns per tier (Aluminio/Legno
+# structure choice), and a coincidental cover/dash-art mention within a
+# few lines of the SECOND real column wrongly excluded 90 real rows in a
+# full-catalog dry run before this was caught. Hand-verified, narrowly
+# scoped to the exact 3 (page, price) pairs confirmed real -- same
+# precedent as extract_catalog.py's own VARASCHINI_FALSE_POSITIVE_CODES --
+# rather than any general column/proximity heuristic. 25176's sibling
+# 25175 shares the same €308 cover price on the SAME page, but on its own
+# SAME line as "cover - art. 9476C" (already safely excluded above,
+# before this check is ever reached for that occurrence).
+_VARASCHINI_WRAPPED_COVER_PRICES: set[tuple[int, str]] = {
+    (330, "132"),  # Flexion 25170, cover - art. 9442C
+    (330, "193"),  # Flexion 25171, cover - art. 9426C
+    (332, "308"),  # Flexion 25176, cover - art. 9476C
+}
+
 
 def _varaschini_find_art_blocks(lines):
     """Locate every 'art.' + code occurrence and the line-range block that
@@ -2853,6 +2875,8 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                 # "solo tavolo"/"only table" lookback above to avoid
                 # guessing at a shape only ever seen once.
                 if prefix.strip() == "9c5130":
+                    continue
+                if (page_num, m.group(1)) in _VARASCHINI_WRAPPED_COVER_PRICES:
                     continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
