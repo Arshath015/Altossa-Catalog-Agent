@@ -3734,6 +3734,42 @@ def _varaschini_tibidabo_parser(path, page_num, entries, brand):
     return rows, flags
 
 
+def _varaschini_ellisse_parser(path, page_num, entries, brand):
+    """Ellisse's own COLLECTION_PARSER_OVERRIDES entry -- picking up the
+    diagnosis banked in App/regression/flag_triage.json's own 2401-2405/L
+    notes from earlier the same session (3 escalating sub-fixes, 2
+    needing a full revert, deferred rather than shipped under momentum).
+    Implementing the exact recipe recorded there, now straightforward
+    since the shared 3899K2 price-window exclusion this needs is already
+    unconditional production code (built for Emma's own fix, verified
+    safe catalog-wide) -- only the page-conditional TRIGGER exclusion
+    remains to wire up here.
+
+    p215/217/218/219/220 (2401-2405/L, "Tavolino"): ordinary dual-
+    material 3-tier grid (HPL/HPL Perla-Ardesia/Ceramica Bocciardata),
+    needs "3899K2" excluded as a block trigger -- its own "Kit
+    movimentazione tavolo" accessory reference truncates the block one
+    line before the real 3rd-tier price on these 5 pages specifically.
+
+    p216 (2406/2406L) is DIFFERENT and deliberately EXCLUDED from the
+    trigger exclusion: this page's block already terminates correctly
+    today without it -- confirmed in the original diagnosis that
+    applying the same exclusion here regresses its own already-correct
+    2 tiers (picks up an unrelated stray total price plus the Kit's own
+    price instead). Falls through to plain standard Shape A (dual-
+    material still enabled, since 2406/2406L's own single-price shape
+    doesn't need it but doesn't conflict with it being on either --
+    confirmed unchanged behavior for 2406/2406L specifically, since
+    _varaschini_classify_top_tiers is tried by default Shape A logic
+    regardless of try_dual_material_top_tiers).
+    """
+    if page_num in (215, 217, 218, 219, 220):
+        return parse_file_varaschini_shape_a(
+            path, page_num, entries, brand, try_dual_material_top_tiers=True,
+            block_finder=lambda lines: _varaschini_find_art_blocks(lines, extra_trigger_exclusions={"3899K2"}))
+    return parse_file_varaschini_shape_a(path, page_num, entries, brand, try_dual_material_top_tiers=True)
+
+
 def _wellness_therapy_parser(path, page_num, entries, brand):
     """Wellness Therapy (catalogue)'s own COLLECTION_PARSER_OVERRIDES entry
     -- routes through the standard Shape A parser (most of this collection
@@ -10959,17 +10995,7 @@ def main():
             "Emma": _varaschini_emma_parser,
             "Link": _varaschini_link_parser,
             "Tibidabo": _varaschini_tibidabo_parser,
-            # Ellisse deliberately has NO override here. Its 2401-2406
-            # family needs try_dual_material_top_tiers PLUS a per-page
-            # (not per-collection) trigger exclusion for "3899K2" -- see
-            # App/regression/flag_triage.json entries for 2401-2405/L for
-            # the full diagnosis (exact page boundary, measured character
-            # offsets for the accessory-price exclusion). Deferred as its
-            # own dedicated follow-up (like Atlante/Spazio) after 3
-            # escalating sub-fixes on one item, 2 of which needed a full
-            # revert -- see git history around 2026-09-06 for the reverted
-            # attempts. Falls through to default Shape A below, which
-            # correctly flags-not-guesses rather than fabricating.
+            "Ellisse": _varaschini_ellisse_parser,
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
