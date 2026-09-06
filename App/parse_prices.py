@@ -2786,6 +2786,27 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                         or "solo scocca" in prefix or "only frame" in prefix
                         or "surcharge" in prefix):
                     continue
+                # "COVER / SOLO TAVOLO / ONLY TABLE ... art. XXXX € YYY" (a
+                # table-only replacement-cover accessory, distinct from
+                # Belt's own "OUTFIT COVER") usually keeps "COVER" on the
+                # SAME line as its own price (already caught above), but
+                # confirmed on Gianna p349/System p475/Victor p521 that
+                # -layout sometimes wraps "COVER" onto its own line 1-2
+                # lines ABOVE the price line instead -- the price line
+                # itself then only says "SOLO TAVOLO"/"ONLY TABLE ... art.
+                # XXXX", with no "cover" text of its own, so the check
+                # above never catches it. Confirmed exactly 3 real products
+                # affected (Gianna 257T08, System 244T4, Victor 3867L, each
+                # previously 0 rows) out of 91 pages sharing this general
+                # accessory line -- narrowly scoped to require BOTH "solo
+                # tavolo"/"only table" on the price's own line AND "cover"
+                # within the 3 lines immediately before it, so this can
+                # never fire on an unrelated tier price elsewhere in the
+                # block (e.g. the "P.S.: Cover tavolo..." disclaimer line,
+                # which always prints AFTER the cover price, never before).
+                if ("solo tavolo" in prefix or "only table" in prefix) and any(
+                        "cover" in block_lines[k].lower() for k in range(max(0, li - 3), li)):
+                    continue
                 prices_found.append((li, m.start(), m.group(1)))
                 line_had_euro_price = True
             # Fallback: a page with a "COLLEZIONI ABBINABILI / MATCHABLE
