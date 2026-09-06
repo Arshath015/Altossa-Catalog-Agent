@@ -3174,6 +3174,70 @@ def _varaschini_find_flat_code_blocks(lines):
     return blocks
 
 
+def _varaschini_dolmen_parser(path, page_num, entries, brand):
+    """Dolmen's own COLLECTION_PARSER_OVERRIDES entry. Runs the standard
+    Shape A parser unchanged for the 4 real table codes (1821/1821L/1822/
+    1822L) -- their own tier-price bleed from the shared "additional
+    extension" accessory is already excluded via
+    _VARASCHINI_WRAPPED_ACCESSORY_PRICES, see that constant's own comment.
+    Also injects the extension's own real, previously-uncataloged 2-tier
+    price (art. 1820A) when this is its home page (211) -- confirmed via
+    direct page-image read to be identical (EUR 638 standard / EUR 803
+    premium) on every one of its 4 mentions (once per table variant,
+    pages 211 and 212), a real, separately-purchasable, genuinely distinct
+    product (per the 2026-09-06 standing approval to add verified
+    accessories directly rather than asking each time).
+
+    Captured directly here with an exact-value safety check, rather than
+    via manual_additions.json: Varaschini's own regeneration flow
+    (--format varaschini) never calls that merge step, so a file-based
+    manual addition would silently revert on the next regen with no
+    warning -- the same durability risk already found once this session
+    (Wellness Therapy's own p525 phantom entry, hand-removed 2026-08-24,
+    silently back after a later regen). A code-level fix that runs every
+    time is the durable version of the same finding.
+    """
+    rows, flags = parse_file_varaschini_shape_a(path, page_num, entries, brand)
+    if page_num == 211:
+        ext_entry = next((e for e in entries if e["art_code"] == "1820A"), None)
+        if ext_entry:
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            anchor = next((i for i, ln in enumerate(lines) if "prolunga aggiuntiva 60x100" in ln.lower()), None)
+            ext_prices = []
+            if anchor is not None:
+                for ln in lines[anchor:anchor + 15]:
+                    # The table's own "COVER ... art. 9C5142 € 374" line
+                    # interleaves inside this exact window (-layout column
+                    # bleed) -- confirmed on p211: 638 (line+2), COVER's
+                    # own 374 (line+5), 803 (line+11). Skip any price on a
+                    # "cover"-context line, same discipline as the main
+                    # tier-price scan above.
+                    if "cover" in ln.lower():
+                        continue
+                    for m in VARASCHINI_PRICE_RE.finditer(ln):
+                        ext_prices.append(m.group(1))
+            if ext_prices[:2] == ["638", "803"]:
+                for tier, price in zip(["Standard", "Grigio Perla/Ardesia"], ext_prices[:2]):
+                    rows.append({
+                        "brand": brand,
+                        "product_name": ext_entry["product_name"],
+                        "model_variant": ext_entry["product_name"],
+                        "variant_context": None,
+                        "size": "60x100",
+                        "fabric_tier": tier,
+                        "tier_label": "TOP",
+                        "code": "1820A",
+                        "price_eur": price,
+                        "source_pdf_page": page_num,
+                    })
+            else:
+                flags.append((page_num, ext_entry["product_name"],
+                              f"expected exactly ['638', '803'] near 'Prolunga aggiuntiva 60x100', "
+                              f"found {ext_prices[:2]} -- skipped rather than guessing"))
+    return rows, flags
+
+
 def _wellness_therapy_parser(path, page_num, entries, brand):
     """Wellness Therapy (catalogue)'s own COLLECTION_PARSER_OVERRIDES entry
     -- routes through the standard Shape A parser (most of this collection
@@ -10391,6 +10455,11 @@ def main():
             "Copacabana": lambda path, page_num, entries, brand: parse_file_varaschini_shape_a(
                 path, page_num, entries, brand,
                 block_finder=_varaschini_find_bare_code_blocks),
+            # See _varaschini_dolmen_parser's own docstring: injects the
+            # real, previously-uncataloged "additional extension" (art.
+            # 1820A) price alongside the normal Shape A parse of Dolmen's
+            # own 4 table codes.
+            "Dolmen": _varaschini_dolmen_parser,
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
