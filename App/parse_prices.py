@@ -7189,6 +7189,23 @@ def _pianca_is_bare_struttura_struttura_header(line: str) -> bool:
     return line.split('CODICI', 1)[1].split() == ['Struttura', 'Struttura']
 
 
+def _pianca_is_atlante_header(line: str) -> bool:
+    """Atlante's own table-start header: "L ... H P CODICI" with nothing
+    after "CODICI" on the same line -- its own "Struttura e frontali"
+    column-group title and the 3 finish column labels (Materico/Laccato
+    Opaco Essenza/Lucido Spazzolato) all print on SEPARATE, EARLIER lines
+    instead of glued onto this line the way Ala/People's own header does.
+    Confirmed this exact "L H P CODICI, nothing after" shape recurs
+    verbatim across many OTHER Pianca products too (Accessori/Bricola/
+    Spazioteca compositions/etc) -- harmless here since this predicate is
+    only ever passed on Atlante's own dedicated parse_file_pianca_atlante
+    call site (a specific file path), never as a shared/default check."""
+    if 'CODICI' not in line:
+        return False
+    tokens = line.split()
+    return tokens[-1] == 'CODICI' and 'L' in tokens and 'H' in tokens and 'P' in tokens
+
+
 def _pianca_flush_struttura_frontali_block(block, columns, variant_context, product_name, brand, rows, flags):
     """See module comment above for why the outer dimension is borrowed
     from whichever row in the block has the most inline dims, not a
@@ -7242,7 +7259,7 @@ def _pianca_flush_struttura_frontali_block(block, columns, variant_context, prod
             flags.append((r['page'], product_name, f"no price rows found for code {r['code']}"))
 
 
-def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, columns_by_frontali_count=None, heading_applies_forward=False):
+def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, columns_by_frontali_count=None, heading_applies_forward=False, header_predicate=None):
     with open(path, encoding='utf-8') as f:
         lines = f.read().split('\n')
 
@@ -7258,9 +7275,10 @@ def _pianca_struttura_frontali_row_scan(path, product_name, brand, columns, colu
     flags = []
     variant_context = None
     i = 0
+    is_header = header_predicate or _pianca_is_bare_struttura_struttura_header
 
     while i < len(lines):
-        if not _pianca_is_bare_struttura_struttura_header(lines[i]):
+        if not is_header(lines[i]):
             i += 1
             continue
         # The real number of "Frontali" price columns genuinely varies
@@ -7555,6 +7573,73 @@ def parse_file_pianca_ala(path, product_name, brand, all_headings=None, heading_
     if product_name != 'Ala':
         return [], []
     return _pianca_struttura_frontali_row_scan(path, product_name, brand, _PIANCA_STRUTTURA_FRONTALI_ALA_DEDALO_PEOPLESG_COLUMNS)
+
+
+def parse_file_pianca_atlante(path, product_name, brand, all_headings=None, heading_text=None):
+    """Atlante (CollezioneNotte): a "2-axis" row x column materials grid
+    -- confirmed via page image (p93-96, all 3 pages checked, same shape
+    throughout): rows are grouped by width (L, printed once per 8-row
+    block on the LAST row only -- borrowed the same way
+    _pianca_flush_struttura_frontali_block already handles Dedalo's own
+    "H printed once per block" convention) x 4 top/side-profile material
+    choices ("L. Opaco/Essenza"/"Lucido Sp. / V. Laccato / V. Met. /
+    Specchio"/"Vetro Marmo"/"Marmo/Terrazzo") x 2 H/P depth variants each
+    (own code per H/P pair, shared across the 4 material rows within one
+    L-block); columns are the 3 exterior finish choices (Materico/
+    Laccato Opaco Essenza/Lucido Spazzolato). Reuses the existing
+    _pianca_struttura_frontali_row_scan engine (built for Dedalo/Ala/
+    People/Island-up's own structurally-identical block-then-flush
+    shape) rather than writing a parallel implementation -- the only
+    real difference is where the column-header text sits (Atlante's own
+    "Struttura e frontali" title and 3 finish labels print on separate
+    earlier lines, not glued onto the same physical line as "CODICI"
+    the way Ala/People's own header does), handled with a dedicated
+    header_predicate (_pianca_is_atlante_header) rather than touching
+    the shared default used by the other 4 already-verified products.
+    Real bug found and fixed during verification: p94's own vertical
+    right-margin running-footer text ("GRUPPI E SISTEMI") lands, once
+    -layout linearizes it, in the MIDDLE of the 5E2S6/5E3S6 block (between
+    its "Lucido Sp." and "Vetro Marmo" material rows) rather than after
+    the block like on every other page -- confirmed via direct line-by-
+    line inspection this is the ONLY one of the 5 "GRUPPI..."-containing
+    lines in the whole file that sits mid-block; the other 4 (page-number
+    footers "88_GRUPPI"/"90_GRUPPI" and 2 more "GRUPPI_NN" instances) all
+    sit cleanly after a block's own last row, at a genuine page break.
+    This stray line is surrounded by 3 blank lines (vs. the normal single
+    blank line between material sub-groups elsewhere), which trips
+    _pianca_struttura_frontali_row_scan's own blank_run>=2 flush trigger
+    early -- splitting one logical 8-row block into two, so the L=63
+    width label (which only ever prints on the block's own LAST row) is
+    borrowed by the 2nd half but never reaches the 1st half's own rows.
+    Fixed narrowly: this exact stray line, plus its own surrounding
+    excess blank lines, are removed before the shared scan ever sees
+    them (collapsed back down to the normal single blank line), restoring
+    the block to one continuous 8-row unit. Scoped to this one exact
+    line's own text, not a general 2+-blank-line collapse -- most other
+    3-blank-line runs in this file are genuine, correct block boundaries
+    and must NOT be touched.
+    """
+    if product_name != 'Atlante':
+        return [], []
+    with open(path, encoding='utf-8') as f:
+        raw_lines = f.read().split('\n')
+    grupi_idx = next((idx for idx, ln in enumerate(raw_lines) if ln.strip() == 'GRUPPI E SISTEMI'), None)
+    if grupi_idx is not None:
+        blank_start = grupi_idx
+        while blank_start > 0 and raw_lines[blank_start - 1].strip() == '':
+            blank_start -= 1
+        raw_lines = raw_lines[:blank_start] + [''] + raw_lines[grupi_idx + 1:]
+    import os
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tf:
+        tf.write('\n'.join(raw_lines))
+        sanitized_path = tf.name
+    try:
+        return _pianca_struttura_frontali_row_scan(
+            sanitized_path, product_name, brand, ['Materico', 'Laccato Opaco Essenza', 'Lucido Spazzolato'],
+            header_predicate=_pianca_is_atlante_header)
+    finally:
+        os.unlink(sanitized_path)
 
 
 def parse_file_pianca_dedalo_progetti_06_07(path, product_name, brand, all_headings=None, heading_text=None):
@@ -10628,6 +10713,7 @@ def parse_file_pianca(path, product_name, brand, all_headings=None, heading_text
         parse_file_pianca_icaro,
         parse_file_pianca_ettorino,
         parse_file_pianca_ala,
+        parse_file_pianca_atlante,
         parse_file_pianca_dedalo_progetti_06_07,
         parse_file_pianca_people_collezionenotte,
         parse_file_pianca_people_sistemigiorno,
