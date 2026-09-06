@@ -2399,7 +2399,7 @@ _VARASCHINI_WRAPPED_ACCESSORY_PRICES: set[tuple[int, str]] = {
 }
 
 
-def _varaschini_find_art_blocks(lines):
+def _varaschini_find_art_blocks(lines, extra_trigger_exclusions=None):
     """Locate every 'art.' + code occurrence and the line-range block that
     belongs to it (from its own trigger line to the next one, or EOF).
 
@@ -2413,7 +2413,25 @@ def _varaschini_find_art_blocks(lines):
          "1820L" prints one line before its own bare "art." label)
     All three are tried; forward lookahead is preferred, backward lookback
     is the fallback only when forward finds nothing.
+
+    extra_trigger_exclusions: optional set of UPPERCASE codes to treat as
+    never-a-trigger, on top of the built-in cover/dash/self-reference
+    rules below. Defaults to None (no change from prior behavior).
+    Deliberately NOT a blanket exclusion for "3899K1"/"3899K2" (the
+    "Kit movimentazione tavolo / Table handling kit" accessory) even
+    though it's usually safe to drop as a trigger when not dash-prefixed
+    -- confirmed via a full brand-wide dry run that doing so UNCONDITIONALLY
+    regressed 163 rows across System Star/Kolonaki/Plinto/Gianna/Flexion/
+    Big-Big Light/Emma, where this exact code's own trigger is a genuinely
+    NEEDED block boundary for some OTHER product on the same page (removing
+    it let an earlier block run too far and swallow real content). Only
+    Ellisse's own p215/217/218/219/220 need it excluded, where this code's
+    trigger was truncating the SAME product's own block before it reached
+    its own Ceramica-tier prices sharing that code's exact physical line --
+    passed in explicitly by Ellisse's own COLLECTION_PARSER_OVERRIDES entry,
+    not a global default.
     """
+    exclusions = extra_trigger_exclusions or set()
     triggers = []
     for i, raw in enumerate(lines):
         line = raw.strip()
@@ -2456,6 +2474,8 @@ def _varaschini_find_art_blocks(lines):
             # already-working block, only ever widens one (confirmed via a
             # full brand-wide before/after diff before this was trusted).
             if "per l'" in prefix_ctx:
+                continue
+            if m.group(1).upper() in exclusions:
                 continue
             triggers.append((i, m.group(1).upper()))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
@@ -2693,10 +2713,85 @@ def _varaschini_classify_top_tiers(block_lines, prices_found):
     return list(zip(tiers, (pr for _, _, pr in prices_found)))
 
 
-def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini", block_finder=None, tier_label_re=None):
+def _varaschini_classify_dual_material_top_tiers(block_lines, prices_found):
+    """Same marker-based classification as _varaschini_classify_top_tiers
+    above, for the collections whose own TOP-material grid ALSO crosses a
+    structural legs/frame material choice (Alluminio/Legno) -- confirmed
+    on Ellisse/Emma/Link: each tier prints TWO prices side by side on the
+    SAME physical line (Aluminio column first/left, Legno column second/
+    right -- confirmed consistent left-to-right ordering across every
+    instance checked, e.g. Ellisse p217's own header "GAMBE ALLUMINIO
+    GAMBE LEGNO" naming the columns in that exact order), rather than one.
+    Same "GAMBE Alluminio"/"GAMBE Legno" variant_context split already
+    used by the "cat."-labeled dual-material pairing above (see
+    VARASCHINI_DUAL_MATERIAL_HEADER_RE) -- reusing that established
+    naming, not inventing a new one.
+
+    Only ever called when the caller has opted in per-collection (see
+    parse_file_varaschini_shape_a's try_dual_material_top_tiers param) --
+    this function's OWN sanity checks (even price count, distinct tiers,
+    "HPL" present) are not enough on their own to rule out a page whose
+    real shape is something else entirely with 2 leftover unclaimed
+    prices by coincidence (confirmed dangerous on Big/Big Light's own
+    diagram-cluttered pages, see that param's own comment).
+
+    Requires an EVEN price count (else this shape doesn't apply at all)
+    and groups consecutive PAIRS, by page position, into one tier each
+    before running the identical segment-marker scan. Same "never guess"
+    contract as the single-price version: returns [] unless every pair's
+    segment finds a marker (or is the plain HPL default), the resulting
+    tier labels are all distinct, and at least one is "HPL".
+    """
+    if len(prices_found) % 2 != 0:
+        return []
+    prev_li = 0
+    tiers = []
+    for idx in range(0, len(prices_found), 2):
+        li_a, _, price_a = prices_found[idx]
+        li_b, _, price_b = prices_found[idx + 1]
+        li = max(li_a, li_b)
+        segment = "\n".join(block_lines[prev_li:li + 1]).lower()
+        if "bocciardata" in segment:
+            tier = "Ceramica Bocciardata"
+        elif "perla" in segment or "ardesia" in segment or "black edge" in segment:
+            tier = "HPL Perla/Ardesia"
+        elif "hpl" in segment or not tiers:
+            tier = "HPL"
+        else:
+            return []
+        tiers.append((tier, price_a, price_b))
+        prev_li = li
+    tier_labels = [t[0] for t in tiers]
+    if len(set(tier_labels)) != len(tier_labels) or "HPL" not in tier_labels:
+        return []
+    return tiers
+
+
+def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varaschini", block_finder=None, tier_label_re=None, try_dual_material_top_tiers=False):
     """entries_for_page: catalog_index.json dicts (must include 'art_code'
     and 'product_name') that this ONE shared page contains. Returns
     (rows, flags) -- flags is a list of (page, product_name, reason).
+
+    try_dual_material_top_tiers: opt-in, defaults False. When a block's
+    unlabeled TOP-material prices don't classify via the single-price
+    _varaschini_classify_top_tiers, ALSO try pairing them 2-at-a-time as
+    an Alluminio/Legno legs choice (_varaschini_classify_dual_material_
+    top_tiers) -- confirmed real on Ellisse/Emma/Link's own clean grid
+    pages. Deliberately NOT a universal fallback: a first attempt tried it
+    unconditionally and a full brand-wide dry run caught it fabricating a
+    wrong second row on Big / Big Light 13612 (a product this session
+    never touched) -- that collection's own pages are severely diagram-
+    cluttered (confirmed via direct text read: dozens of overlapping "A"/
+    "B"/dimension labels), so 2 leftover unclaimed prices there are page
+    noise, not a real dual-material pair, and the classifier's own sanity
+    checks (distinct tiers, "HPL" present) were never designed to detect
+    that difference -- they happened to pass anyway, silently PREEMPTING
+    Big/Big Light's own already-correct, purpose-built TSV-coordinate
+    fallback (_big_light_parser only re-derives a code via TSV when Shape
+    A hasn't already claimed it) with a fabricated value. Scoped to an
+    explicit per-collection opt-in instead, same discipline as
+    block_finder/tier_label_re above -- only ever enabled for collections
+    individually verified to have this real shape.
 
     block_finder: defaults to _varaschini_find_art_blocks (the "art."
     label detector). Everything AFTER block detection here -- dimension
@@ -3012,6 +3107,26 @@ def parse_file_varaschini_shape_a(path, page_num, entries_for_page, brand="Varas
                             "price_eur": price,
                             "source_pdf_page": page_num,
                         })
+                    continue
+                dual_tiers = (
+                    _varaschini_classify_dual_material_top_tiers(block_lines, prices_found)
+                    if try_dual_material_top_tiers else []
+                )
+                if dual_tiers:
+                    for tier_label, price_a, price_b in dual_tiers:
+                        for material, price in (("Gambe Alluminio", price_a), ("Gambe Legno", price_b)):
+                            rows.append({
+                                "brand": brand,
+                                "product_name": product_name,
+                                "model_variant": product_name,
+                                "variant_context": material,
+                                "size": size,
+                                "fabric_tier": tier_label,
+                                "tier_label": "TOP",
+                                "code": code,
+                                "price_eur": price,
+                                "source_pdf_page": page_num,
+                            })
                 else:
                     flags.append((page_num, product_name,
                                    f"{len(candidates)} unlabeled prices found for art_code {code} with no fabric tiers -- "
@@ -10460,6 +10575,17 @@ def main():
             # 1820A) price alongside the normal Shape A parse of Dolmen's
             # own 4 table codes.
             "Dolmen": _varaschini_dolmen_parser,
+            # Ellisse deliberately has NO override here. Its 2401-2406
+            # family needs try_dual_material_top_tiers PLUS a per-page
+            # (not per-collection) trigger exclusion for "3899K2" -- see
+            # App/regression/flag_triage.json entries for 2401-2405/L for
+            # the full diagnosis (exact page boundary, measured character
+            # offsets for the accessory-price exclusion). Deferred as its
+            # own dedicated follow-up (like Atlante/Spazio) after 3
+            # escalating sub-fixes on one item, 2 of which needed a full
+            # revert -- see git history around 2026-09-06 for the reverted
+            # attempts. Falls through to default Shape A below, which
+            # correctly flags-not-guesses rather than fabricating.
         }
         # Collections excluded from Shape D even though still labeled "D"
         # (their price tables genuinely are flat SKU lists -- unlike
