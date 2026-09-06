@@ -2713,6 +2713,19 @@ def _varaschini_classify_top_tiers(block_lines, prices_found):
         # description anywhere in the catalog.
         if "bocciardata" in segment:
             tier = "Ceramica Bocciardata"
+        elif "vetro" in segment:
+            # Tibidabo's own 1st tier (Glass top, "VETRO sp. 0,8 cm") --
+            # deliberately "vetro" (Italian) not "glass" (English): the
+            # English word collides with "Plexiglass", a genuinely
+            # different material name used elsewhere (Wellness Therapy's
+            # own Plexiglass Support/Single Bed products), confirmed via
+            # a catalog-wide grep. "vetro" alone has zero such collision
+            # risk -- confirmed it appears ONLY on Tibidabo's own p498-500
+            # and one unrelated Shape D page (Marketing Communication,
+            # which never reaches this classify function at all). Checked
+            # BEFORE the "not tiers" HPL-default fallback below, since
+            # Vetro (not HPL) is genuinely this shape's own FIRST tier.
+            tier = "Vetro"
         elif "perla" in segment or "ardesia" in segment or "black edge" in segment:
             tier = "HPL Perla/Ardesia"
         elif "hpl" in segment or not tiers:
@@ -3625,6 +3638,100 @@ def _varaschini_link_parser(path, page_num, entries, brand):
     return parse_file_varaschini_shape_a(
         path, page_num, entries, brand, try_dual_material_top_tiers=True,
         block_finder=lambda lines: _varaschini_find_art_blocks(lines, extra_trigger_exclusions={"3899K1", "3899K2"}))
+
+
+def _varaschini_tibidabo_parser(path, page_num, entries, brand):
+    """Tibidabo's own COLLECTION_PARSER_OVERRIDES entry. Tibidabo's ~29
+    entries are mostly ordinary cat.-labeled Shape A products (Poltrona/
+    Divano/Daybed/etc, standard cat. B-COM/C/D/E/Luxury Imbottitura/
+    Rivestimento tiers) -- ONLY p498/499/500 (the 6 materials-grid Coffee/
+    Fixed table codes) need this custom parser; every other page falls
+    through to plain standard Shape A. Confirmed the hard way: an
+    earlier version of this function applied unconditionally to the
+    whole collection and silently broke 24 already-working cat.-tier
+    products (their own real prices live on lines this parser's "cordino"
+    line-blanking never touches, but its own price-scan/classify logic
+    only knows the materials-grid shape, not cat.-labels at all) --
+    caught by the full brand-wide diff before commit, not shipped.
+
+    Single-material (no Alluminio/Legno legs split -- confirmed via page
+    image this collection is aluminium-structure only), 4 ordinary top-
+    material tiers: Vetro (glass, new marker added to
+    _varaschini_classify_top_tiers), HPL, HPL Perla/Ardesia, Ceramica
+    Bocciardata.
+
+    The ONE real complication, flagged in advance and confirmed real:
+    every one of Tibidabo's own blocks contains a "COLLEZIONI ABBINABILI/
+    MATCHABLE COLLECTIONS" side-box (unrelated cross-reference content --
+    which OTHER Varaschini collections, "Clever"/"Clever Smart", share a
+    matching structure finish) that independently lists its own "Cordino
+    PERLA"/"Cordino VAR#TEX BRONZO"/"Cordino GREY BROWN" rope-color
+    names. "Cordino PERLA" bled into the classifier's own "HPL Perla/
+    Ardesia" marker check (bare "perla"), wrongly reclassifying the
+    plain HPL tier as premium -- confirmed via direct segment-content
+    trace this is a real collision, not hypothetical. Rather than loosen
+    the SHARED classifier's marker logic (used successfully by several
+    other collections already, not worth the risk of an unverified
+    ripple), this wrapper blanks out every "cordino"-containing line
+    (confirmed catalog-wide: always exactly 3 per code, always in this
+    side-box, NEVER carrying a price of their own) before block-finding
+    or price-scanning ever sees them -- same net effect as the box not
+    being there, scoped to just this collection.
+    """
+    if page_num not in (498, 499, 500):
+        return parse_file_varaschini_shape_a(path, page_num, entries, brand)
+    with open(path, encoding="utf-8") as f:
+        raw_lines = f.read().splitlines()
+    lines = ["" if "cordino" in ln.lower() else ln for ln in raw_lines]
+    blocks = _varaschini_find_art_blocks(lines)
+    rows = []
+    flags = []
+    for entry in entries:
+        code = entry["art_code"]
+        product_name = entry["product_name"]
+        if code not in blocks:
+            flags.append((page_num, product_name, f"art_code {code} not found via _varaschini_find_art_blocks block detection on its recorded page"))
+            continue
+        start, end = blocks[code]
+        block_lines = lines[start:end]
+        dim_m = VARASCHINI_DIMENSION_RE.search("\n".join(block_lines))
+        size = dim_m.group(0).strip() if dim_m else None
+
+        prices_found = []
+        for li, bl in enumerate(block_lines):
+            low = bl.lower()
+            for m in VARASCHINI_PRICE_RE.finditer(bl):
+                prefix = low[:m.start()]
+                cover_pos = low.rfind("cover", 0, m.start())
+                near_cover = cover_pos != -1 and (m.start() - cover_pos) <= 100
+                dash_art_end = None
+                for dm in re.finditer(r"-\s*art\.?\s", prefix):
+                    dash_art_end = dm.end()
+                near_dash_art = dash_art_end is not None and (m.start() - dash_art_end) <= 100
+                if near_cover or near_dash_art:
+                    continue
+                prices_found.append((li, m.start(), m.group(1)))
+
+        top_tiers = _varaschini_classify_top_tiers(block_lines, prices_found)
+        if top_tiers:
+            for tier_label, price in top_tiers:
+                rows.append({
+                    "brand": brand,
+                    "product_name": product_name,
+                    "model_variant": product_name,
+                    "variant_context": None,
+                    "size": size,
+                    "fabric_tier": tier_label,
+                    "tier_label": "TOP",
+                    "code": code,
+                    "price_eur": price,
+                    "source_pdf_page": page_num,
+                })
+        else:
+            flags.append((page_num, product_name,
+                           f"{len(prices_found)} unlabeled prices found for art_code {code} with no fabric tiers -- "
+                           f"likely a materials-grid item (e.g. HPL/Ceramica TOP options), not yet parsed, skipped rather than guessed"))
+    return rows, flags
 
 
 def _wellness_therapy_parser(path, page_num, entries, brand):
@@ -10851,6 +10958,7 @@ def main():
             "Dolmen": _varaschini_dolmen_parser,
             "Emma": _varaschini_emma_parser,
             "Link": _varaschini_link_parser,
+            "Tibidabo": _varaschini_tibidabo_parser,
             # Ellisse deliberately has NO override here. Its 2401-2406
             # family needs try_dual_material_top_tiers PLUS a per-page
             # (not per-collection) trigger exclusion for "3899K2" -- see
@@ -11000,7 +11108,6 @@ def main():
             all_rows.extend(rows)
 
     out_path = Path(args.out) if args.out else index_path.parent / "prices.json"
-
     # Flag ambiguous rows: same (product, code, fabric_tier) with conflicting
     # prices usually means the source page packs multiple structural
     # variants (e.g. wood vs iron frame) close together in a way that can't
@@ -11094,7 +11201,6 @@ def main():
             ensure_ascii=False, indent=2
         ), encoding="utf-8")
         print(f"Wrote {len(review_flags)} review flag(s) to: {flags_out_path}")
-
 
 if __name__ == "__main__":
     main()
