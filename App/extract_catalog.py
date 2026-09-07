@@ -2305,6 +2305,109 @@ VARASCHINI_FALSE_POSITIVE_CODES: set[tuple[int, str]] = {
     (130, "130"),
 }
 
+# Group A: real, distinguishable module/component codes -- NOT extraction
+# artifacts (unlike VARASCHINI_FALSE_POSITIVE_CODES above) -- confirmed
+# individually via direct source-page read (Bento p133, Emma p258/259,
+# Emma Cross p300/301, Reuse p425: pure composition/module-reference
+# DIAGRAMS for modular seating systems, printing 2+ real "art. CODE"
+# labels per line with zero price context anywhere on the page) AND via a
+# full-catalog cross-check confirming each one has NO price anywhere in
+# the whole dataset, under any product name. These modular pieces are
+# simply never sold/priced independently in this catalog -- same class
+# already accepted for Belt/Belt Air's own module pieces. Excluded here
+# (rather than left as a known_gap catalog entry showing "no price data
+# yet") so they never surface as a browsable/searchable product at all --
+# there is no future price to eventually find for these, unlike a normal
+# known_gap. See App/regression/flag_triage.json's own entries for each
+# name below (status group_a_unpriceable) for the full individual
+# verification trail.
+# Matched on product_name (not art_code) since these entries' own names
+# already ARE the full multi-code cross-reference text extraction
+# produced for them (e.g. "Bento art. 2392 art. 2394") -- there is no
+# single clean art_code to key on the way VARASCHINI_FALSE_POSITIVE_CODES
+# can. Applied once, catalog-wide, right before the final write -- not
+# page-scoped -- since product_name is already the fully-disambiguated
+# key by this point in the pipeline.
+#
+# Applied against the live catalog_index.json 2026-09-07: only 62 of
+# these 66 names matched (confirmed via direct check -- the other 4, all
+# "... VARASCHIN EXPORT 2026 (NNN)" phantom footer-text names on pages
+# 258/259/300/301, no longer exist under these exact strings; those 4
+# pages carry zero price rows either way, confirming nothing was silently
+# lost, just already cleaned up by an unrelated earlier pass before this
+# set was applied). Kept all 66 here rather than trimming to 62, since
+# this constant's job is also to document the full originally-verified
+# set -- the 4 dead entries are harmless (match nothing) if this ever
+# runs again against a differently-shaped catalog_index.json.
+VARASCHINI_GROUP_A_UNPRICEABLE_NAMES: set[str] = {
+    "Bento art. 2392 art. 2394",
+    "Bento art. 2393S art. 2393D",
+    "Bento art. 2391D art. 2393S art. 2393D",
+    "Bento art. 2394",
+    "Bento 2393D",
+    "Bento art. 2393D",
+    "Bento 2394",
+    "Bento art. 239A4 FEET BOTERO SLIM",
+    "Bento FEET BOTERO SLIM",
+    "Bento art. 239A3 art. 239A4 FEET BOTERO SLIM",
+    "Emma art. 236M19S art. 236M19D",
+    "Emma art. 236M06S art. 236M06D art. 236M19S art. 236M19D",
+    "Emma 236M08D",
+    "Emma art. 236M08S art. 236M08D",
+    "Emma 236M19D",
+    "Emma 236M221D",
+    "Emma art. 236M221D",
+    "Emma art. 236M221S art. 236M221D",
+    "Emma art. 236M231D art. 236M221S art. 236M221D",
+    "Emma VARASCHIN EXPORT 2026 (258)",
+    "Emma 236M10S",
+    "Emma art. 236M10D art. 236M10S",
+    "Emma 236M12S",
+    "Emma art. 236M12D art. 236M12S",
+    "Emma 236M20S",
+    "Emma art. 236M20D art. 236M20S",
+    "Emma 236M22S",
+    "Emma art. 236M22D art. 236M22S",
+    "Emma 236M24S",
+    "Emma art. 236M24D art. 236M24S",
+    "Emma art. 236M27",
+    "Emma art. 236M11D art. 236M11S art. 236M10D art. 236M10S",
+    "Emma art. 236MA1 art. 236MA2 optional cushions pag. 572 art. 236M",
+    "Emma VARASCHIN EXPORT 2026 (259)",
+    "Emma Cross 248M10S",
+    "Emma Cross art. 248M10D art. 248M10S",
+    "Emma Cross 248M12S",
+    "Emma Cross art. 248M12D art. 248M12S",
+    "Emma Cross 248M20S",
+    "Emma Cross art. 248M20D art. 248M20S",
+    "Emma Cross 248M22S",
+    "Emma Cross art. 248M22D art. 248M22S",
+    "Emma Cross 248M24S",
+    "Emma Cross art. 248M24D art. 248M24S",
+    "Emma Cross art. 248M27",
+    "Emma Cross art. 248M11D art. 248M11S art. 248M10D art. 248M10S",
+    "Emma Cross art. 236MA1 art. 236MA2 optional cushions pag. 572 art. 236M",
+    "Emma Cross VARASCHIN EXPORT 2026 (301)",
+    "Emma Cross art. 248M19S art. 248M19D",
+    "Emma Cross art. 248M06S art. 248M06D art. 248M19S art. 248M19D",
+    "Emma Cross 248M08D",
+    "Emma Cross art. 248M08S art. 248M08D",
+    "Emma Cross 248M19D",
+    "Emma Cross 248M221D",
+    "Emma Cross art. 248M221D",
+    "Emma Cross art. 248M221S art. 248M221D",
+    "Emma Cross art. 248M231D art. 248M221S art. 248M221D",
+    "Emma Cross VARASCHIN EXPORT 2026 (300)",
+    "Reuse art. 25520B art. 25521 art. 25521B",
+    "Reuse art. 25521 art. 25521B",
+    "Reuse art. 25521B",
+    "Reuse 25521B",
+    "Reuse art. 25550B art. 25551 art. 25551B",
+    "Reuse art. 25551 art. 25551B",
+    "Reuse art. 25551B",
+    "Reuse 25551B",
+}
+
 def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
     """Shape D/E fallback: a bare CODE as the first token of its own
     column-chunk, with a '€' within the next 2 lines. Needed because dense
@@ -3015,6 +3118,14 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
         # empty output dir. .replace() is the atomic-overwrite equivalent
         # on every platform.
         f.replace(out_root / "images" / f"p{page_num:03d}.jpg")
+
+    # Group A: drop confirmed-genuinely-unpriceable module/component
+    # entries so they never surface as a browsable/searchable product --
+    # see VARASCHINI_GROUP_A_UNPRICEABLE_NAMES's own comment.
+    group_a_dropped = [e for e in catalog if e.get("product_name") in VARASCHINI_GROUP_A_UNPRICEABLE_NAMES]
+    if group_a_dropped:
+        catalog = [e for e in catalog if e.get("product_name") not in VARASCHINI_GROUP_A_UNPRICEABLE_NAMES]
+        print(f"[group A] Excluded {len(group_a_dropped)} confirmed-unpriceable entries from catalog_index.json.")
 
     catalog_path = out_root / "catalog_index.json"
     catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
