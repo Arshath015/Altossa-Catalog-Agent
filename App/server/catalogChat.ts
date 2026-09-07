@@ -768,6 +768,19 @@ export class CatalogChat {
    * breakdown this was derived from. */
   private variantPhraseIndex: { phrase: string; productName: string; rows: PriceRow[] }[] = [];
 
+  /** Lazy, per-product cache of each product's own raw source-text TITLE
+   * block (first ~10 lines of its `text_file`, normalized) -- feeds
+   * queryOnlySpecifiesAnchorProductDetails's anchor-vocab check below.
+   * Built lazily (populated on first use, not at construction) since it's
+   * only ever consulted for the ONE product currently anchored in a
+   * conversation, not the whole catalog, and reading ~500-2000 small
+   * files eagerly for every brand at startup would be pure waste for a
+   * check this narrow. Missing/unreadable text files degrade to an empty
+   * string (never thrown), which the calling check treats as "no
+   * additional vocabulary from this source" -- exactly today's
+   * behavior, not a regression. */
+  private anchorTitleBlockCache = new Map<string, string>();
+
   /** Minimum similarity() score required to trust a variant-phrase
    * fallback match (see findByVariantPhrase below) -- deliberately set to
    * similarity()'s token-SET-CONTAINMENT tier (80), not the lower diluted-
@@ -980,6 +993,43 @@ export class CatalogChat {
 
   getCatalogEntry(productName: string): CatalogEntry | undefined {
     return this.catalogIndex.find(p => p.product_name === productName);
+  }
+
+  /** Returns `productName`'s own raw source-text title block (first ~10
+   * lines of its `text_file`, normalized), cached after the first read.
+   * `text_file` is stored relative to the data ROOT (e.g.
+   * "Pianca\text\cora.txt"), one level above this instance's own
+   * `dataDir` (e.g. ".../data/Pianca") -- confirmed by checking the
+   * actual on-disk layout, not assumed, since path.join(dataDir,
+   * text_file) would silently double up the brand folder.
+   *
+   * Real motivating gap this closes (see queryOnlySpecifiesAnchorProductDetails's
+   * own doc comment): a product's page HEADER reliably states its real
+   * furniture TYPE in Italian ("CORA di Odo Fioravanti Sedia", "DOMINO
+   * Panche") even when that word never appears in any of its own
+   * variant_context/model_variant values -- confirmed live across every
+   * Pianca "Sedia"-type product in this bug's own repro batch (Cora,
+   * Esse, Aria, Elide, Clelia, Alunna, Intro, Orchestra, Inari, Seida,
+   * Gamma all say "sedia" in their title block; Domino says "Panche",
+   * Forma says "Scrittoi" -- neither says "sedia"), across 2 different
+   * real title layouts ("NAME di DESIGNER TYPE" on one line vs. a
+   * NAME / TYPE / "di DESIGNER" / YEAR block over several). */
+  private getAnchorTitleBlock(productName: string): string {
+    const cached = this.anchorTitleBlockCache.get(productName);
+    if (cached !== undefined) return cached;
+    let block = '';
+    const entry = this.getCatalogEntry(productName);
+    if (entry?.text_file) {
+      try {
+        const filePath = path.join(this.dataDir, '..', entry.text_file);
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        block = normalize(raw.split('\n').slice(0, 10).join(' '));
+      } catch {
+        block = '';
+      }
+    }
+    this.anchorTitleBlockCache.set(productName, block);
+    return block;
   }
 
   /** Longest-match, non-overlapping scan of the raw query text for every
@@ -2053,7 +2103,30 @@ export class CatalogChat {
       }
     }
 
-    const matches = this.matchProducts(query);
+    const rawMatches = this.matchProducts(query);
+    // If EVERY name-based match matchProducts() found is a WEAK,
+    // coincidental echo (see matchLeavesRealLeftover's own doc comment --
+    // e.g. "sedia" alone matching "Levante Out (Sedia)"/"Maestrale
+    // (Sedia)" purely because it's a literal substring of their own
+    // parenthetical category qualifier, while leaving the query's real
+    // content like "con gambe" completely unexplained) AND a valid
+    // anchor's own vocabulary fully explains the query on its own, treat
+    // this exactly as if matchProducts() had found nothing at all, so the
+    // anchor-aware fallback block just below (already gated on
+    // `matches.length === 0`) gets a chance to run instead of building a
+    // clarify_product from candidates nobody actually meant. Mirrors the
+    // identical fix already applied at the route level
+    // (catalogChatRoute.ts's anchor-vocab override guard) -- confirmed
+    // live this duplication is necessary, not redundant: this function is
+    // called directly with the anchor already resolved (both from that
+    // same route guard and from the deterministic-only fallback path),
+    // so it needs its own equivalent protection rather than assuming the
+    // caller already filtered weak matches out.
+    const hasGenuineMatch = rawMatches.some(m => !this.matchLeavesRealLeftover(query, m.name));
+    const anchorOverridesWeakMatches = !hasGenuineMatch && rawMatches.length > 0
+      && lastProduct && this.productNames.includes(lastProduct)
+      && this.queryOnlySpecifiesAnchorProductDetails(query, lastProduct);
+    const matches = anchorOverridesWeakMatches ? [] : rawMatches;
 
     if (matches.length === 0) {
       // Content-free follow-up fallback (e.g. "give all", "yes, give
@@ -2678,15 +2751,70 @@ export class CatalogChat {
       return false;
     };
 
+    // Checked LAST, only for whatever's still unexplained after every
+    // other real-vocabulary check above -- the anchor's own page title
+    // (see getAnchorTitleBlock's doc comment) reliably states its real
+    // furniture-TYPE word (e.g. "Sedia") even when that word never
+    // appears in any of its own variant_context/model_variant values, so
+    // a bare category noun the user typed ("give for sedia con gambe")
+    // isn't left as false leftover just because this specific product's
+    // PRICE-GRID vocabulary never had reason to restate its own type.
+    // Deliberately whole-word (never substring), same discipline as
+    // anchorVocab's own token-set construction -- a loose substring test
+    // would risk exempting an unrelated short token that merely happens
+    // to appear inside a longer title word.
+    let titleBlock: string | null = null;
+    const explainedByTitleBlock = (t: string): boolean => {
+      if (titleBlock === null) titleBlock = this.getAnchorTitleBlock(productName);
+      if (!titleBlock) return false;
+      return new RegExp(`\\b${escapeRegex(t)}\\b`).test(titleBlock);
+    };
+
     const leftover = tokens.filter(t => {
       if (CONVERSATIONAL_FILLER_WORDS.has(t) || RISKY_SIZE_CODE_WORDS.has(t) || GENERIC_CATEGORY_WORDS.has(t)) return false;
       if (tierWords.has(t) || /^\d+x\d+/.test(t) || /^\d+$/.test(t)) return false;
       if (anchorVocab.has(t)) return false;
       const d = leadingDigits(t);
       if (d && anchorVocab.has(d)) return false;
-      return !fuzzyMatchesAnchorVocab(t);
+      if (!fuzzyMatchesAnchorVocab(t)) return !explainedByTitleBlock(t);
+      return false;
     });
     return leftover.length === 0;
+  }
+
+  /** True if, after removing `productName`'s own name from `rawQuery`
+   * (same stripNameFromQuery used throughout this file) and the usual
+   * filler/size/generic-category noise, the query still has real
+   * unexplained content left -- i.e. `productName` does NOT fully
+   * account for what the user actually typed on its own.
+   *
+   * Built specifically so the caller (catalogChatRoute.ts's anchor-vocab
+   * override gate) can tell a GENUINE competing product mention (a real
+   * or typo'd name that explains the whole query, which must still win
+   * over an anchor) apart from a WEAK, coincidental echo: `matchProducts()`
+   * returns a nonzero score for "Levante Out (Sedia)"/"Maestrale (Sedia)"
+   * against "give for sedia con gambe" purely because "sedia" is a
+   * literal substring of their own parenthetical category qualifier --
+   * but neither name explains "con gambe" at all, so this correctly
+   * returns true (real leftover remains) for both, unlike a genuine match
+   * ("give me the Cora price", where stripping "Cora" leaves only
+   * filler). Same "how much of the query does this candidate leave
+   * unexplained" yardstick findByVariantPhrase's own override logic
+   * already uses (see its doc comment) -- confirmed real and necessary
+   * via this exact repro, not hypothetical: without this, the anchor-
+   * vocab gate's own `matchProducts().length === 0` guard blocks on
+   * these two spurious candidates before the anchor is ever consulted,
+   * even after queryOnlySpecifiesAnchorProductDetails is fixed to
+   * recognize the anchor's own vocabulary correctly. */
+  matchLeavesRealLeftover(rawQuery: string, productName: string): boolean {
+    const stripped = stripNameFromQuery(normalize(rawQuery), normalize(productName));
+    const tokens = tokenizeLoose(stripped);
+    const leftover = tokens.filter(t =>
+      !CONVERSATIONAL_FILLER_WORDS.has(t) &&
+      !RISKY_SIZE_CODE_WORDS.has(t) &&
+      !GENERIC_CATEGORY_WORDS.has(t)
+    );
+    return leftover.length > 0;
   }
 
   answerFromIntent(

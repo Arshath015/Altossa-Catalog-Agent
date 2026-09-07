@@ -80,6 +80,116 @@ router.post('/chat', async (req: Request, res: Response) => {
     });
   }
 
+  // The lastProduct "assume they still mean X" anchor is only trustworthy
+  // when the CURRENT message itself doesn't already name a real product --
+  // the moment it does, that's strong evidence this is a fresh,
+  // self-contained reference, and feeding a stale anchor in anyway only
+  // risks the LLM substituting an old (possibly multi-product, comma-
+  // joined) name for one it should resolve fresh from the shortlist/
+  // message text itself. Confirmed real risk, not hypothetical: this is
+  // exactly the shape of a user-reported hypothesis ("TINA leaking into a
+  // GRETA Wood/WILMA query" after a prior "SIERRA pouf, TINA" turn) --
+  // GRETA Wood IS named exactly in that message, so under this rule the
+  // anchor is omitted entirely for that call, closing off that channel
+  // regardless of whether it was ever the actual cause. Uses the same
+  // deterministic exact-name scan already used elsewhere (no LLM call
+  // needed to decide this).
+  //
+  // Computed HERE, before the variant-phrase fallback just below (moved
+  // up from right before the LLM step 2026-09-07) -- see that block's own
+  // comment for why the anchor must be checked before, not after, a
+  // brand-wide variant-phrase search.
+  const currentMessageNamesOwnProduct = catalogChat.detectNamedProductsInText(message).length > 0;
+  const effectiveLastProduct = currentMessageNamesOwnProduct ? null : (lastProduct || null);
+  // Same gating as effectiveLastProduct just above, same reasoning: a
+  // message that already names something fresh shouldn't have a stale
+  // candidate-list anchor injected either.
+  const effectiveLastCandidates = currentMessageNamesOwnProduct
+    ? null
+    : (Array.isArray(lastCandidates) && lastCandidates.length > 0 ? lastCandidates : null);
+
+  // Deterministic anchor-vocab override -- closes a real gap found
+  // 2026-09-04: queryOnlySpecifiesAnchorProductDetails (see its own doc
+  // comment, catalogChat.ts) previously only ever ran once the WHOLE Groq
+  // key pool was down (the `!intent` branch below), so a live LLM call
+  // with an anchor present had NO equivalent protection at all. Confirmed
+  // real, not theoretical: "give gambe price" right after a Pianca "Esse"
+  // turn -- Esse's own real variant_context text -- returned a confident,
+  // structurally normal-looking LlmIntent naming "Gamma" (a real but
+  // entirely unrelated product, zero textual grounding for it anywhere in
+  // the query). There is no confidence signal on LlmIntent to detect this
+  // after the fact (checked llmIntent.ts -- product_names/size/
+  // fabric_tier/wants_full_list only), so this can't be a post-hoc "does
+  // the LLM's answer look weak" filter; it has to run independently of
+  // what the LLM would say.
+  //
+  // MOVED to run BEFORE the variant-phrase fallback below (2026-09-07,
+  // was previously checked right before the LLM step, AFTER that
+  // fallback) -- found necessary via live testing: "give for sedia con
+  // gambe" right after a Pianca "Esse" turn should stay anchored to
+  // Esse's own real "Con gambe legno/metallo" category, but
+  // findByVariantPhrase (see its own doc comment) has no concept of
+  // lastProduct at all -- it does a brand-wide search and unconditionally
+  // returns on any match, so it silently returned an unrelated product
+  // ("Cora", whose OWN real phrase is verbatim "Sedia con gambe") before
+  // this anchor check ever ran. This gate must win the race when it
+  // legitimately applies, not just serve as a post-hoc LLM guard.
+  //
+  // Gated on ALL FOUR of the following, not just the vocab check alone,
+  // because queryOnlySpecifiesAnchorProductDetails proves the query is
+  // CONSISTENT with the anchor, never that it's EXCLUSIVE to it --
+  // confirmed live: "give gambe price" independently passes this same
+  // check against Esse, Cora, AND Domino (3 unrelated real Pianca
+  // products all share real "gambe" vocabulary), so passing it alone is
+  // not sufficient grounds to override a fresh, differently-grounded
+  // resolution:
+  //   1. currentMessageNamesOwnProduct is false -- the message doesn't
+  //      already name something fresh (same gate effectiveLastProduct
+  //      itself already uses, just below).
+  //   2. effectiveLastProduct exists -- there's a real anchor to defer to.
+  //   3. No OTHER product genuinely, completely explains the message on
+  //      its own (see matchLeavesRealLeftover's own doc comment). NOT the
+  //      same as "matchProducts(message) is empty" any more (2026-09-07)
+  //      -- confirmed live that a bare, unqualified emptiness check is
+  //      too strict: matchProducts("give for sedia con gambe") returns a
+  //      nonzero score for "Levante Out (Sedia)"/"Maestrale (Sedia)"
+  //      purely because "sedia" is a literal substring of their own
+  //      parenthetical category qualifier, even though neither name
+  //      explains "con gambe" at all -- a WEAK, coincidental echo, not a
+  //      genuinely competing match, and the old strict-emptiness guard
+  //      blocked the anchor override on it regardless. This still keeps
+  //      the override narrow: it only defers to the anchor when every
+  //      candidate matchProducts() found is itself incomplete/weak, so a
+  //      genuine or typo'd full name match (e.g. "give me the Cora
+  //      price") still wins outright, unchanged from before.
+  //   4. queryOnlySpecifiesAnchorProductDetails confirms every real word
+  //      left is explained by the anchor's own known vocabulary
+  //      (including, as of 2026-09-07, its own page-title furniture-type
+  //      word -- see getAnchorTitleBlock's doc comment).
+  //
+  // Accepted, bounded residual risk (not closed by this guard, and not
+  // in scope to close here): the LLM sees the full `history` array
+  // across every turn, while this check only ever sees the single most
+  // recent `lastProduct`. A genuine multi-turn topic switch back to an
+  // OLDER product, expressed only in shared/generic vocabulary (no
+  // product name in the current message at all), would still be
+  // incorrectly pulled back to the most recent anchor here -- this
+  // exact blind spot already exists today in the `!intent` branch below
+  // (Groq-down fallback also only ever sees `lastProduct`), just rarely
+  // triggered; this change makes it reachable more often (any anchored,
+  // vocab-only follow-up, not just a full Groq outage) without changing
+  // its shape. Full multi-turn anchor tracking would be a separate,
+  // larger redesign.
+  if (!currentMessageNamesOwnProduct && effectiveLastProduct
+    && !catalogChat.matchProducts(message).some(m => !catalogChat.matchLeavesRealLeftover(message, m.name))
+    && catalogChat.queryOnlySpecifiesAnchorProductDetails(message, effectiveLastProduct)) {
+    console.log(
+      `[anchor-vocab-override] message=${JSON.stringify(message)} anchor=${JSON.stringify(effectiveLastProduct)} ` +
+      `-- resolving deterministically without calling the LLM (query fully explained by anchor's own vocabulary, no competing name match)`
+    );
+    return res.json(catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct, effectiveLastCandidates));
+  }
+
   // Variant-phrase fallback (see findByVariantPhrase's own doc comment,
   // catalogChat.ts) is checked HERE, BEFORE the LLM step below, not only
   // inside answer()'s own no-match branch -- found necessary via live
@@ -139,90 +249,6 @@ router.post('/chat', async (req: Request, res: Response) => {
   // miss costs one extra full-price call instead of silently losing the
   // product the way Bug 3's original silent-drop did.
   const shortlist = catalogChat.buildLlmShortlist(message);
-
-  // The lastProduct "assume they still mean X" anchor is only trustworthy
-  // when the CURRENT message itself doesn't already name a real product --
-  // the moment it does, that's strong evidence this is a fresh,
-  // self-contained reference, and feeding a stale anchor in anyway only
-  // risks the LLM substituting an old (possibly multi-product, comma-
-  // joined) name for one it should resolve fresh from the shortlist/
-  // message text itself. Confirmed real risk, not hypothetical: this is
-  // exactly the shape of a user-reported hypothesis ("TINA leaking into a
-  // GRETA Wood/WILMA query" after a prior "SIERRA pouf, TINA" turn) --
-  // GRETA Wood IS named exactly in that message, so under this rule the
-  // anchor is omitted entirely for that call, closing off that channel
-  // regardless of whether it was ever the actual cause. Uses the same
-  // deterministic exact-name scan already used elsewhere (no LLM call
-  // needed to decide this).
-  const currentMessageNamesOwnProduct = catalogChat.detectNamedProductsInText(message).length > 0;
-  const effectiveLastProduct = currentMessageNamesOwnProduct ? null : (lastProduct || null);
-  // Same gating as effectiveLastProduct just above, same reasoning: a
-  // message that already names something fresh shouldn't have a stale
-  // candidate-list anchor injected either.
-  const effectiveLastCandidates = currentMessageNamesOwnProduct
-    ? null
-    : (Array.isArray(lastCandidates) && lastCandidates.length > 0 ? lastCandidates : null);
-
-  // Deterministic anchor-vocab override, checked BEFORE the LLM call --
-  // closes a real gap found 2026-09-04: queryOnlySpecifiesAnchorProductDetails
-  // (see its own doc comment, catalogChat.ts) previously only ever ran
-  // once the WHOLE Groq key pool was down (the `!intent` branch below),
-  // so a live LLM call with an anchor present had NO equivalent
-  // protection at all. Confirmed real, not theoretical: "give gambe
-  // price" right after a Pianca "Esse" turn -- Esse's own real
-  // variant_context text -- returned a confident, structurally normal-
-  // looking LlmIntent naming "Gamma" (a real but entirely unrelated
-  // product, zero textual grounding for it anywhere in the query). There
-  // is no confidence signal on LlmIntent to detect this after the fact
-  // (checked llmIntent.ts -- product_names/size/fabric_tier/
-  // wants_full_list only), so this can't be a post-hoc "does the LLM's
-  // answer look weak" filter; it has to run independently of what the
-  // LLM would say.
-  //
-  // Gated on ALL FOUR of the following, not just the vocab check alone,
-  // because queryOnlySpecifiesAnchorProductDetails proves the query is
-  // CONSISTENT with the anchor, never that it's EXCLUSIVE to it --
-  // confirmed live: "give gambe price" independently passes this same
-  // check against Esse, Cora, AND Domino (3 unrelated real Pianca
-  // products all share real "gambe" vocabulary), so passing it alone is
-  // not sufficient grounds to override a fresh, differently-grounded
-  // resolution:
-  //   1. currentMessageNamesOwnProduct is false -- the message doesn't
-  //      already name something fresh (same gate effectiveLastProduct
-  //      itself already uses, just below).
-  //   2. effectiveLastProduct exists -- there's a real anchor to defer to.
-  //   3. matchProducts(message) is EMPTY -- the deterministic name/code
-  //      matcher independently finds ZERO candidates in the raw text.
-  //      This is the guard that keeps the override narrow: it only fires
-  //      when there is no OTHER textual signal at all pointing to any
-  //      product, so it can never suppress a genuinely different,
-  //      independently-grounded match (typo'd or exact) the deterministic
-  //      matcher (or, by extension, the LLM) would otherwise have found.
-  //   4. queryOnlySpecifiesAnchorProductDetails confirms every real word
-  //      left is explained by the anchor's own known vocabulary.
-  //
-  // Accepted, bounded residual risk (not closed by this guard, and not
-  // in scope to close here): the LLM sees the full `history` array
-  // across every turn, while this check only ever sees the single most
-  // recent `lastProduct`. A genuine multi-turn topic switch back to an
-  // OLDER product, expressed only in shared/generic vocabulary (no
-  // product name in the current message at all), would still be
-  // incorrectly pulled back to the most recent anchor here -- this
-  // exact blind spot already exists today in the `!intent` branch below
-  // (Groq-down fallback also only ever sees `lastProduct`), just rarely
-  // triggered; this change makes it reachable more often (any anchored,
-  // vocab-only follow-up, not just a full Groq outage) without changing
-  // its shape. Full multi-turn anchor tracking would be a separate,
-  // larger redesign.
-  if (!currentMessageNamesOwnProduct && effectiveLastProduct
-    && catalogChat.matchProducts(message).length === 0
-    && catalogChat.queryOnlySpecifiesAnchorProductDetails(message, effectiveLastProduct)) {
-    console.log(
-      `[anchor-vocab-override] message=${JSON.stringify(message)} anchor=${JSON.stringify(effectiveLastProduct)} ` +
-      `-- resolving deterministically without calling the LLM (query fully explained by anchor's own vocabulary, no competing name match)`
-    );
-    return res.json(catalogChat.answer(message, brand, lastModelVariant || null, effectiveLastProduct, effectiveLastCandidates));
-  }
 
   // Logged unconditionally (not just for multi-product calls) -- cheap,
   // and this is exactly the trail needed to catch a real recurrence of

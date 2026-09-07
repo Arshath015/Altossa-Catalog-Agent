@@ -89,6 +89,65 @@
  * the deterministic function directly makes this check exercise the exact
  * code the fix lives in, every time, regardless of Groq. Needs the data
  * files but NOT a running server or any Groq key.
+ *
+ * SEDIA CON GAMBE / ANCHOR-BEFORE-BRAND-WIDE-SEARCH FIX (2026-09-07,
+ * OVERRIDE_GATE_CASES "gate-bare-category-noun-repro..." below): a
+ * DIFFERENT failure shape from the original Gamma repro above, found via
+ * live browser testing, not log inspection. "give for sedia con gambe"
+ * right after a Pianca "Esse" turn silently resolved to "Cora" (an
+ * unrelated product) instead of staying anchored to Esse's own real "Con
+ * gambe legno/metallo" category. Root cause was TWO layers, both fixed
+ * together:
+ *   1. catalogChatRoute.ts's brand-wide findByVariantPhrase pre-check ran
+ *      BEFORE this file's anchor-vocab override gate (it used to be
+ *      checked only right before the LLM step) -- findByVariantPhrase has
+ *      no concept of lastProduct at all, so it unconditionally returned
+ *      Cora's own verbatim-matching "Sedia con gambe" phrase before the
+ *      anchor was ever consulted. Fixed by moving the gate (and the
+ *      currentMessageNamesOwnProduct/effectiveLastProduct computation it
+ *      needs) to run first.
+ *   2. Once reordered, a SECOND bug surfaced: queryOnlySpecifiesAnchorProductDetails
+ *      didn't recognize "sedia" as Esse's own vocabulary at all (Esse's
+ *      real category text is "Con gambe legno/metallo" -- the word
+ *      "sedia" never appears in any of its variant_context/model_variant
+ *      values). Fixed via a NEW vocabulary source, getAnchorTitleBlock:
+ *      every product's own raw source-text page title reliably states
+ *      its real furniture-TYPE word in Italian ("ESSE di Philippe Tabet
+ *      Sedia", "DOMINO Panche") even when that word never appears in its
+ *      price-grid vocabulary -- confirmed across every "Sedia"-type
+ *      product in this repro's own batch (Cora, Esse, Aria, Elide,
+ *      Clelia, Alunna, Intro, Orchestra, Inari, Seida, Gamma all say
+ *      "sedia"; Domino says "Panche", Forma says "Scrittoi" -- neither
+ *      says "sedia").
+ *   3. Fixing #2 alone still wasn't enough: matchProducts("give for sedia
+ *      con gambe") returns a nonzero score for "Levante Out (Sedia)"/
+ *      "Maestrale (Sedia)" purely because "sedia" is a literal substring
+ *      of their own parenthetical category qualifier, even though neither
+ *      name explains "con gambe" at all -- this file's OLD gate condition
+ *      (`matchProducts(query).length === 0`, a bare emptiness check) still
+ *      blocked the override on this WEAK, coincidental match. Fixed via a
+ *      new `matchLeavesRealLeftover` method (same "how much of the query
+ *      does this candidate leave unexplained" yardstick findByVariantPhrase's
+ *      own override logic already uses) -- `evalOverrideGate` below and
+ *      catalogChatRoute.ts's real gate both now require every competing
+ *      matchProducts() candidate to be genuinely incomplete, not just
+ *      merely-nonzero, before deferring to the anchor.
+ *
+ * TWO ALTERNATIVE FIXES WERE CONSIDERED AND REJECTED WITH EVIDENCE before
+ * building this one (see the session's own investigation): (a) adding
+ * "sedia" to the shared GENERIC_CATEGORY_WORDS list -- rejected because it
+ * also feeds isIndexableVariantPhrase, which would have silently DROPPED
+ * Cora's own "Sedia con gambe" phrase from variantPhraseIndex entirely
+ * (contentWords count would fall below the >=2 indexability floor); (b) a
+ * flat lowered similarity() threshold for anchor phrases -- rejected
+ * because Domino (a writing desk) and Aria (an unrelated chair with no
+ * "con gambe" variant) both scored identically (24) to Esse's own genuine
+ * match on this exact query, confirmed via a live stress test, meaning
+ * any threshold low enough to accept the real case also accepts these
+ * false ones. The title-block + matchLeavesRealLeftover combination is
+ * the only approach tested that resolves the genuine repro AND correctly
+ * rejects both false positives -- see gate-closed-domino-false-positive-
+ * not-a-chair and gate-closed-aria-false-positive-no-gambe-variant below.
  */
 
 import { CatalogChat, ChatResult } from '../server/catalogChat';
@@ -262,6 +321,52 @@ const OVERRIDE_GATE_CASES: OverrideGateCase[] = [
     expectGateOpen: false,
     note: 'Safety control mirroring guard-fuzzy-typo-tolerance-not-unbounded above: no competing name match, but the leftover word is genuinely unrelated to Esse\'s own vocabulary (not a bounded typo of it either) -- the gate must stay closed.',
   },
+  {
+    id: 'gate-bare-category-noun-repro-fires-and-resolves-to-esse',
+    brand: 'Pianca',
+    query: 'give for sedia con gambe',
+    anchor: 'Esse',
+    expectGateOpen: true,
+    expectedProductName: 'Esse',
+    expectMinRows: 1,
+    note: 'Exact reported repro, a DIFFERENT failure shape from the Gamma case above: right after an Esse turn, this silently resolved to "Cora" (an unrelated product whose own real phrase is verbatim "Sedia con gambe") via catalogChatRoute.ts\'s brand-wide findByVariantPhrase pre-check, which has no concept of lastProduct at all and ran BEFORE this gate ever got a chance to fire. Also exposed a second, independent bug once the gate was moved earlier: matchProducts("give for sedia con gambe") returns a nonzero score for "Levante Out (Sedia)"/"Maestrale (Sedia)" purely because "sedia" is a literal substring of their own parenthetical category qualifier -- a WEAK match that explains none of the query\'s real content ("con gambe") -- so the OLD strict `matchProducts().length === 0` guard blocked the gate even after queryOnlySpecifiesAnchorProductDetails was fixed to recognize "sedia" via Esse\'s own page-title furniture-type word (getAnchorTitleBlock). Needs BOTH fixes at once: the route-level reordering (findByVariantPhrase no longer runs before this gate) AND matchLeavesRealLeftover distinguishing this weak echo from a genuine competing match.',
+  },
+  {
+    id: 'gate-closed-domino-false-positive-not-a-chair',
+    brand: 'Pianca',
+    query: 'give for sedia con gambe',
+    anchor: 'Domino',
+    expectGateOpen: false,
+    note: 'False-positive guard for the fix above: Domino is a real Pianca product with its own "con gambe" vocabulary ("Scrittoio autoportante con gambe metalliche" -- a writing desk, not a chair), so a flat lowered similarity threshold (the alternative fix considered and rejected) would have wrongly validated it here too (confirmed live: scored identically, 24, to Esse\'s own genuine match on this exact query). The title-block check must correctly reject it -- Domino\'s own page title says "Panche" (benches), never "sedia" -- so the gate stays closed and this falls through to the same brand-wide "Cora" result the no-anchor case gets, not a false "Domino" answer.',
+  },
+  {
+    id: 'gate-closed-aria-false-positive-no-gambe-variant',
+    brand: 'Pianca',
+    query: 'give for sedia con gambe',
+    anchor: 'Aria',
+    expectGateOpen: false,
+    note: 'Second false-positive guard: Aria genuinely IS a "Sedia" (its own page title confirms it, unlike Domino), so the title-block exemption alone would wrongly open this gate -- but Aria has no "con gambe" variant at all (its own real phrase is "Sedia con tappetino di seduta", a fixed-leg design with an optional seat mat), so "gambe" remains real, unexplained leftover even after "sedia" is exempted. Confirms the fix only exempts the ONE category-noun word, never bypasses the requirement that every OTHER real word still be explained by the anchor\'s own actual vocabulary.',
+  },
+  {
+    id: 'gate-alunna-different-category-phrase-same-mechanism',
+    brand: 'Pianca',
+    query: 'give for sedia con braccioli',
+    anchor: 'Alunna',
+    expectGateOpen: true,
+    expectedProductName: 'Alunna',
+    expectMinRows: 1,
+    note: 'Batch coverage across a different Pianca product/phrase pair, same bug family: standalone (no anchor) this phrase genuinely ties across 4 real products (Elide/Alunna/Inari (Sedie)/Orchestra), so an Alunna anchor must resolve it to Alunna specifically rather than defaulting to a catalog-wide tie or a different sibling.',
+  },
+  {
+    id: 'gate-seida-real-tie-resolved-by-anchor',
+    brand: 'Pianca',
+    query: 'give for sedia con seduta imbottita',
+    anchor: 'Seida',
+    expectGateOpen: true,
+    expectedProductName: 'Seida',
+    expectMinRows: 1,
+    note: 'Batch coverage: this exact phrase is a genuine verbatim tie between Lina and Seida with no anchor (confirmed elsewhere: findByVariantPhrase correctly returns clarify_product for it) -- a Seida anchor must resolve the tie in Seida\'s favor instead of still asking the user to disambiguate between two products when one was already established.',
+  },
 ];
 
 function callAnswer(brand: string, query: string, lastProduct: string | null = null): ChatResult {
@@ -271,9 +376,14 @@ function callAnswer(brand: string, query: string, lastProduct: string | null = n
 function evalOverrideGate(brand: string, query: string, anchor: string): boolean {
   const cc = getCc(brand);
   const namesOwnProduct = cc.detectNamedProductsInText(query).length > 0;
-  const noCompetingMatch = cc.matchProducts(query).length === 0;
+  // Mirrors catalogChatRoute.ts's actual gate condition (updated
+  // 2026-09-07, see the "sedia con gambe" cases below) -- NOT a bare
+  // `matchProducts(query).length === 0` any more: that was too strict,
+  // since a WEAK/coincidental match (matchLeavesRealLeftover === true)
+  // must not block the override, only a genuine one should.
+  const noGenuineCompetingMatch = !cc.matchProducts(query).some(m => !cc.matchLeavesRealLeftover(query, m.name));
   const vocabExplained = cc.queryOnlySpecifiesAnchorProductDetails(query, anchor);
-  return !namesOwnProduct && noCompetingMatch && vocabExplained;
+  return !namesOwnProduct && noGenuineCompetingMatch && vocabExplained;
 }
 
 function main() {
