@@ -134,6 +134,41 @@ export function normalize(s: string | null | undefined): string {
     .trim();
 }
 
+/** True if `phrase` has an unmatched "(" or ")" -- the ONE noise signal
+ * proven safe enough to actually DELETE data over (unlike
+ * isIndexableVariantPhrase's own broader noise checks just below, which
+ * only ever decide whether to INDEX a phrase for fuzzy search -- a
+ * reversible, low-stakes call where excluding a real value just means it
+ * doesn't get an extra search path). Deleting a raw variant_context/
+ * model_variant field value is much higher-stakes: confirmed live (this
+ * exact function originally also checked for a leading digit, mirroring
+ * isIndexableVariantPhrase) that Ditre's own real model_variant values
+ * -- "2-er sofa", "3-er maxi sofa", "1-er base element", dozens more --
+ * ALSO start with a digit, so that check alone would have silently
+ * destroyed genuine, price-distinguishing data for an entire brand
+ * (caught by check_ditre_matching.ts: 27 of 48 cases failed). A
+ * catalog-wide scan across all 6 brands' variant_context/model_variant
+ * values found ZERO real values with unbalanced parens -- every one of
+ * the 6 flagged values (Pianca "Frassino Lino)", "Laccato e Vetro
+ * Marmo)", "Marmo)", "di schienale di larghezza maggiore)"; Varaschini's
+ * 2 Belt/Belt Air fragments) is a genuine truncated-note artifact, same
+ * shape as the Soffio fisso repro this was built for. Deliberately
+ * narrower than the original attempt -- a leading-digit/short-length/
+ * duplicated-segment check was tried and rejected after each turned up
+ * real false positives somewhere in the catalog (Ditre's "2-er sofa",
+ * Ditre's own real "H1"-"H5"/"USB"/"BOX" short codes, Bonaldo's bare-
+ * number sizes). Doesn't catch Pianca Forma's own "0        R" (a
+ * leaked radius-dimension diagram callout, balanced-parens by
+ * construction) -- left as a known, disclosed, low-severity cosmetic
+ * gap rather than risk a repeat of the Ditre regression by widening
+ * this again without equally exhaustive verification. */
+function isUnbalancedParenFragment(phrase: string): boolean {
+  const stripped = phrase.trim();
+  const openParens = (stripped.match(/\(/g) || []).length;
+  const closeParens = (stripped.match(/\)/g) || []).length;
+  return openParens !== closeParens;
+}
+
 /** Formats a whole number with '.' as the thousands separator, matching
  * this catalog's Italian number format (e.g. 1884 -> "1.884"). Deliberately
  * NOT using toLocaleString('it-IT') -- verified that silently fails to
@@ -801,6 +836,22 @@ export class CatalogChat {
   constructor(private dataDir: string) {
     this.catalogIndex = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog_index.json'), 'utf-8'));
     this.prices = JSON.parse(fs.readFileSync(path.join(dataDir, 'prices.json'), 'utf-8'));
+    // Sanitize known-noise (unbalanced-paren) variant_context/model_variant
+    // values ONCE here, at load time -- see isUnbalancedParenFragment's own
+    // doc comment for why this is deliberately the ONLY noise signal
+    // trusted for outright deletion, and the real Pianca Soffio fisso
+    // repro (plus the Ditre regression a broader first attempt caused)
+    // this reflects. Every downstream consumer of `this.prices` (message-
+    // building below, the client's own price-grid category headers via
+    // the API response, variantPhraseIndex) reads the SAME corrected
+    // value this way, instead of each needing its own copy of this
+    // filter. Price/size/code/fabric_tier are never touched -- only the
+    // two label fields, and only when they have a literal unmatched
+    // paren.
+    for (const r of this.prices) {
+      if (r.variant_context && isUnbalancedParenFragment(r.variant_context)) r.variant_context = null;
+      if (r.model_variant && isUnbalancedParenFragment(r.model_variant)) r.model_variant = null;
+    }
     this.productNames = [...new Set(this.catalogIndex.map(p => p.product_name))];
     this.realTierPhrases = [...new Set(this.prices.map(r => r.fabric_tier).filter((t): t is string => !!t))]
       .sort((a, b) => normalize(b).length - normalize(a).length);
@@ -869,9 +920,7 @@ export class CatalogChat {
     const stripped = phrase.trim();
     if (!stripped) return false;
     if (/^-?\d/.test(stripped)) return false; // leading dimension/diagram-callout number
-    const openParens = (stripped.match(/\(/g) || []).length;
-    const closeParens = (stripped.match(/\)/g) || []).length;
-    if (openParens !== closeParens) return false; // truncated table-cell fragment
+    if (isUnbalancedParenFragment(stripped)) return false; // truncated table-cell fragment
     const segs = stripped.split(/ {2,}/).filter(Boolean);
     if (segs.length >= 2 && new Set(segs).size === 1) return false; // mangled duplicated column header
     const words = tokenizeLoose(stripped);
