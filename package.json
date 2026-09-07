@@ -37,7 +37,8 @@
     "check-variant-phrase-fallback": "tsx App/regression/check_variant_phrase_fallback.ts",
     "check-anchor-tie-break": "tsx App/regression/check_anchor_tie_break.ts",
     "check-variant-label-noise-filter": "tsx App/regression/check_variant_label_noise_filter.ts",
-    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label && npm run check-pianca-size && npm run check-orphaned-flags && npm run check-ditre-matching && npm run check-anchor-followup-vocab && npm run check-pianca-known-gap-shapes && npm run check-pianca-size-collision && npm run check-cross-brand-size-collision && npm run check-compound-size-query && npm run check-null-size-price-grid && npm run check-variant-phrase-fallback && npm run check-anchor-tie-break && npm run check-variant-label-noise-filter",
+    "check-variant-display-name-conflation": "tsx App/regression/check_variant_display_name_conflation.ts",
+    "regression:full": "npm run regression && npm run check-images && npm run check-coverage && npm run stress-v2 && npm run check-multi-product-isolation && npm run check-tier-isolation-stress && npm run check-tier-label && npm run check-pianca-size && npm run check-orphaned-flags && npm run check-ditre-matching && npm run check-anchor-followup-vocab && npm run check-pianca-known-gap-shapes && npm run check-pianca-size-collision && npm run check-cross-brand-size-collision && npm run check-compound-size-query && npm run check-null-size-price-grid && npm run check-variant-phrase-fallback && npm run check-anchor-tie-break && npm run check-variant-label-noise-filter && npm run check-variant-display-name-conflation",
     "token-analysis": "tsx App/regression/token_analysis.ts"
   }
 }

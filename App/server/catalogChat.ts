@@ -4168,8 +4168,30 @@ export class CatalogChat {
 
     // Multiple non-conflicting rows remain (e.g. size given but not tier).
     const remainingVariants = [...new Set(rows.map(r => r.model_variant).filter((x): x is string => !!x))];
+    // Only treat this as "narrowed to ONE variant" when EVERY remaining
+    // row actually carries it -- `remainingVariants` itself silently
+    // drops null-model_variant rows via its own `.filter(!!x)`, so a
+    // product with a genuine mix (some rows have no model_variant at all
+    // -- a normal, common shape for the plain base-structure price,
+    // e.g. Pianca Naan/Gamma's "rivestimento" upholstery add-on existing
+    // ALONGSIDE null-variant base-structure rows) looked identical to a
+    // real single-variant narrowing, both reducing to exactly one
+    // distinct value. Confirmed real and not narrow to one product: a
+    // live sweep found this exact shape in 22 Pianca + 6 Bolzan + 3
+    // Bonaldo + 7 Cattelan products. The underlying `rows` returned to
+    // the caller was always complete and correct either way (this only
+    // ever affected the summary MESSAGE text) -- e.g. "Naan price"
+    // replied "Here's the full price list for 'Naan (rivestimento)'"
+    // while `matches` already correctly included both the rivestimento
+    // AND the null-variant base-structure rows. Used below for BOTH the
+    // displayName branch and the addonGridNote just after it -- the
+    // addon-surcharge note has the identical conflation risk (a mixed
+    // null+addon-variant row set would otherwise get mislabeled as "these
+    // are ALL add-on surcharge prices" too).
+    const allRowsShareTheVariant = remainingVariants.length === 1
+      && rows.every(r => r.model_variant === remainingVariants[0]);
     let displayName: string;
-    if (remainingVariants.length === 1) {
+    if (allRowsShareTheVariant) {
       // Some catalogs' model_variant already repeats the product name
       // (e.g. Bolzan's "Cameo Maison h.7"), where showing it alone is
       // strictly more informative than the bare product name. Others
@@ -4202,7 +4224,7 @@ export class CatalogChat {
     // (not the main structure), make that explicit -- a full grid of
     // surcharge values with no context reads exactly like a real price
     // list otherwise, which is the confusing part.
-    const addonGridNote = (remainingVariants.length === 1 && isAddonVariant(remainingVariants[0]))
+    const addonGridNote = (allRowsShareTheVariant && isAddonVariant(remainingVariants[0]))
       ? ` Note: these are add-on surcharge prices for "${remainingVariants[0]}", meant to be added to the base structure's price, not a standalone product price.`
       : '';
 
