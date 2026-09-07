@@ -95,6 +95,14 @@ export function createInitialBrandSession(brand: string): BrandSession {
   };
 }
 
+// Shared with the multiple_options inline table's own `matches.length <= 6`
+// cutoff (MessageBubble below) and PriceGridSingleProduct's own
+// VISIBLE_COUNT -- one constant each, referenced from both the "is this
+// response already fully shown?" check and the actual render cutoff, so a
+// future change to either can't silently desync from the other.
+const MULTIPLE_OPTIONS_VISIBLE_COUNT = 6;
+const CATEGORY_VISIBLE_COUNT = 2;
+
 const STATUS_STYLES: Record<string, { badge: string; color: string; icon?: 'warn' | 'help' }> = {
   ok: { badge: 'VERIFIED PRICE', color: 'text-[var(--riso-yellow)] border-[var(--riso-yellow)]' },
   full_price_grid: { badge: 'FULL PRICE LIST', color: 'text-[var(--riso-yellow)] border-[var(--riso-yellow)]' },
@@ -366,6 +374,35 @@ function MessageBubble({ message, onShowImages, onSelectCandidate }: {
   const style = status ? STATUS_STYLES[status] : null;
   const hasImages = (message.result?.image_urls?.length ?? 0) > 0;
 
+  // "SEE FULL PRICE": a resend-as-new-message button (reuses the exact
+  // candidate-chip click-to-send path via onSelectCandidate/sendMessage,
+  // no new backend logic) for multiple_options responses with more rows
+  // than the inline table (below) renders -- table caps at
+  // MULTIPLE_OPTIONS_VISIBLE_COUNT, so a bigger result shows only the
+  // summary message text, and a resend genuinely surfaces data this
+  // bubble doesn't have yet.
+  //
+  // Deliberately NOT shown for full_price_grid, even when its own variant
+  // groups exceed PriceGridSingleProduct's CATEGORY_VISIBLE_COUNT and the
+  // "SEE N MORE CATEGORIES" toggle is collapsed -- confirmed via a live
+  // click-test that this is a real, not just a "same behavior" trap: a
+  // full_price_grid response's `matches` array already contains every
+  // row (see PriceGridSingleProduct's own comment -- "content is already
+  // rendered (just visually clipped via max-height)"), so re-sending
+  // "give all X prices" would only ever fetch the IDENTICAL data back --
+  // never more than what's already in the message, unlike the
+  // multiple_options case above where the row data genuinely isn't in
+  // the response at all. Showing a button whose click can't change
+  // anything is confusing, not a harmless extra affordance.
+  // Scoped to a single resolved product (product_name) on purpose --
+  // multi_product spans several products with no one target to re-query.
+  const matches = message.result?.matches ?? [];
+  const multipleOptionsOverflow = status === 'multiple_options' && matches.length > MULTIPLE_OPTIONS_VISIBLE_COUNT;
+  const seeFullPriceQuery = message.result?.product_name
+    ? `give all ${message.result.product_name} prices`
+    : null;
+  const showSeeFullPrice = !!seeFullPriceQuery && multipleOptionsOverflow;
+
   function recallImages() {
     if (!message.result || !onShowImages) return;
     const variants = [...new Set((message.result.matches || []).map(m => m.model_variant).filter(Boolean))] as string[];
@@ -396,6 +433,14 @@ function MessageBubble({ message, onShowImages, onSelectCandidate }: {
               VIEW PAGE
             </button>
           )}
+          {showSeeFullPrice && (
+            <button
+              onClick={() => onSelectCandidate?.(seeFullPriceQuery!)}
+              className="inline-flex items-center gap-1.5 font-data text-[10px] tracking-widest px-2.5 py-1 border border-stone-600 text-stone-400 hover:border-[var(--riso-yellow)] hover:text-[var(--riso-yellow)] transition-colors"
+            >
+              SEE FULL PRICE
+            </button>
+          )}
         </div>
       )}
 
@@ -413,7 +458,7 @@ function MessageBubble({ message, onShowImages, onSelectCandidate }: {
         </div>
       )}
 
-      {message.result?.matches && message.result.matches.length > 1 && message.result.matches.length <= 6
+      {message.result?.matches && message.result.matches.length > 1 && message.result.matches.length <= MULTIPLE_OPTIONS_VISIBLE_COUNT
         && message.result.status !== 'full_price_grid' && message.result.status !== 'multi_product' && (
         <div className="border-2 border-[var(--riso-line)] overflow-hidden">
           <table className="w-full font-data text-xs">
@@ -649,11 +694,10 @@ function PriceGridSingleProduct({ rows }: { rows: PriceRow[] }) {
   const [expanded, setExpanded] = useState(false);
   const groups = buildVariantGroups(rows);
   const showHeader = groups.length > 1;
-  const VISIBLE_COUNT = 2;
-  const isBulky = groups.length > VISIBLE_COUNT;
-  const hiddenCount = groups.length - VISIBLE_COUNT;
-  const visibleGroups = groups.slice(0, VISIBLE_COUNT);
-  const restGroups = groups.slice(VISIBLE_COUNT);
+  const isBulky = groups.length > CATEGORY_VISIBLE_COUNT;
+  const hiddenCount = groups.length - CATEGORY_VISIBLE_COUNT;
+  const visibleGroups = groups.slice(0, CATEGORY_VISIBLE_COUNT);
+  const restGroups = groups.slice(CATEGORY_VISIBLE_COUNT);
 
   return (
     <div className="space-y-4">
