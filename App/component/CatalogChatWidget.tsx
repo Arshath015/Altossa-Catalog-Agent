@@ -345,6 +345,90 @@ function ChatInput({ brand, loading, onSend }: { brand: string; loading: boolean
   );
 }
 
+// Chip label max length before truncation -- long descriptive category/note
+// text (e.g. Bolzan Ceylon's "Comprensivo di rete ortopedica. Non
+// disponibile per rete cliente o altre reti.") would otherwise blow out the
+// chip row's layout. The FULL text is still what gets sent on click and
+// shown via the `title` tooltip -- only the visible label is shortened.
+const CHIP_LABEL_MAX = 40;
+function chipLabel(value: string): string {
+  return value.length > CHIP_LABEL_MAX ? `${value.slice(0, CHIP_LABEL_MAX - 1)}…` : value;
+}
+
+function ChipRow({ label, values, productName, onSelect }: {
+  label: string;
+  values: string[];
+  productName: string;
+  onSelect?: (query: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="font-data text-[10px] tracking-widest text-stone-500 uppercase">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {values.map(v => (
+          <button
+            key={v}
+            title={v}
+            onClick={() => onSelect?.(`give ${productName} ${v} price`)}
+            className="font-data text-xs px-2.5 py-1 border border-stone-600 text-stone-300 hover:border-[var(--riso-yellow)] hover:text-[var(--riso-yellow)] transition-colors"
+          >
+            {chipLabel(v)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The chip-grouping redesign for `multiple_options` responses -- replaces
+ * having to parse the dense inline paragraph (sizes/tiers/categories all
+ * comma-joined into running text) by re-deriving the same three dimensions
+ * from `matches` (the identical data the paragraph was already built from)
+ * and rendering each as its own labeled row of clickable chips. Clicking
+ * narrows the query exactly like a candidate chip or SEE FULL PRICE does --
+ * same onSelectCandidate -> sendMessage path, no new backend logic.
+ *
+ * Every row is independently optional: a dimension with fewer than 2
+ * distinct values isn't worth a row of chips (nothing to narrow between),
+ * so it's simply omitted -- confirmed live across Bahia (1 size), AMSTERDAM
+ * (0 tiers), and Elide (1 tier) that this leaves a clean, uncluttered
+ * result rather than an empty/degenerate row.
+ *
+ * Deliberately additive: the existing message text and inline table above
+ * are untouched, so a response shape this doesn't fully suit still shows
+ * everything it did before -- this can only ever add chips, never remove
+ * information. */
+function OptionChips({ result, onSelectCandidate }: {
+  result: ChatResult;
+  onSelectCandidate?: (candidate: string) => void;
+}) {
+  const productName = result.product_name;
+  const matches = result.matches;
+  if (!productName || !matches || matches.length < 2) return null;
+
+  const sizes = [...new Set(matches.map(m => m.size).filter((s): s is string => !!s))];
+  const tiers = [...new Set(matches.map(m => m.fabric_tier).filter((t): t is string => !!t))];
+  const categories = buildVariantGroups(matches)
+    .map(g => g.header)
+    .filter(h => h && h !== '—');
+  const uniqueCategories = [...new Set(categories)];
+
+  const rows: { label: string; values: string[] }[] = [];
+  if (sizes.length > 1) rows.push({ label: 'Sizes', values: sizes });
+  if (tiers.length > 1) rows.push({ label: tierColumnHeader(matches), values: tiers });
+  if (uniqueCategories.length > 1) rows.push({ label: 'Categories', values: uniqueCategories });
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="space-y-2.5">
+      {rows.map(r => (
+        <ChipRow key={r.label} label={r.label} values={r.values} productName={productName} onSelect={onSelectCandidate} />
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({ message, onShowImages, onSelectCandidate }: {
   message: ChatMessage;
   onShowImages?: (data: ImagePanelData) => void;
@@ -442,6 +526,10 @@ function MessageBubble({ message, onShowImages, onSelectCandidate }: {
             </button>
           )}
         </div>
+      )}
+
+      {message.result?.status === 'multiple_options' && (
+        <OptionChips result={message.result} onSelectCandidate={onSelectCandidate} />
       )}
 
       {message.result?.candidates && message.result.candidates.length > 0 && (
