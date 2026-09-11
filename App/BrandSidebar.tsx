@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { useResizableWidth } from './useResizableWidth';
 
 interface Brand {
@@ -15,6 +15,24 @@ const BRANDS: Brand[] = [
   { name: 'Varaschini', status: 'ready', productCount: 1294 },
   { name: 'Ditre Italia', status: 'ready', productCount: 197 },
   { name: 'Pianca', status: 'ready', productCount: 499 },
+  { name: 'Bodema', status: 'soon', productCount: 0 },
+  { name: 'Bontempi', status: 'soon', productCount: 0 },
+  { name: 'Calligaris', status: 'soon', productCount: 0 },
+  { name: 'Desiree', status: 'soon', productCount: 0 },
+  { name: 'Eforma', status: 'soon', productCount: 0 },
+  { name: 'Italia Lounge', status: 'soon', productCount: 0 },
+  { name: 'Kartell', status: 'soon', productCount: 0 },
+  { name: 'Magis', status: 'soon', productCount: 0 },
+  { name: 'Midji', status: 'soon', productCount: 0 },
+  { name: 'Miniforms', status: 'soon', productCount: 0 },
+  { name: 'Mogg', status: 'soon', productCount: 0 },
+  { name: 'Nicoline Salotti', status: 'soon', productCount: 0 },
+  { name: 'Nube Italia', status: 'soon', productCount: 0 },
+  { name: 'Pedrali', status: 'soon', productCount: 0 },
+  { name: 'Riflessi', status: 'soon', productCount: 0 },
+  { name: 'Saba', status: 'soon', productCount: 0 },
+  { name: 'Tacchini', status: 'soon', productCount: 0 },
+  { name: 'Twils', status: 'soon', productCount: 0 },
 ];
 
 const DEFAULT_WIDTH = 224; // matches the old fixed w-56
@@ -73,7 +91,12 @@ export default function BrandSidebar({
                         : 'border-[var(--riso-line)] text-stone-500 cursor-not-allowed opacity-60'
                     }`}
                 >
-                  {b.name}
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate">{b.name}</span>
+                    {!isReady && (
+                      <Lock size={12} className="shrink-0 text-stone-500" aria-label="Locked brand" />
+                    )}
+                  </span>
                   {!isReady && (
                     <span className="absolute -top-2 -right-2 rotate-[-8deg] bg-[var(--riso-yellow)] text-[#131217] font-data text-[9px] font-semibold px-1.5 py-0.5 border border-[#131217] tracking-wide">
                       SOON
