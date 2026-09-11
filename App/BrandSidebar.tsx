@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useResizableWidth } from './useResizableWidth';
 
 interface Brand {
@@ -74,7 +74,7 @@ export default function BrandSidebar({
             </div>
           </div>
 
-          <nav className="flex-1 py-4 px-3 space-y-1.5">
+          <nav className="flex-1 min-h-0 py-4 px-3 space-y-1.5 overflow-y-auto">
             {BRANDS.map((b) => {
               const isSelected = b.name === selected;
               const isReady = b.status === 'ready';
@@ -91,12 +91,7 @@ export default function BrandSidebar({
                         : 'border-[var(--riso-line)] text-stone-500 cursor-not-allowed opacity-60'
                     }`}
                 >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="truncate">{b.name}</span>
-                    {!isReady && (
-                      <Lock size={12} className="shrink-0 text-stone-500" aria-label="Locked brand" />
-                    )}
-                  </span>
+                  <span className="block truncate">{b.name}</span>
                   {!isReady && (
                     <span className="absolute -top-2 -right-2 rotate-[-8deg] bg-[var(--riso-yellow)] text-[#131217] font-data text-[9px] font-semibold px-1.5 py-0.5 border border-[#131217] tracking-wide">
                       SOON
