@@ -442,3 +442,10 @@ trusting live query results against freshly regenerated data.
 
 ---
 **Last updated:** 2026-09-05
+
+
+## Requirements
+
+```
+pip install -r requirements.txt
+```
