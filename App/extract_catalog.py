@@ -1781,6 +1781,200 @@ def compute_ranges(entries: list[tuple[str, int]], last_printed_page_guess: int)
     return ranges
 
 
+def compute_ranges_tacchini(entries: list[tuple[str, int]], last_printed_page: int) -> list[dict]:
+    """Tacchini-specific range computation -- NOT compute_ranges, deliberately.
+    parse_index_tacchini's documented left/right simplification (every
+    product found on a given PDF page gets that page's own single, lower
+    printed-page number, regardless of which half it's really on) routinely
+    produces multiple entries that TIE on the same printed_start (e.g.
+    Additional System and Butter both -> 14; Clockwise, Colombo, and 1953
+    all -> 112). Feeding ties straight into the generic compute_ranges
+    would be a real bug, not just imprecision: its "end = NEXT entry's
+    start - 1" logic only bounds correctly when every entry's start is
+    distinct -- confirmed directly: with Butter tied at the same start as
+    Additional System, compute_ranges would give Additional System a
+    correctly-squeezed 1-page range, but then give BUTTER an end of 29
+    (Chill-Out's start - 1), silently swallowing Isola Bella/Julep/
+    Le Mura/every other product in between into Butter's own range.
+
+    This groups by DISTINCT printed_start instead: every entry sharing a
+    printed page gets end = (next DISTINCT page's start - 1), so a tied
+    group's shared page never bleeds into a later, unrelated product's
+    territory. All ties in a group end up pointing at the exact same
+    single pdf_page once page_map is applied (since Tacchini's true
+    per-product content always lives at PDF-page granularity anyway --
+    same precedent as Bolzan's "Bend-e Fabric" spanning printed 40-41
+    within one PDF page) -- their generated mini_pdf/images/text will
+    legitimately include each other's content too, which check_images.ts's
+    existing "legitimate shared-page image groups" handling already
+    expects and accepts (same mechanism other brands' same-page product
+    pairs already rely on), and parse_prices.py's Tacchini format scopes
+    its row extraction to each product's own name/codes within that
+    shared text regardless.
+    """
+    distinct = sorted(set(start for _, start in entries))
+    next_distinct_start = {
+        pg: (distinct[i + 1] if i + 1 < len(distinct) else None)
+        for i, pg in enumerate(distinct)
+    }
+    ranges = []
+    for name, start in entries:
+        nxt = next_distinct_start[start]
+        end = (nxt - 1) if nxt is not None else last_printed_page
+        ranges.append({"name": name, "printed_start": start, "printed_end": max(start, end)})
+    return ranges
+
+
+# ---------------------------------------------------------------------------
+# Tacchini -- InDesign 2-up spread export (confirmed via rendered page image:
+# 2481x1595px at 150dpi = 16.5"x10.6", double A4 width -- one PDF page holds
+# BOTH a left and a right printed page, same structural family as Bolzan,
+# just a different footer text and offset formula). Footer is
+# "<N>  2026 EUR  <Category>" printed once per half-page (so twice per PDF
+# page), with no shared "listino" word to anchor on like Bolzan's own
+# footer_re, hence its own page-map builder below.
+#
+# Unlike every other brand here, there is no dedicated photographic index
+# page range handed to this script -- Tacchini's own "Product index A-Z"
+# is a dense 2-column, uneven-wrap, no-designer TOC that 3 independent
+# programmatic parses of (during the Step 1 structural read) converged to
+# only a ~101-111 product estimate, never an exact count (see
+# tacchini_brand_state memory for the full cross-check). Rather than trust
+# that fragile transcription as ground truth, parse_index_tacchini scans
+# every content page directly for each product's own repeating page-header
+# signature ("<Name>  Design: <Designer>[, <Year>]"), which is printed on
+# EVERY page of that product's own section (confirmed: Clockwise, Colombo,
+# 1953, Butter all repeat it on each of their pages) -- the first PDF page
+# a name is seen on IS its real start page, by construction, with no
+# separate index transcription step to get wrong.
+#
+# Known simplification, documented rather than silently assumed: because
+# a product's real content always lives at PDF-PAGE granularity anyway
+# (mini_pdf/images/text are generated per PDF page, never per half-page --
+# same granularity every other 2-up brand here already has, e.g. Bolzan's
+# "Bend-e Fabric" spans printed 40-41 within a single PDF page 21), this
+# assigns a product's printed_page_start as the LEFT footer number of
+# whichever PDF page its heading first appears on, without trying to
+# determine whether the heading itself sits in the left or right column --
+# reading-order-based left/right text disambiguation was tried during the
+# Step 1 structural read and found unreliable on this catalog's extremely
+# dense interleaved 2-column price tables (adjacent columns' tokens share
+# text lines in -layout output). This only affects the cosmetic
+# printed_page_start number used for human citation -- NOT which PDF page
+# gets extracted (identical either way), and NOT any price data.
+def build_tacchini_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Read every Tacchini page's footer ('<N>  2026 EUR  <Category>',
+    printed once per half-page) to map printed page numbers -> real PDF
+    pages. Falls back to tacchini_printed_to_pdf_fallback's formula for any
+    page where neither footer number could be read."""
+    page_map: dict[int, int] = {}
+    footer_re = re.compile(r"(\d{1,4})\s+2026\s+EUR\b")
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        for m in footer_re.finditer(text):
+            page_map[int(m.group(1))] = pg
+    return page_map
+
+
+def tacchini_printed_to_pdf_fallback(printed: int) -> int:
+    """Formula fallback (2 printed pages per PDF spread), verified against
+    4 separate confirmed points during the Step 1 structural read: PDF
+    page 3 -> printed 2/3, PDF page 4 -> printed 4/5, PDF page 9 -> printed
+    14/15, PDF page 58 -> printed 112/113."""
+    return (printed + 4) // 2 if printed % 2 == 0 else (printed + 3) // 2
+
+
+_TACCHINI_DESIGN_LINE_RE = re.compile(
+    # En dash (U+2013) included deliberately, alongside the plain ASCII
+    # hyphen: confirmed via direct codepoint inspection that "Pi-Dou"'s own
+    # product-page heading actually prints an en dash ("Pi–Dou"), not
+    # a plain hyphen -- without it in the allowed set, the regex (being
+    # non-greedy) backtracked past the unmatched character and silently
+    # captured only the suffix after it ("Pi–Dou" -> "Dou", losing
+    # "Pi" entirely). (A similar-looking issue suspected in "Reversível"
+    # turned out to be a false alarm on inspection -- its í is a correctly
+    # extracted U+00ED, already covered by the À-ÿ range below; what looked
+    # like corruption was only this terminal's own display rendering of
+    # that character, not a real extraction defect.)
+    r"([A-Za-zÀ-ÿ&,.’′()0-9/\-– ]{2,45}?)\s{2,}Design:"
+)
+# Reference-only back-matter sections (confirmed during Step 1: Sales
+# Conditions pp.8-9, Notes pp.10-11, Fabrics and Leathers pp.178-179, plus
+# Cushions/Materials library/Care instructions) never carry a "Design:"
+# attribution line, so they're already naturally excluded by this scan --
+# nothing to filter out explicitly.
+_TACCHINI_NAME_JUNK = {"category", "categoria", "code", "codice", "price", "prezzo"}
+
+
+def parse_index_tacchini(pdf_path: str, total_pages: int) -> tuple[list[tuple[str, int]], int]:
+    """Scan every PDF page for Tacchini's repeating per-product page-header
+    signature ("<Name>  Design: ...") instead of transcribing the fragile
+    2-column front-matter index -- see this section's own module comment
+    above for why. Returns ((name, printed_start_page) pairs, last_printed_
+    page_with_a_product_heading) -- the second value lets
+    compute_ranges_tacchini bound the LAST product group at the true end
+    of real product content instead of either under-extending to just its
+    own start page or over-extending into the reference back-matter
+    (Fabrics and Leathers, Materials library, Care instructions, etc. --
+    none of which ever print a 'Design:' line, so they're already excluded
+    from `entries`, but a naive 'extend last entry to end of document'
+    rule, as compute_ranges itself uses, would still pull that whole
+    unpriced tail into the last real product's own catalog_index entry)."""
+    page_map = build_tacchini_page_map(pdf_path, total_pages)
+
+    def left_printed_number(pg: int) -> int:
+        # Of the (usually 2) printed numbers footer-mapped to this PDF
+        # page, the left/lower one -- mirrors this module's own documented
+        # simplification (always attribute a match to the page's LEFT
+        # printed number, see the section comment above).
+        candidates = [p for p, mapped in page_map.items() if mapped == pg]
+        return min(candidates) if candidates else (pg - 1) * 2 + 2  # formula inverse, rare fallback
+
+    first_seen: dict[str, int] = {}  # name -> pdf page first seen on
+    last_match_pdf_page = 1
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        for line in text.split("\n"):
+            for m in _TACCHINI_DESIGN_LINE_RE.finditer(line):
+                name = m.group(1).strip()
+                # Strip any leaked left-column text a right-column match
+                # accidentally swallowed (e.g. "Category: Daybed, Armchair,
+                # Ottoman                Butter" -- keep only the last
+                # capitalized word-group, which is always the real name
+                # immediately before "Design:").
+                if ":" in name:
+                    name = name.rsplit(":", 1)[-1].strip()
+                    # whatever remains after the last ':' may still have a
+                    # leaked word or two in front of the real name --
+                    # Category:-leak lines always leave the real name as
+                    # the LAST run of words, so re-split on 2+ spaces and
+                    # keep the last chunk.
+                    parts = re.split(r"\s{2,}", name)
+                    name = parts[-1].strip()
+                if not name or name.lower() in _TACCHINI_NAME_JUNK:
+                    continue
+                if len(name) > 45 or len(name) < 2:
+                    continue
+                if name not in first_seen:
+                    first_seen[name] = pg
+                last_match_pdf_page = max(last_match_pdf_page, pg)
+
+    entries = []
+    for name, pg in first_seen.items():
+        printed = left_printed_number(pg)
+        entries.append((name, printed))
+    entries.sort(key=lambda x: (x[1], x[0]))
+
+    # Upper bound for the last distinct-start group: the HIGHER of the two
+    # printed numbers footer-mapped to the last page any product heading
+    # was seen on (so a last product that's really on the RIGHT half isn't
+    # cut short at the left half's number).
+    last_page_candidates = [p for p, mapped in page_map.items() if mapped == last_match_pdf_page]
+    last_printed_page = max(last_page_candidates) if last_page_candidates else left_printed_number(last_match_pdf_page)
+
+    return entries, last_printed_page
+
+
 # ---------------------------------------------------------------------------
 # Varaschini (listino_2026_export.pdf) -- structurally unlike the other 3
 # brands: there is no per-PRODUCT photographic index at all. Instead there's
@@ -3148,7 +3342,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -3223,16 +3417,22 @@ def main():
         run_varaschini(pdf_path, args.brand, out_root)
         return
 
-    if not args.index_pages and not args.single_product and not args.manual_entries_file:
+    if (not args.index_pages and not args.single_product and not args.manual_entries_file
+            and args.style not in ("varaschini", "tacchini")):
         print("ERROR: --index-pages is required for --style "
-              f"{args.style!r} (only 'varaschini', --single-product, and "
-              "--manual-entries-file can omit it).")
+              f"{args.style!r} (only 'varaschini', 'tacchini', "
+              "--single-product, and --manual-entries-file can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
     total_pages = len(reader.pages)
 
-    if args.single_product:
+    if args.style == "tacchini":
+        print("[1/5] Scanning all pages for per-product 'Design:' headers "
+              "(no fixed index-page range -- see parse_index_tacchini's own "
+              "module comment)...")
+        entries, tacchini_last_printed_page = parse_index_tacchini(pdf_path, total_pages)
+    elif args.single_product:
         if args.style != "pianca":
             print("ERROR: --single-product is only supported for --style pianca.")
             sys.exit(1)
@@ -3279,7 +3479,10 @@ def main():
 
     print(f"[2/5] Reading footers on all {total_pages} PDF pages to map "
           f"printed page numbers -> real PDF pages...")
-    if args.style == "cattelan":
+    if args.style == "tacchini":
+        page_map = build_tacchini_page_map(pdf_path, total_pages)
+        page_fallback = tacchini_printed_to_pdf_fallback
+    elif args.style == "cattelan":
         page_map = build_offset_page_map(pdf_path, total_pages)
         page_fallback = build_offset_fallback(page_map)
     elif args.style == "bonaldo":
@@ -3316,8 +3519,11 @@ def main():
           f"had no readable footer and will use the fallback formula)")
 
     print("[3/5] Computing per-product page ranges...")
-    last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1] + 1
-    ranges = compute_ranges(entries, last_printed_page_guess)
+    if args.style == "tacchini":
+        ranges = compute_ranges_tacchini(entries, tacchini_last_printed_page)
+    else:
+        last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1] + 1
+        ranges = compute_ranges(entries, last_printed_page_guess)
     print(f"      -> NOTE: last product in the index ('{ranges[-1]['name']}') has been "
           f"extended to printed page {ranges[-1]['printed_end']} (end of document) "
           f"since there's no next entry to bound it. If it's actually a whole "

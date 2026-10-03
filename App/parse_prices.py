@@ -11006,6 +11006,538 @@ def parse_file_ditre(path, product_name, brand, all_headings=None, heading_text=
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Tacchini -- 3 confirmed price-table shapes (Step 1 structural read,
+# verified against rendered page images, not text alone):
+#   Shape A: fixed 11-tier letter grid (B, D, E, L, T/U, V, Z, L1, L2, L3,
+#     C.O. Fabric, C.O. Leather) under a "Rivestimento"/"Upholstery" header
+#     -- one row per tier per code. C.O. Leather routinely has no numeric
+#     price at all ("Price upon request") -- stored verbatim, never as 0
+#     or blank (see TACCHINI_NON_NUMERIC_PRICE_RE below).
+#   Shape B: named-finish multi-column grid under an "Informazioni" ->
+#     <finish name 1> <finish name 2> ... header row with NO separate
+#     "Prezzo"/"Price" column at all -- each finish name IS its own priced
+#     column, one row per code.
+#   Shape C: a single "Finitura"/"Categoria" + "Prezzo"/"Price" column
+#     pair -- one row per code (sometimes the SAME code repeats across
+#     multiple rows for different colorways, e.g. Anni's Yellow/Blue rug
+#     variants -- (code, fabric_tier) is the real row identity here, not
+#     code alone).
+#
+# Tacchini's own extreme 2-up density adds a problem no other brand here
+# has: a single printed line can legitimately belong to TWO DIFFERENT
+# PRODUCTS side by side (not just two tables for the SAME product, which
+# Bolzan's slice_chunk/split_points already handles) -- e.g. Clockwise and
+# Colombo share literal text lines on PDF page 58. Vertical scoping alone
+# (start at this product's own heading, end at the next DIFFERENT
+# product's heading -- same technique as parse_file_bonaldo) is not
+# enough; every line in range also needs a HORIZONTAL slice to the
+# character-column window between this product's own heading and its
+# nearest neighboring heading, in both directions. _tacchini_heading_
+# positions/_tacchini_row_window below build that.
+TACCHINI_TIER_LABELS = {
+    'b', 'd', 'e', 'l', 't/u', 'v', 'z', 'l1', 'l2', 'l3',
+    'c.o. fabric', 'c.o. leather',
+}
+# Confirmed via direct codepoint/page-image inspection (Step 1): a C.O.
+# Leather row routinely has no numeric price at all -- the literal text is
+# "Price upon request" (English) printed directly in the Prezzo column,
+# no separate Italian phrase line distinctly captured by -layout text.
+# Stored verbatim as price_eur -- see formatPriceDisplay in catalogChat.ts
+# for why a non-numeric, digit-free price_eur displays correctly without
+# a nonsensical "€" prefix.
+TACCHINI_PRICE_UPON_REQUEST = "Price upon request"
+
+
+def _tacchini_heading_positions(lines, all_headings):
+    """(line_idx, char_start, name) for every occurrence of a known
+    Tacchini product's own page-heading signature ("<Name>  Design: ...")
+    across the whole file. Longest names checked first so a short name
+    that's a PREFIX of a longer one (none confirmed among Tacchini's 111,
+    but defensive) can't steal a match that belongs to the longer one."""
+    sorted_headings = sorted(set(all_headings), key=len, reverse=True)
+    positions = []
+    for idx, line in enumerate(lines):
+        for name in sorted_headings:
+            m = re.search(re.escape(name) + r'\s{2,}Design:', line)
+            if m:
+                positions.append((idx, m.start(), name))
+    positions.sort()
+    return positions
+
+
+def _tacchini_row_window(path, product_name, brand, all_headings, heading_text):
+    """Returns (lines, page_of_line, sliced_lines, flags) where sliced_lines
+    is `lines` with every line OUTSIDE this product's own vertical+
+    horizontal window blanked to '', and every line INSIDE it cut down to
+    just this product's own character-column range. Shared by all 3 shape
+    parsers below so the window logic (the genuinely novel, highest-risk
+    part of this format) is verified exactly once, not reimplemented per
+    shape."""
+    heading_text = heading_text or product_name
+    all_headings = list(all_headings) if all_headings else [heading_text]
+    with open(path, encoding='utf-8') as f:
+        lines = f.read().split('\n')
+
+    page_of_line = [None] * len(lines)
+    current_page = None
+    for idx, ln in enumerate(lines):
+        m = re.match(r'^<<<PDFPAGE:(\d+)>>>$', ln.strip())
+        if m:
+            current_page = int(m.group(1))
+        page_of_line[idx] = current_page
+
+    positions = _tacchini_heading_positions(lines, all_headings)
+    flags = []
+    own_occurrences = [(idx, c) for idx, c, name in positions if name == heading_text]
+    if not own_occurrences:
+        flags.append((None, product_name, "own heading not found in its extracted text -- nothing parsed"))
+        return lines, page_of_line, [''] * len(lines), flags
+    other_occurrences = [(idx, c, name) for idx, c, name in positions if name != heading_text]
+
+    start_line, start_char = own_occurrences[0]
+    COL_THRESHOLD = 15  # same tolerance as the old cluster-merge distance
+
+    # Vertical end: next OTHER product's heading, after our own start, in
+    # roughly the SAME column as our own first occurrence (within
+    # COL_THRESHOLD chars) -- e.g. Colombo (char 175) ends at 1953's own
+    # start (also char 175), but a product in a visibly DIFFERENT column
+    # never ends our range, no matter how early its line number is.
+    #
+    # Deliberately compares against OTHER products only, never against a
+    # later repeat of OUR OWN heading -- confirmed real bug on Anni: its
+    # own heading reprints at char 0 on one later page and char 183 on
+    # another (this catalog's column layout isn't always identical across
+    # every page a product spans), and treating those as separate
+    # "columns" relative to the FIRST occurrence's char 30 wrongly chose a
+    # right_bound of 183, silently cutting the real Prezzo value (at
+    # char >= 183) off of every row.
+    end_line = len(lines)
+    for idx, c, name in other_occurrences:
+        if idx > start_line and abs(c - start_char) <= COL_THRESHOLD:
+            end_line = idx
+            break
+
+    # Horizontal bounds are computed PER PAGE, not once for the whole
+    # product -- confirmed necessary on Butter: a large enough product can
+    # occupy just the right column on its first page (sharing that page
+    # with Additional System) and then BOTH columns on later pages once
+    # it's the only thing left on the spread (two of its own module
+    # tables side by side) -- a single bound computed from the first
+    # occurrence either cut off the left-column content on those later
+    # pages (when fixed to the first page's own right-column start_char)
+    # or let unrelated content leak in (when left too permissive).
+    #
+    # Per page: if NO other product's heading appears on that page at
+    # all, our own content owns the whole page width (left=0, right=None)
+    # -- this is what correctly captures Butter's later both-columns
+    # pages. If another product DOES share the page, bound against the
+    # nearest other-heading char position on EITHER side of each of our
+    # own occurrences on that specific page (same "Codice word lands at
+    # the owning heading's own char position" logic as before, just
+    # scoped to one page at a time instead of the whole product range).
+    # Page-based, not line-range-based -- same reasoning as the earlier
+    # fix this replaced: a genuine horizontal neighbor (Clockwise, line 6)
+    # can sit on an earlier line than our own start_line (Colombo's start
+    # is line 7), so restricting to start_line<=idx<end_line excludes it
+    # from page_other entirely, making page 58 look neighbor-free and
+    # handing Colombo an unrestricted window that re-admits all of
+    # Clockwise's content -- confirmed as a real regression the first
+    # version of this per-page rewrite reintroduced.
+    window_pages = {page_of_line[idx] for idx in range(start_line, end_line) if page_of_line[idx] is not None}
+    page_other = {}
+    page_own = {}
+    for idx, c, name in positions:
+        pg = page_of_line[idx]
+        if pg not in window_pages:
+            continue
+        if name == heading_text:
+            if start_line <= idx < end_line:
+                page_own.setdefault(pg, []).append(c)
+        else:
+            page_other.setdefault(pg, []).append(c)
+
+    def windows_for_page(pg):
+        """Returns a sorted list of (left, right) windows covering all of
+        THIS product's own column(s) on page `pg` (usually one, sometimes
+        two when the product fills both columns on different occasions)."""
+        others = sorted(page_other.get(pg, []))
+        owns = sorted(page_own.get(pg, []))
+        if not others:
+            return [(0, None)]
+        result = []
+        for oc in owns:
+            left = oc
+            right = min((x for x in others if x > oc), default=None)
+            result.append((left, right))
+        return result or [(0, None)]
+
+    sliced = []
+    for idx, ln in enumerate(lines):
+        if start_line <= idx < end_line:
+            pg = page_of_line[idx]
+            wins = windows_for_page(pg)
+            parts = [ln[l:(r if r is not None else len(ln))] for l, r in wins if l < len(ln)]
+            sliced.append(' '.join(p for p in parts if p.strip()) if any(p.strip() for p in parts) else '')
+        else:
+            sliced.append('')
+    return lines, page_of_line, sliced, flags
+
+
+def _tacchini_detect_shape(header_line):
+    """Shape dispatch from a single 'Codice ... Prezzo'-ish header line,
+    already horizontally sliced to one product's own column. Returns 'A',
+    'B', 'C', or None (not a recognized header at all)."""
+    if not re.search(r'\bCodice\b', header_line):
+        return None
+    low = header_line.lower()
+    if re.search(r'\brivestimento\b|\bupholstery\b', low):
+        return 'A'
+    if re.search(r'\bprezzo\b|\bprice\b', low):
+        return 'C'
+    # "Informazioni" present but no Rivestimento/Prezzo at all -> Shape B
+    # (the finish names themselves stand in for a price-column header).
+    if re.search(r'\binformazioni\b|\binformation\b', low):
+        return 'B'
+    return None
+
+
+_TACCHINI_CODE_RE = re.compile(r'^0[A-Z0-9]{4,}\*?$')
+_TACCHINI_PRICE_TOKEN_RE = re.compile(r'^\+?[\d.,]+$')
+# Optional trailing " <single letter>" captured as PART of the code --
+# confirmed real on Anni (0ANNTP01 vs "0ANNTP01 D", two genuinely
+# different rug sizes, 170x240 vs 230x300, not noise): a plain
+# "^0[A-Z0-9]{4,}\*?\s+" match stops at the first whitespace and silently
+# drops the " D", collapsing two distinct size variants onto one code.
+_TACCHINI_CODE_LINE_RE = re.compile(r'^(0[A-Z0-9]{4,}\*?(?:\s[A-Z](?=\s|$))?)(\s+)(.*)$')
+
+
+def _tacchini_match_code_line(line):
+    """Returns (code, rest_of_line) if `line` starts with a Tacchini
+    product code (optionally suffixed with a single-letter size/variant
+    marker), else None. Centralizes the "code + optional letter suffix"
+    pattern so every caller treats it identically."""
+    m = _TACCHINI_CODE_LINE_RE.match(line)
+    if not m:
+        return None
+    return m.group(1), m.group(3)
+
+
+def _tacchini_tier_cell(cell):
+    """Match 'TierLabel   value' within an already column-sliced cell
+    (the Rivestimento/Prezzo portion of a row, isolated by char position --
+    see _tacchini_parse_shape_a). Mirrors try_parse_tier_row's own
+    "trailing numeric run wins, known-label-only" design, generalized to
+    Tacchini's own tier vocabulary and its "Price upon request" non-numeric
+    state."""
+    cell = cell.strip()
+    if not cell:
+        return None, None
+    if TACCHINI_PRICE_UPON_REQUEST.lower() in cell.lower():
+        # label is whatever precedes "Price upon request", if anything
+        m = re.match(r'^(.*?)\s{2,}Price upon request', cell, re.IGNORECASE)
+        label = m.group(1).strip() if m else ''
+        if label.lower() in TACCHINI_TIER_LABELS:
+            return label, TACCHINI_PRICE_UPON_REQUEST
+        return None, None
+    # Digits included deliberately: 3 of the 12 known tier labels (L1, L2,
+    # L3) contain one -- safe to allow broadly since the final
+    # TACCHINI_TIER_LABELS membership check (not this character class) is
+    # what actually anchors correctness.
+    m = re.match(r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(\+?[\d.,]+)\s*$', cell)
+    if not m:
+        return None, None
+    label = m.group(1).strip()
+    if label.lower() not in TACCHINI_TIER_LABELS:
+        return None, None
+    return label, m.group(2)
+
+
+def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name, brand, flags):
+    """Shape A: fixed 11-tier letter grid. Column positions come from the
+    header line itself (same technique as Shape B) because, confirmed via
+    direct inspection, the FIRST tier row (B) sits on the code's own line,
+    sharing it with Descrizione/Dim. scatole/Informazioni text at
+    DIFFERENT character positions, not a separate line -- treating
+    "everything after the code" as one blob (tried first) swallowed the
+    Informazioni column's own content ("Metri tessuto", "Volume", box
+    count) into the tier scan and matched nothing, since none of that
+    text is a recognized tier label."""
+    low = header_line.lower()
+    riv_m = re.search(r'\brivestimento\b|\bupholstery\b', low)
+    if not riv_m:
+        return []
+    tier_col_start = riv_m.start()
+    desc_m = re.search(r'\bdescrizione\b', low)
+    desc_col_start = desc_m.start() if desc_m else None
+    # Right edge for the description slice: wherever "Dim. scatole" /
+    # "Informazioni" starts (whichever comes first), NOT tier_col_start --
+    # confirmed real bug live via HTTP: slicing description all the way to
+    # Rivestimento's own column leaked the Informazioni column's own
+    # same-row content ("Metri tessuto", the fabric-yardage label) onto
+    # the end of every model_variant ("Poltrona 90 cm ... Metri tessuto"
+    # instead of just "Poltrona 90 cm").
+    info_m = re.search(r'\bdim\.?\s*scatole\b|\bboxes\s*sizes\b|\binformazioni\b|\binformation\b', low)
+    desc_col_end = info_m.start() if info_m else tier_col_start
+
+    rows = []
+    i = 0
+    while i < len(block):
+        line = block[i]
+        code_m = _tacchini_match_code_line(line)
+        if code_m:
+            code = code_m[0]
+            page = block_page_of_line[i]
+            desc_it = ''
+            if desc_col_start is not None:
+                desc_it = line[desc_col_start:desc_col_end].strip()
+            if not desc_it:
+                desc_it = line[len(code):desc_col_end].strip()
+            tier_rows_found = 0
+            j = i
+            steps = 0
+            blank_run = 0
+            while j < len(block) and steps < 80 and blank_run < 3:
+                raw = block[j]
+                steps += 1
+                cell = raw[tier_col_start:] if len(raw) > tier_col_start else ''
+                if j > i and _tacchini_match_code_line(raw):
+                    break
+                tier, price = _tacchini_tier_cell(cell)
+                if tier is not None:
+                    blank_run = 0
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": desc_it or None, "variant_context": None,
+                        "size": None, "fabric_tier": tier.upper() if len(tier) <= 3 else tier,
+                        "tier_label": "Rivestimento",
+                        "code": code, "price_eur": price,
+                        "source_pdf_page": page, "ambiguous": False,
+                    })
+                    tier_rows_found += 1
+                elif raw.strip() == '':
+                    blank_run += 1
+                j += 1
+            if tier_rows_found == 0:
+                flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
+            i = j
+        else:
+            i += 1
+    return rows
+
+
+def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, brand, flags):
+    """Shape C: single Finitura/Categoria + Prezzo/Price column. One row
+    per code, except codes that legitimately repeat for a colorway variant
+    (e.g. Anni's rug: same code, different Finitura, same price) -- row
+    identity is (code, fabric_tier), not code alone, so repeats are kept,
+    not merged or dropped."""
+    low = header_line.lower()
+    info_m = re.search(r'\bdim\.?\s*scatole\b|\bboxes\s*sizes\b|\binformazioni\b|\binformation\b', low)
+    # Same leak this shape's sibling (Shape A) had: capturing "everything
+    # after the code" as model_variant pulls in the Informazioni column's
+    # own same-row content (e.g. "Volume") -- confirmed live via a random
+    # sample after Shape A's fix (Trono: "Trono 50 Table ... Volume ...
+    # Breccia Opaco" instead of just "Trono 50 Table"). Bound description
+    # to end at Dim. scatole/Informazioni's own column start when found.
+    desc_col_end = info_m.start() if info_m else None
+
+    rows = []
+    for i, line in enumerate(sliced):
+        code_m = _tacchini_match_code_line(line.strip())
+        if not code_m:
+            continue
+        code = code_m[0]
+        desc_it = code_m[1][:desc_col_end - len(code)].strip() if desc_col_end and desc_col_end > len(code) else code_m[1].strip()
+        page = page_of_line[i]
+        # Finitura + Prezzo sit on the SAME physical row as Codice/
+        # Descrizione in every confirmed Shape C sample (Colombo, 1953,
+        # Andrea, Friedl/Lucie/Marlene, Anni) -- scan this line and the
+        # next few non-blank lines for a "<finish name>   <price>" pair,
+        # the finish name being whatever text precedes a final numeric
+        # run (mirrors try_parse_tier_row's own "trailing numeric wins"
+        # logic, generalized to an unconstrained label instead of a fixed
+        # tier vocabulary since Shape C's finish names are open-ended).
+        found = False
+        for j in range(i, min(i + 6, len(sliced))):
+            raw = sliced[j]
+            m = re.search(r'(.+?)\s{2,}(\+?[\d.,]+|Price upon request)\s*$', raw)
+            if m:
+                label = m.group(1).strip()
+                # Strip a leaked Codice/Descrizione prefix if the match
+                # landed back on the code's own line.
+                if label.startswith(code):
+                    label = label[len(code):].strip()
+                    # Greedy (not non-greedy) so EVERY leading segment is
+                    # stripped, not just the first -- e.g. "Console
+                    # 144x59cm    Volume   Fior di Pesco Opaco" has TWO
+                    # 2+-space gaps (Descrizione->Informazioni,
+                    # Informazioni->Finitura); non-greedy only strips the
+                    # first, leaving "Volume   Fior di Pesco Opaco" as the
+                    # label instead of just "Fior di Pesco Opaco".
+                    label = re.sub(r'^.*\s{2,}', '', label).strip() or desc_it
+                price = m.group(2).strip()
+                if price.lower() == TACCHINI_PRICE_UPON_REQUEST.lower():
+                    price = TACCHINI_PRICE_UPON_REQUEST
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": desc_it, "variant_context": None,
+                    "size": None, "fabric_tier": label if label else None,
+                    "tier_label": "Finitura" if label else None,
+                    "code": code, "price_eur": price,
+                    "source_pdf_page": page, "ambiguous": False,
+                })
+                found = True
+                break
+        if not found:
+            flags.append((page, product_name, f"code {code!r} found but no Finitura/Prezzo pair followed it"))
+    return rows
+
+
+def _tacchini_parse_shape_b(sliced, page_of_line, header_line, product_name, brand, flags):
+    """Shape B: named-finish multi-column grid, no separate price-column
+    header -- each finish name IS its own priced column. Column names come
+    from the header line itself (sliced consistently with every data row,
+    so character alignment holds); one row per code per named column that
+    has a non-blank value."""
+    # Column header tokens: "Codice Descrizione Dim. scatole Informazioni"
+    # are fixed/generic -- strip them, keep the (possibly multi-word)
+    # finish names after "Informazioni"/"Information".
+    low = header_line.lower()
+    info_m = re.search(r'\binformazioni\b|\binformation\b', low)
+    if not info_m:
+        return []
+    after = header_line[info_m.end():]
+    # Finish names are separated by 2+ spaces, same convention as every
+    # other column split in this parser.
+    finish_names = [c.strip() for c in re.split(r'\s{2,}', after) if c.strip()]
+    if not finish_names:
+        return []
+    # Column char-boundaries: find each finish name's own start position
+    # in the (already horizontally-sliced) header line, use consecutive
+    # boundaries to slice every data row the same way Bolzan's
+    # slice_chunk/bounds does for side-by-side tables.
+    col_starts = []
+    search_from = info_m.end()
+    for name in finish_names:
+        pos = header_line.find(name, search_from)
+        if pos == -1:
+            return []  # header didn't tokenize cleanly -- bail, let caller flag it
+        col_starts.append(pos)
+        search_from = pos + len(name)
+    col_bounds = col_starts + [None]
+
+    desc_end = info_m.start()
+
+    rows = []
+    for i, line in enumerate(sliced):
+        code_m = _tacchini_match_code_line(line.strip())
+        if not code_m:
+            continue
+        code = code_m[0]
+        # Same leak Shape A/C had: "everything after the code" pulls in
+        # the Informazioni column's own same-row content. Bound to
+        # Informazioni's own column start (desc_end, from the header).
+        cut = desc_end - len(code)
+        desc_it = code_m[1][:cut].strip() if cut > 0 else code_m[1].strip()
+        page = page_of_line[i]
+        found_any = False
+        for ci, name in enumerate(finish_names):
+            c_start = col_bounds[ci]
+            c_end = col_bounds[ci + 1] if col_bounds[ci + 1] is not None else len(line)
+            cell = line[c_start:c_end].strip() if c_start < len(line) else ''
+            tok = cell.split()[0] if cell.split() else ''
+            if cell.lower().startswith(TACCHINI_PRICE_UPON_REQUEST.lower()):
+                price = TACCHINI_PRICE_UPON_REQUEST
+            elif _TACCHINI_PRICE_TOKEN_RE.match(tok):
+                price = tok
+            else:
+                continue
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": desc_it, "variant_context": None,
+                "size": None, "fabric_tier": name,
+                "tier_label": "Finitura",
+                "code": code, "price_eur": price,
+                "source_pdf_page": page, "ambiguous": False,
+            })
+            found_any = True
+        if not found_any:
+            flags.append((page, product_name, f"code {code!r} found but no priced finish column matched"))
+    return rows
+
+
+def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_text=None):
+    """Tacchini price tables -- see this section's own module comment
+    above for the 3 confirmed shapes and the 2-up shared-line disambiguation
+    problem unique to this brand."""
+    heading_text = heading_text or product_name
+    lines, page_of_line, sliced, flags = _tacchini_row_window(
+        path, product_name, brand, all_headings or [heading_text], heading_text
+    )
+    if not any(s.strip() for s in sliced):
+        return [], flags
+
+    rows = []
+    i = 0
+    while i < len(sliced):
+        shape = _tacchini_detect_shape(sliced[i])
+        if shape is None:
+            i += 1
+            continue
+        header_line = sliced[i]
+        # Find the end of THIS table block: the next recognized header
+        # line (new shape header for a later code block further down this
+        # same product's own range -- confirmed real on Butter, whose many
+        # module codes each reprint their own "Codice...Prezzo" header on
+        # every page) or end of window.
+        j = i + 1
+        while j < len(sliced) and _tacchini_detect_shape(sliced[j]) is None:
+            j += 1
+        block = sliced[i + 1:j]
+        block_page_of_line = page_of_line[i + 1:j]
+
+        # A single product's OWN content can still have two of its own
+        # modules sharing one physical text line -- confirmed real on
+        # Butter (e.g. "0BTTDPTA110SX ... 0BTTTE150SX ..." on one line,
+        # two unrelated modules of the same product, each with its own
+        # full 12-tier table interleaved row-by-row). The outer product-
+        # level window in _tacchini_row_window only separates DIFFERENT
+        # products; it has no reason to split two codes of the SAME
+        # product. Reuse Bolzan's own established technique for exactly
+        # this shape (repeated "Codice" occurrences on one line = that
+        # many side-by-side tables): split on every "Codice" position in
+        # the header line, process each resulting chunk as its own
+        # independent mini-table.
+        split_points = [m.start() for m in re.finditer(r'\bCodice\b', header_line)]
+        if len(split_points) <= 1:
+            chunks = [(header_line, block)]
+        else:
+            bounds = split_points + [None]
+            chunks = []
+            for c in range(len(split_points)):
+                lo = bounds[c]
+                hi = bounds[c + 1]
+                chunk_header = header_line[lo:hi] if hi is not None else header_line[lo:]
+                chunk_block = [ln[lo:hi] if hi is not None else ln[lo:] for ln in block]
+                chunks.append((chunk_header, chunk_block))
+
+        for chunk_header, chunk_block in chunks:
+            chunk_shape = _tacchini_detect_shape(chunk_header) or shape
+            if chunk_shape == 'A':
+                rows.extend(_tacchini_parse_shape_a(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+            elif chunk_shape == 'C':
+                rows.extend(_tacchini_parse_shape_c(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+            elif chunk_shape == 'B':
+                rows.extend(_tacchini_parse_shape_b(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+        i = j
+
+    if not rows and not flags:
+        flags.append((page_of_line[0] if page_of_line else None, product_name,
+                      "own heading found but no 'Codice...Prezzo'-shaped table recognized -- unknown table shape, not guessed"))
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -11021,7 +11553,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -11379,6 +11911,10 @@ def main():
             elif args.format == "pianca":
                 heading_text = p.get("index_heading", p["product_name"])
                 rows, flags = parse_file_pianca(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "tacchini":
+                heading_text = p.get("index_heading", p["product_name"])
+                rows, flags = parse_file_tacchini(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

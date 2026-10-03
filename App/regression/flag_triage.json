@@ -5011,5 +5011,27 @@
       "status": "reference_content_excluded",
       "note": "Confirmed 2026-08-23 during SistemiGiorno's remaining-sections mapping pass. Real pdf pages 402-406 (printed 397+), same warranty/sales-terms document pattern as 'Condizioni generali / Avvertenze (SistemiNotte)'. Read in full: the one '€' hit found is 'la somma di € 150,00 (Euro Centocinquanta/00) per ogni giorno di ritardo' -- a late-payment penalty clause within the sales-terms document, NOT a product price (individually verified via direct read, not assumed from the SistemiNotte pattern alone). Zero CODICI, zero product prices anywhere in this range -- not a product at all, deliberately never added to catalog_index.json, not even as a zero-row known_gap placeholder."
     }
+  },
+  "Tacchini": {
+    "_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed": {
+      "status": "catalog_wide_known_issue",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction (Shapes A/B/C, the approved design). A 4th, genuinely distinct price-table shape exists: a 'Rivestimento'/'Upholstery' fabric-tier column (same 12-tier vocabulary as Shape A) CROSSED with a second named axis that adds one more price column per tier row, instead of a single 'Prezzo' value. Confirmed via direct page-image inspection (Victoria p.39-40, rendered and read pixel-by-pixel): header reads 'Rivestimento Struttura verniciata Struttura cromata' (fabric tier x painted-vs-chromed structure material), each tier row printing TWO prices side by side (e.g. B: 2.980 / 3.290). The same general shape (fabric tier x second axis) recurs with different second-axis labels across other products -- 'Standard/Wool' (Five to Nine, Le Mura), 'Base verniciata/Base cromata' (Quilt, Kelly T), 'Struttura verniciata/Struttura cromata' (Joaquim), and a non-structure variant on Labanca/Polar where the second column is a companion Pouf's own price ('Rivestimento ... Prezzo ... Pouf'), not a material choice -- confirmed these are the same underlying 2-column-per-tier-row shape, not unrelated issues, by checking each one's own header line directly. Shape A's parser correctly declines to guess here (its tier-cell regex requires exactly one trailing numeric value per row; a row with two trailing values doesn't match, so nothing gets emitted) -- zero rows, not wrong rows. On 'Soap' specifically (a 3-column variant: Base cromata x two further price columns), the shared ambiguous-row safety net caught 2 conflicting candidate values for the same (code, tier) and correctly marked both ambiguous:true rather than picking one -- also safe, just a different symptom of the same unhandled shape. NOT FIXED -- out of scope for the approved A/B/C design, deferred to a dedicated follow-up session per the stop-condition on not forcing unplanned scope under momentum. Confirmed affected (zero rows, all safely flagged, not guessed): Victoria, Five to Nine, Le Mura, Quilt, Joaquim, Kelly T, Labanca, Polar. Suggested approach for that session: detect a 'Rivestimento' header followed by 2+ named sub-columns (no bare 'Prezzo'/'Price' token) as its own Shape D, parse each tier row's 2 (or more) trailing numeric values into separate rows keyed by (tier, sub-column-name)."
+    },
+    "Agnese": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03, Main-catalog first pass. Own heading found but no 'Codice...Prezzo'-shaped table recognized within its page range -- zero rows, not guessed. Not yet individually page-verified against the rendered image to determine root cause (different shape entirely, or a page-range/window bug); flagged for a future session rather than guessed at now."
+    },
+    "Cage": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03, Main-catalog first pass. Own heading found but no 'Codice...Prezzo'-shaped table recognized within its page range -- zero rows, not guessed. Not yet individually page-verified against the rendered image to determine root cause (different shape entirely, or a page-range/window bug); flagged for a future session rather than guessed at now."
+    },
+    "Grand Sesann": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03, Main-catalog first pass. Own heading found but no 'Codice...Prezzo'-shaped table recognized within its page range -- zero rows, not guessed. Not yet individually page-verified against the rendered image to determine root cause (different shape entirely, or a page-range/window bug); flagged for a future session rather than guessed at now."
+    },
+    "Elephant": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03, Main-catalog first pass. Codes found (0ELPPL084, 0ELPPF057) but no recognized tier row followed either -- zero rows, not guessed. Header line reads a plain 'Rivestimento...Prezzo' (confirmed, not the Shape D 2-axis pattern), so the cause is something else -- not yet individually page-verified; flagged for a future session rather than guessed at now."
+    }
   }
 }
