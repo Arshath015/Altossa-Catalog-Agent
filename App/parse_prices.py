@@ -11319,6 +11319,22 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
                     blank_run += 1
                 j += 1
             if tier_rows_found == 0:
+                # A single-value fallback (reusing Shape C's "label +
+                # trailing numeric" pattern) was tried here for codes using
+                # a non-standard material name instead of a real tier
+                # letter (e.g. Basilan's Sedia/Rattan) -- REVERTED after
+                # confirming it produces real wrong data: for Shape D's
+                # 2-axis rows (e.g. Victoria's "B   2.980   3.290"), the
+                # non-greedy label group silently swallowed the FIRST
+                # numeric value as if it were text (fabric_tier ended up
+                # as the literal string "2.980"), hiding the fact a second,
+                # different price exists for the same cell -- exactly the
+                # "silently wrong, not just incomplete" failure this
+                # project treats as the top priority to avoid. Zero rows
+                # (flagged below) is the safe, correct behavior here;
+                # recovering the Rattan-style cases needs a fallback that
+                # can positively rule out a second trailing value, not
+                # just reuse a pattern that happens to also match them.
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j
         else:
