@@ -179,6 +179,24 @@ function formatItalianNumber(n: number): string {
   return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+/** Prefixes a price_eur value with "€" for display, except when the value
+ * is itself a human-readable non-priced STATE rather than a number or an
+ * add-on offset (e.g. Tacchini's "Price upon request" for a C.O. Leather
+ * tier) -- "€Price upon request" would read as nonsense. Deliberately
+ * narrow: only values with NO digits at all are treated this way, so any
+ * value containing a number still gets the € prefix exactly as before.
+ * This matters because Bolzan has a separate, pre-existing, unrelated
+ * extraction defect (its Maggiorazioni/surcharge side-panel's code+price
+ * tokens get misaligned on some products -- see flag_triage.json's
+ * "_CATALOG_WIDE: Maggiorazioni addon-surcharge capture gap" entry) that
+ * already produces non-numeric price_eur values like "MRD40"/"MRD50" --
+ * those contain digits, so this guard leaves their current
+ * "€MRD40"-style display completely unchanged, rather than silently
+ * reclassifying an unrelated bug as a legitimate "state". */
+export function formatPriceDisplay(priceEur: string): string {
+  return /\d/.test(priceEur) ? `€${priceEur}` : priceEur;
+}
+
 /** Adds a base structure price and an addon surcharge together, both in
  * this catalog's Italian-style thousands-separator format (e.g. "1.290"
  * and "+158" -> "1.448"). Assumes whole-euro amounts, since that's the
@@ -4159,7 +4177,7 @@ export class CatalogChat {
       }
       return {
         status: 'ok',
-        message: `${displayName}${r.size ? ` (${r.size})` : ''}${r.fabric_tier ? `, ${r.fabric_tier} fabric` : ''}: €${r.price_eur}${r.code ? ` (code ${r.code})` : ''}${ambiguousNote}${addonInfo}`,
+        message: `${displayName}${r.size ? ` (${r.size})` : ''}${r.fabric_tier ? `, ${r.fabric_tier} fabric` : ''}: ${formatPriceDisplay(r.price_eur)}${r.code ? ` (code ${r.code})` : ''}${ambiguousNote}${addonInfo}`,
         product_name: productName,
         matches: rows,
         image_urls: this.getImageUrls(productName, brand, rows),

@@ -45,6 +45,21 @@ function tierColumnHeader(rows: PriceRow[]): string {
   return hasAnyTierValue ? 'FABRIC' : '—';
 }
 
+/** Prefixes a price_eur value with "€" for display, except when the value
+ * is itself a human-readable non-priced STATE rather than a number or an
+ * add-on offset (e.g. Tacchini's "Price upon request" for a C.O. Leather
+ * tier) -- "€Price upon request" would read as nonsense. Deliberately
+ * narrow: only values with NO digits at all are treated this way, so any
+ * value containing a number still gets the € prefix exactly as before.
+ * Kept in sync with the server-side copy in catalogChat.ts (same name,
+ * same logic) -- not shared via import since this file builds for the
+ * browser and catalogChat.ts is server-only Node code. See that file's
+ * copy of this comment for why Bolzan's existing "MRD40"/"MRD50" rows are
+ * deliberately unaffected by this guard. */
+function formatPriceDisplay(priceEur: string): string {
+  return /\d/.test(priceEur) ? `€${priceEur}` : priceEur;
+}
+
 interface ChatResult {
   status: 'ok' | 'multiple_options' | 'full_price_grid' | 'multi_product' | 'ambiguous_price' | 'no_matching_variant'
         | 'no_price_data' | 'no_product_match' | 'clarify_product';
@@ -587,7 +602,7 @@ function MessageBubble({ message, onShowImages, onSelectCandidate }: {
                   <td className="px-3 py-1.5 text-stone-300">{r.size || '—'}</td>
                   <td className="px-3 py-1.5 text-stone-300">{r.fabric_tier || '—'}</td>
                   <td className="px-3 py-1.5 text-stone-500">{r.code || '—'}</td>
-                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--riso-yellow)]">€{r.price_eur}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--riso-yellow)]">{formatPriceDisplay(r.price_eur)}</td>
                 </tr>
               ))}
             </tbody>
@@ -756,7 +771,7 @@ function VariantTable({ group, showHeader }: { group: VariantGroup; showHeader: 
                     <td key={c.key} className="px-3 py-1.5 text-right whitespace-nowrap">
                       {r ? (
                         <div className="flex flex-col items-end leading-tight">
-                          <span className="text-[var(--riso-yellow)]">€{r.price_eur}</span>
+                          <span className="text-[var(--riso-yellow)]">{formatPriceDisplay(r.price_eur)}</span>
                           {/* Shown per-cell, not once per group -- confirmed
                               real on Primo that code can vary by SIZE within
                               an otherwise-identical tier/variant group
