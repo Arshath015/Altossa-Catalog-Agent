@@ -57,6 +57,16 @@
       }
       ::-webkit-scrollbar-thumb:hover { background: var(--riso-pink); }
       * { scrollbar-color: var(--riso-line) var(--riso-bg); scrollbar-width: thin; }
+
+      /* Scrollable areas that keep scrolling but hide the scrollbar chrome --
+         the cursor switches to the "scroll" glyph on hover as the only
+         affordance that the area is scrollable. */
+      .scroll-no-bar {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* old Edge/IE */
+        cursor: all-scroll;
+      }
+      .scroll-no-bar::-webkit-scrollbar { display: none; /* Chrome/Safari */ }
     </style>
   </head>
   <body>

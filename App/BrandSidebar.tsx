@@ -26,6 +26,7 @@ const BRANDS: Brand[] = [
   { name: 'Midji', status: 'soon', productCount: 0 },
   { name: 'Miniforms', status: 'soon', productCount: 0 },
   { name: 'Mogg', status: 'soon', productCount: 0 },
+  { name: 'Monography', status: 'soon', productCount: 0 },
   { name: 'Nicoline Salotti', status: 'soon', productCount: 0 },
   { name: 'Nube Italia', status: 'soon', productCount: 0 },
   { name: 'Pedrali', status: 'soon', productCount: 0 },
@@ -74,7 +75,7 @@ export default function BrandSidebar({
             </div>
           </div>
 
-          <nav className="flex-1 min-h-0 py-4 px-3 space-y-1.5 overflow-y-auto">
+          <nav className="flex-1 min-h-0 py-4 px-3 space-y-1.5 overflow-y-auto scroll-no-bar">
             {BRANDS.map((b) => {
               const isSelected = b.name === selected;
               const isReady = b.status === 'ready';
