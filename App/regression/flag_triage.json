@@ -5052,6 +5052,38 @@
     "Trono 0TRNTB03/0TRNTB04: fabric_tier shows \"1\" instead of a real label": {
       "status": "known_gap",
       "note": "Found 2026-10-03 during final dataset sanity scan (2 of 1651 rows had a purely-numeric fabric_tier). Codes 0TRNTB03/0TRNTB04 ('Trono 50 Table') landed in a 3-way multi-Codice-per-line split (this product's page has 3 Trono table variants side by side) where the resulting chunk boundaries appear to leak the 'Dim. scatole' box-count value ('1') into the Finitura label slot instead of the real finish name -- same general leak class as the model_variant fix applied earlier this session, not yet individually root-caused for this specific 3-way-split case. The PRICE values themselves (1.490 / 1.590) are plausible and consistent with this product's other tiers -- likely correct, just mislabeled -- but not independently page-verified, so not claimed as confirmed-correct either. Low severity (2 of 1651 rows, 0.12%), left as a cosmetic label gap rather than guessed at further this session."
+    },
+    "Labanca": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Le Mura": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Polar": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Quilt": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Victoria": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Joaquim": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Kelly T": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
+    },
+    "Reversível": {
+      "status": "known_gap",
+      "note": "Found 2026-10-03 during Main-catalog first-pass extraction. Zero rows, safely flagged (not guessed) -- see the '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' entry in this same brand's triage section for the full root-cause writeup and the complete list of confirmed-affected products. This entry exists only so check-coverage.ts's undocumented-zero-row gate recognizes this specific product_name as already investigated, not to duplicate that writeup."
     }
   }
 }

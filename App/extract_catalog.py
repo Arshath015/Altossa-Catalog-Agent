@@ -101,6 +101,26 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     # section divider before the next real product (Biba), not Wall
     # System content at all.
     "Wall System": (186, 189),
+    # Tacchini (Main pricelist): Astral/Serie 500/3/Serie 500/4 all tie at
+    # printed_start=136 (same-page-start simplification -- see
+    # compute_ranges_tacchini's own module comment) and share this end
+    # override. Auto-computed printed_end was 138 (next distinct entry,
+    # Anni, starts at printed 139) -> via the fallback formula (138 had no
+    # real footer-confirmed page_map entry) this resolved to pdf page 71.
+    # Confirmed via direct rendering that pdf page 71 is NOT a normal 2-up
+    # spread: its own pdftotext output contains ONLY printed page 139
+    # ("Rugs"/Anni) -- no Storage Cabinet content, no "138" footer number
+    # anywhere. These 3 products' real content is entirely on pdf page 70
+    # (verified against the rendered page image: both Serie 500/3 and
+    # Serie 500/4's full price tables are there). Without this override,
+    # all 3 picked up pdf page 71's (Anni's) image into their own `images`
+    # list purely from the over-extended range -- not reachable via any
+    # real price-row lookup (those correctly point at page 70 only), but
+    # a latent landmine if ever reached via the whole-product-images
+    # fallback path.
+    "Astral": (70, 70),
+    "Serie 500/3": (70, 70),
+    "Serie 500/4": (70, 70),
     # Cattelan Italia (20241_listino.pdf / Novità supplement): auto-computed
     # range was just pdf page 27 (RICHARD and ELIAS both start on printed
     # page 24, and the next index entry -- the first of two "BISHOP"

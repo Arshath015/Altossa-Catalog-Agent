@@ -11223,6 +11223,63 @@ def _tacchini_match_code_line(line):
     return m.group(1), m.group(3)
 
 
+# Matches the English half specifically ("Surcharge for ...") -- confirmed
+# via direct inspection (Alma) that the trailing price sits on the ENGLISH
+# line, not the Italian "Supplemento per ..." line above it (which has no
+# number at all on its own line). 44 occurrences across the Main catalog,
+# a real, recurring mechanic (electrification standard, structure
+# upgrades, etc.), not a one-off.
+_TACCHINI_SURCHARGE_RE = re.compile(r'Surcharge for (.+?)\s{2,}(\+?[\d.,]+)\s*$')
+
+
+def _tacchini_find_surcharge_rows(block, block_page_of_line, product_name, brand):
+    """Scans a chunk's own lines for 'Surcharge for <description>   <price>'
+    rows, attributing each to the nearest CODE seen earlier in the same
+    chunk (surcharges are printed as an extra line within that code's own
+    block, after its base price row -- confirmed on Alma: the surcharge
+    line sits 3 lines below the code's own 'Codice...Prezzo' row, still
+    well within the same code's block). Stored as an ADD-ON row
+    (price_eur prefixed with '+'), reusing the existing isAddonVariant/
+    combineAddon display mechanism already in catalogChat.ts -- no new
+    display code needed. Deliberately narrow (matches only this one
+    specific recurring phrase) rather than a generic second-match scan,
+    which was tried elsewhere this session for a different gap and
+    confirmed to produce real wrong data by accident-matching unrelated
+    numeric lines (e.g. 'kg 35' weight values)."""
+    rows = []
+    current_code = None
+    for idx, raw in enumerate(block):
+        code_m = _tacchini_match_code_line(raw)
+        if code_m:
+            current_code = code_m[0]
+            continue
+        m = _TACCHINI_SURCHARGE_RE.search(raw)
+        if m and current_code:
+            desc = m.group(1).strip()
+            price = m.group(2).strip()
+            if not price.startswith('+'):
+                price = f'+{price}'
+            # model_variant is just the surcharge's own description, not
+            # the base item's description prepended -- the base item's own
+            # text spans multiple unbounded columns on this shared line
+            # (Descrizione/Informazioni/Finitura all run together), with
+            # no header available here to bound it against (this function
+            # is shape-agnostic, scanning every shape's block the same
+            # way). isAddonVariant groups rows by exact model_variant
+            # string, so a short, clean, stable label works better here
+            # than a long leaky one anyway.
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": desc,
+                "variant_context": desc,
+                "size": None, "fabric_tier": None, "tier_label": None,
+                "code": current_code, "price_eur": price,
+                "source_pdf_page": block_page_of_line[idx] if idx < len(block_page_of_line) else None,
+                "ambiguous": False,
+            })
+    return rows
+
+
 def _tacchini_tier_cell(cell):
     """Match 'TierLabel   value' within an already column-sliced cell
     (the Rivestimento/Prezzo portion of a row, isolated by char position --
@@ -11546,6 +11603,11 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
                 rows.extend(_tacchini_parse_shape_c(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
             elif chunk_shape == 'B':
                 rows.extend(_tacchini_parse_shape_b(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+            # Surcharge rows ("Surcharge for ...") can appear within any
+            # shape's own block -- scanned independently of which shape
+            # matched, since it's a distinct, narrow pattern, not part of
+            # the tier/finish grid itself.
+            rows.extend(_tacchini_find_surcharge_rows(chunk_block, block_page_of_line, product_name, brand))
         i = j
 
     if not rows and not flags:
