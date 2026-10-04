@@ -11223,13 +11223,27 @@ def _tacchini_match_code_line(line):
     return m.group(1), m.group(3)
 
 
-# Matches the English half specifically ("Surcharge for ...") -- confirmed
-# via direct inspection (Alma) that the trailing price sits on the ENGLISH
-# line, not the Italian "Supplemento per ..." line above it (which has no
-# number at all on its own line). 44 occurrences across the Main catalog,
-# a real, recurring mechanic (electrification standard, structure
-# upgrades, etc.), not a one-off.
-_TACCHINI_SURCHARGE_RE = re.compile(r'Surcharge for (.+?)\s{2,}(\+?[\d.,]+)\s*$')
+# Matches the English half specifically ("Surcharge for ..." / "Extra
+# charge for ...") -- confirmed via direct inspection (Alma) that the
+# trailing price sits on the ENGLISH line, not the Italian "Supplemento
+# per ..." line above it (which has no number at all on its own line).
+# "Surcharge for" alone was the first pattern found (44 occurrences,
+# electrification standard); "Extra charge for" is a second, equally
+# real recurring phrase (anti-stain marble treatment, brushed/gloss
+# lacquer finish upgrades -- confirmed on Gian & Pan/Trono's page
+# images) found while root-causing the Shape C empty-label bug below --
+# both phrases precede the same "<description>   <price>" shape, so one
+# alternation covers both rather than a second near-duplicate function.
+_TACCHINI_SURCHARGE_RE = re.compile(r'(?:Surcharge for|Extra charge for) (.+?)\s{2,}(\+?[\d.,]+)\s*$')
+# "Extra charge for"'s own description sometimes wraps onto a SECOND line
+# before the price appears -- confirmed on Gian & Pan/Trono (0GINTB124,
+# 0PANTB150, 0TRNTB01, 0TRNTB02): "Extra charge for anti-stain treatment
+# on" ends its own line with no trailing number at all, and "marble top
+#                                 480" (just the wrapped continuation +
+# price, no "charge for" text) is the NEXT line. _TACCHINI_SURCHARGE_RE
+# alone can never match this -- it requires the phrase AND the price on
+# the same line.
+_TACCHINI_SURCHARGE_INTRO_RE = re.compile(r'(?:Surcharge for|Extra charge for) (.+)$')
 
 
 def _tacchini_find_surcharge_rows(block, block_page_of_line, product_name, brand):
@@ -11241,13 +11255,14 @@ def _tacchini_find_surcharge_rows(block, block_page_of_line, product_name, brand
     well within the same code's block). Stored as an ADD-ON row
     (price_eur prefixed with '+'), reusing the existing isAddonVariant/
     combineAddon display mechanism already in catalogChat.ts -- no new
-    display code needed. Deliberately narrow (matches only this one
-    specific recurring phrase) rather than a generic second-match scan,
+    display code needed. Deliberately narrow (matches only these two
+    specific recurring phrases) rather than a generic second-match scan,
     which was tried elsewhere this session for a different gap and
     confirmed to produce real wrong data by accident-matching unrelated
     numeric lines (e.g. 'kg 35' weight values)."""
     rows = []
     current_code = None
+    n = len(block)
     for idx, raw in enumerate(block):
         code_m = _tacchini_match_code_line(raw)
         if code_m:
@@ -11257,26 +11272,65 @@ def _tacchini_find_surcharge_rows(block, block_page_of_line, product_name, brand
         if m and current_code:
             desc = m.group(1).strip()
             price = m.group(2).strip()
-            if not price.startswith('+'):
-                price = f'+{price}'
-            # model_variant is just the surcharge's own description, not
-            # the base item's description prepended -- the base item's own
-            # text spans multiple unbounded columns on this shared line
-            # (Descrizione/Informazioni/Finitura all run together), with
-            # no header available here to bound it against (this function
-            # is shape-agnostic, scanning every shape's block the same
-            # way). isAddonVariant groups rows by exact model_variant
-            # string, so a short, clean, stable label works better here
-            # than a long leaky one anyway.
-            rows.append({
-                "brand": brand, "product_name": product_name,
-                "model_variant": desc,
-                "variant_context": desc,
-                "size": None, "fabric_tier": None, "tier_label": None,
-                "code": current_code, "price_eur": price,
-                "source_pdf_page": block_page_of_line[idx] if idx < len(block_page_of_line) else None,
-                "ambiguous": False,
-            })
+        elif current_code and _TACCHINI_SURCHARGE_INTRO_RE.search(raw):
+            # Same-line match failed -- the description wraps onto one or
+            # more following lines before the price appears. Scan ahead
+            # (bounded) for the first line with a genuine price, skipping
+            # any bare box-count/dimension line in between -- confirmed
+            # on Joaquim: "Extra charge for anti-stain" (intro) -> a bare
+            # "1" box-count line (idx+1, NOT the continuation) -> "treatment
+            # on marble top       230" (idx+2, the real continuation+
+            # price). A fixed idx+1 lookup would have landed on the bare
+            # "1" and produced a bogus "+1" surcharge (confirmed on
+            # Joaquim/Chill-Out Table before this fix).
+            intro_m = _TACCHINI_SURCHARGE_INTRO_RE.search(raw)
+            desc = intro_m.group(1).strip()
+            price = None
+            for look in range(idx + 1, min(idx + 4, n)):
+                cont_m = re.search(r'(.+?)\s{2,}(\+?[\d.,]+)\s*$', block[look])
+                if not cont_m:
+                    continue
+                cont_price = cont_m.group(2).strip()
+                if re.match(r'^0[.,]', cont_price):
+                    # A volume (m³ 0,68-style) value, never a real price --
+                    # keep scanning rather than accepting it.
+                    continue
+                cont_label = cont_m.group(1).strip()
+                if not cont_label or not re.search(r'[A-Za-zÀ-ÿ]{2,}', cont_label):
+                    # Bare box-count digit line (no real word in the
+                    # label) -- not the real continuation yet, keep
+                    # scanning. Confirmed on Joaquim: the line right after
+                    # the "Extra charge for anti-stain" intro is just a
+                    # bare "1" box-count, and the REAL continuation +
+                    # price ("treatment on marble top       230") is one
+                    # line further down.
+                    continue
+                price = cont_price
+                break
+            if price is None:
+                continue
+        else:
+            continue
+        if not price.startswith('+'):
+            price = f'+{price}'
+        # model_variant is just the surcharge's own description, not
+        # the base item's description prepended -- the base item's own
+        # text spans multiple unbounded columns on this shared line
+        # (Descrizione/Informazioni/Finitura all run together), with
+        # no header available here to bound it against (this function
+        # is shape-agnostic, scanning every shape's block the same
+        # way). isAddonVariant groups rows by exact model_variant
+        # string, so a short, clean, stable label works better here
+        # than a long leaky one anyway.
+        rows.append({
+            "brand": brand, "product_name": product_name,
+            "model_variant": desc,
+            "variant_context": desc,
+            "size": None, "fabric_tier": None, "tier_label": None,
+            "code": current_code, "price_eur": price,
+            "source_pdf_page": block_page_of_line[idx] if idx < len(block_page_of_line) else None,
+            "ambiguous": False,
+        })
     return rows
 
 
@@ -11432,8 +11486,26 @@ def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, bra
         # logic, generalized to an unconstrained label instead of a fixed
         # tier vocabulary since Shape C's finish names are open-ended).
         found = False
-        for j in range(i, min(i + 6, len(sliced))):
+        for j in range(i, min(i + 10, len(sliced))):
             raw = sliced[j]
+            if j > i:
+                # Stop the window as soon as we reach a DIFFERENT code's
+                # own line -- without this, a short window could bleed
+                # into the next product's row and attribute its price to
+                # this code. A repeat of the SAME code (e.g. Anni's rug,
+                # same code/different colorway) is not a boundary.
+                boundary_m = _tacchini_match_code_line(raw.strip())
+                if boundary_m and boundary_m[0] != code:
+                    break
+            if _TACCHINI_SURCHARGE_INTRO_RE.search(raw):
+                # A "Surcharge for"/"Extra charge for" line also happens
+                # to fit the generic "<label>   <price>" shape (confirmed
+                # on A.D.A.: "kg 5,5 ... Surcharge for US/UK standard
+                # electrification    70" matched as a bogus 3rd Finitura
+                # tier). Surcharges are captured separately and correctly
+                # by _tacchini_find_surcharge_rows -- skip here so they
+                # aren't double-counted as a fake price tier too.
+                continue
             m = re.search(r'(.+?)\s{2,}(\+?[\d.,]+|Price upon request)\s*$', raw)
             if m:
                 label = m.group(1).strip()
@@ -11449,9 +11521,33 @@ def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, bra
                     # first, leaving "Volume   Fior di Pesco Opaco" as the
                     # label instead of just "Fior di Pesco Opaco".
                     label = re.sub(r'^.*\s{2,}', '', label).strip() or desc_it
+                if not label or not re.search(r'[A-Za-zÀ-ÿ]{2,}', label):
+                    # Bare "Dim. scatole"/weight/volume digit line (e.g.
+                    # the box-count "1", or a dimension/volume fragment
+                    # like "L 156" or "m³ 0,68") with no real finish-name
+                    # text in it -- not a genuine Finitura+Price row. A
+                    # real finish name always has at least one real word
+                    # (2+ letters); confirmed on A.D.A./Gian & Pan/Trono
+                    # (0ADA01, 0GINTB124, 0PANTB150, 0TRNTB01, 0TRNTB02 --
+                    # a bare-digit box-count line matched before the real
+                    # multi-tier rows a few lines down) and, once this
+                    # loop stopped breaking after the first match, also on
+                    # Kanji (an adjacent code's own box-count digit bled
+                    # into this code's column slice: label="1") and Orbit
+                    # (a volume line matched as label="L 156"). Keep
+                    # scanning rather than accepting it.
+                    continue
                 price = m.group(2).strip()
                 if price.lower() == TACCHINI_PRICE_UPON_REQUEST.lower():
                     price = TACCHINI_PRICE_UPON_REQUEST
+                elif re.match(r'^0[.,]', price):
+                    # A real price in this catalog is never quoted as
+                    # "0.xx"/"0,xx" -- that shape only occurs for volume
+                    # (m³ 0,68) values. Confirmed on Orbit: without this,
+                    # the volume line's trailing "0,68" was accepted as a
+                    # price once the label check above was satisfied by
+                    # "L 156" (which does contain real letters).
+                    continue
                 rows.append({
                     "brand": brand, "product_name": product_name,
                     "model_variant": desc_it, "variant_context": None,
@@ -11460,8 +11556,16 @@ def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, bra
                     "code": code, "price_eur": price,
                     "source_pdf_page": page, "ambiguous": False,
                 })
+                # Deliberately NOT breaking here -- a code can legitimately
+                # have more than one Finitura+Price row (A.D.A.'s 2 lamp
+                # finishes, Gian & Pan's 3 marble finishes, Trono's 2 top
+                # finishes), each on its own line further down within the
+                # same code's block. Every already-confirmed single-row
+                # Shape C product has exactly one such match in this
+                # window (verified via full before/after diff), so this
+                # is a strict generalization, not a behavior change for
+                # those products.
                 found = True
-                break
         if not found:
             flags.append((page, product_name, f"code {code!r} found but no Finitura/Prezzo pair followed it"))
     return rows

@@ -52,6 +52,19 @@ function realHeading(entry: CatalogEntry): string {
   return entry.index_heading || entry.product_name;
 }
 
+// Tacchini's Main and News pricelists render the same product's heading
+// with different dash glyphs (Main: "T-Table" plain hyphen; News: literally
+// prints "T–Table" with an en-dash, confirmed via direct page render) --
+// a byte-for-byte substring match on the raw heading can never hold across
+// that variance. Normalizing en-dash/em-dash to a plain hyphen before
+// comparing only WIDENS what counts as a match (can turn a false
+// "suspicious" into a correctly-recognized legitimate pair; can never hide
+// a genuinely wrong image, since it still requires the rest of the heading
+// text to match exactly).
+function normalizeDashes(s: string): string {
+  return s.replace(/[‐-―]/g, '-');
+}
+
 // Varaschini's dense multi-SKU-per-page collections print one shared
 // image/heading for many products at once with no PER-SKU printed
 // heading -- so the reciprocal literal-heading check below can never
@@ -68,7 +81,7 @@ function isLegitimatePair(pText: string, otherEntry: CatalogEntry): boolean {
   if (otherEntry.art_code) {
     return pText.includes(otherEntry.art_code.toUpperCase());
   }
-  return pText.includes(realHeading(otherEntry).toUpperCase());
+  return normalizeDashes(pText).includes(normalizeDashes(realHeading(otherEntry).toUpperCase()));
 }
 
 // Pianca-specific case found 2026-08-20: two entirely unrelated products
