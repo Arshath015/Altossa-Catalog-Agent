@@ -248,6 +248,24 @@ const CASES: Case[] = [
     expectedHeader: '—',
     note: 'Same class as Cattelan BOTERO Wood Round/MADRAS above -- a genuinely single-price product (a table base, colors are included finish choices not tiers) with no tier dimension at all, not a mislabeled FABRIC. This exact product had 0 rows (thus untestable) before the 2026-09-03 diagram-clutter TSV parser fix.',
   },
+  {
+    id: 'tacchini-baobab-upholstered-chair',
+    category: 'upholstered chair (Tacchini)',
+    brand: 'Tacchini',
+    query: 'give me all prices for baobab',
+    productName: 'Baobab',
+    expectedHeader: 'RIVESTIMENTO',
+    note: 'Real source label -- Shape A\'s 12-tier letter grid (B/D/E/L/T-U/V/Z/L1/L2/L3/C.O.Fabric/C.O.Leather), no Tacchini coverage existed in this file before, added 2026-10-04 right after fixing the Shape C box-count-as-price bug (commit 13cc5a4).',
+  },
+  {
+    id: 'tacchini-colonna-named-finish-tier',
+    category: 'named-finish tier (Tacchini)',
+    brand: 'Tacchini',
+    query: 'give me all prices for colonna',
+    productName: 'Colonna',
+    expectedHeader: 'FINITURA',
+    note: 'Deliberate DIVERGENCE from the Baobab case above -- same brand, but this product\'s real tier is a named multi-column finish grid (MR1/MR2/MR3), not a standard letter tier, confirmed via tier_label on the parsed row.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

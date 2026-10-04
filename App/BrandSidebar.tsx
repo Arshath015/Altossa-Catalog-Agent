@@ -15,6 +15,7 @@ const BRANDS: Brand[] = [
   { name: 'Varaschini', status: 'ready', productCount: 1294 },
   { name: 'Ditre Italia', status: 'ready', productCount: 197 },
   { name: 'Pianca', status: 'ready', productCount: 499 },
+  { name: 'Tacchini', status: 'ready', productCount: 120 },
   { name: 'Bodema', status: 'soon', productCount: 0 },
   { name: 'Bontempi', status: 'soon', productCount: 0 },
   { name: 'Calligaris', status: 'soon', productCount: 0 },
@@ -32,7 +33,6 @@ const BRANDS: Brand[] = [
   { name: 'Pedrali', status: 'soon', productCount: 0 },
   { name: 'Riflessi', status: 'soon', productCount: 0 },
   { name: 'Saba', status: 'soon', productCount: 0 },
-  { name: 'Tacchini', status: 'soon', productCount: 0 },
   { name: 'Twils', status: 'soon', productCount: 0 },
 ];
 

@@ -46,6 +46,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Varaschini': 'varaschini',
   'Ditre Italia': 'ditre',
   'Pianca': 'pianca',
+  'Tacchini': 'tacchini',
 };
 
 interface Flag {

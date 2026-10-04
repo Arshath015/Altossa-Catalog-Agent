@@ -179,6 +179,16 @@ const CASES: Case[] = [
       { product: 'Allegra Tavolino', tier: 'HPL', price: '1.139', excludePrices: ['2.321', '2.365', '2.464', '2.552', '3.146'] },
     ],
   },
+  {
+    id: 'tacchini-baobab-trono-tier-isolation',
+    brand: 'Tacchini',
+    query: 'baobab b and trono 25 round b',
+    note: 'Tacchini cross-product isolation, added 2026-10-04 right after fixing Shape C\'s box-count-as-price bug (commit 13cc5a4) -- no Tacchini coverage existed in this file before. Both products share the SAME tier letter (B) on Shape A\'s 12-tier grid but at very different prices (980 vs 1.390), so a leak between them would be an obvious, unambiguous mismatch rather than a coincidentally-still-valid value.',
+    required: [
+      { product: 'Baobab', tier: 'B', price: '1.390', excludePrices: ['980'] },
+      { product: 'Trono', tier: 'B', price: '980', excludePrices: ['1.390'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

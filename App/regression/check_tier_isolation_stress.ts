@@ -305,6 +305,21 @@ addCase('2prod', 'Allegra Poltrona price and Allegra Tavolino price', ['Allegra 
   { product: 'Allegra Tavolino', tier: 'HPL', price: '1.139' },
 ], undefined, 'Varaschini');
 
+// ===== Tacchini cross-product isolation (1) =====
+// Both products share the SAME tier letter ('B') but at very different
+// prices on Shape A's 12-tier letter grid -- a leak between them would
+// be an obvious, unambiguous mismatch (980 vs 1.390), unlike cases above
+// that use structurally different tier vocabularies to make a leak
+// detectable. Verified live against the running server before adding,
+// right after fixing Shape C's box-count-as-price bug this session
+// (commit 13cc5a4) -- Trono's own TB table codes were part of that fix,
+// so this also doubles as a regression guard for Trono staying correct
+// in a multi-product context, not just a single-product query.
+addCase('2prod', 'baobab b and trono 25 round b', ['Baobab', 'Trono'], [
+  { product: 'Baobab', tier: 'B', price: '1.390' },
+  { product: 'Trono', tier: 'B', price: '980' },
+], undefined, 'Tacchini');
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----

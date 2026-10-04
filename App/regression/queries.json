@@ -888,5 +888,101 @@
     "expect_product": [
       "Mono (Tavoli consolle)"
     ]
+  },
+  {
+    "id": 93,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for A.D.A.",
+    "note": "Regression guard for the Shape C box-count-as-price bug fixed 2026-10-04 (commit 13cc5a4): the forward-scan previously accepted the bare 'Dim. scatole' box-count digit line as a fake Finitura+Price row (price='1') instead of the real data a few lines further down. Verified against the source page image: 2 real lamp finishes (Lampada vetroresina lucida/Shiny fiberglass 1.370, Lampada vetroresina opaca/Matt fiberglass 1.490) plus the US/UK electrification surcharge (+70).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 3,
+    "expect_product": [
+      "A.D.A."
+    ]
+  },
+  {
+    "id": 94,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Gian & Pan",
+    "note": "Regression guard for the same Shape C box-count-as-price bug (see id 93), on a 2-code product with 3 real marble finishes each plus an anti-stain surcharge -- also the product that surfaced the 'Extra charge for ...' surcharge phrasing gap (distinct from the already-handled 'Surcharge for ...' phrasing) and its own 2-line description wrap. Verified against the source page image: Gian 4.060/4.450, Pan 3.590/3.880, both +480 anti-stain surcharges.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 6,
+    "expect_product": [
+      "Gian & Pan"
+    ]
+  },
+  {
+    "id": 95,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Trono",
+    "note": "Regression guard for the same Shape C box-count-as-price bug (see id 93) on Trono's table codes (0TRNTB01/02 -- previously price='1' instead of their real 2 finish tiers each), plus Trono's own Shape A 12-tier letter grid (6 stool/low-table codes x B/D/E/L/T-U/V/Z/L1/L2/L3/C.O.Fabric/C.O.Leather) and the anti-stain surcharges recovered on all 4 table codes (TB01-04). 82 rows total verified against source pdf pages 54.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 82,
+    "expect_product": [
+      "Trono"
+    ]
+  },
+  {
+    "id": 96,
+    "cat": "full_catalog",
+    "brand": "Tacchini",
+    "query": "give me all prices for Baobab",
+    "note": "Shape A's classic 12-tier letter grid (B/D/E/L/T-U/V/Z/L1/L2/L3/C.O.Fabric/C.O.Leather) on a single code, combined with 'Price upon request' as a real stored state (C.O. Leather tier) rather than zero/blank -- verified against source pdf page 42.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Baobab"
+    ]
+  },
+  {
+    "id": 97,
+    "cat": "full_catalog",
+    "brand": "Tacchini",
+    "query": "give me all prices for Chill-Out",
+    "note": "Every tier price-upon-request except one real surcharge row (+190, US/UK electrification) -- verifies 'Price upon request' is stored and shown as a real state across an entire product, not treated as a missing/zero row, and that a surcharge row still surfaces correctly alongside it.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 8,
+    "expect_product": [
+      "Chill-Out"
+    ]
+  },
+  {
+    "id": 98,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Anni",
+    "note": "Rugs category: the same code repeats per colorway (0ANNTP01/0ANNTP01 D each appear for both Yellow and Blue at the same price; 0ANNTP02/0ANNTP03 likewise) -- row identity is (Codice, Finitura), not Codice alone, so all 4 colorway-repeat pairs must stay distinct rather than being collapsed/deduped. Verified against source pdf pages 71-72.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 8,
+    "expect_product": [
+      "Anni"
+    ]
+  },
+  {
+    "id": 99,
+    "cat": "pdf_overlap",
+    "brand": "Tacchini",
+    "query": "give me all prices for Le Mura XL",
+    "note": "Main/News overlap resolved by SKU: 270 rows from Main (pdf pages 26-29, the full Shape A 12-tier grid across 17 codes) plus 15 genuinely new rows merged in from News (pdf page 13, offset to source_pdf_page 1013) that aren't duplicates of anything Main already has -- verifies the Main+News merge adds real new rows without re-introducing ones Main already covers.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 285,
+    "expect_product": [
+      "Le Mura XL"
+    ]
+  },
+  {
+    "id": 100,
+    "cat": "pdf_overlap",
+    "brand": "Tacchini",
+    "query": "give me all prices for Colonna",
+    "note": "News-only product (not in Main at all, pdf page 24 offset to source_pdf_page 1024) with a named multi-finish grid (MR1/MR2/MR3) rather than Shape A's standard letter tiers -- verifies a product that only exists in the News file still gets a real catalog entry and real prices, not silently dropped.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 6,
+    "expect_product": [
+      "Colonna"
+    ]
   }
 ]
