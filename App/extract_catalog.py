@@ -2377,7 +2377,7 @@ def _varaschini_find_records(
         art_matches = list(_VARASCHINI_ART_PREFIX.finditer(line))
         if extra_art_re:
             art_matches += list(extra_art_re.finditer(line))
-        for m in art_matches:
+        for art_idx, m in enumerate(art_matches):
             prefix_ctx = line[max(0, m.start() - 15):m.start()].lower()
             if "cover" in prefix_ctx:
                 continue
@@ -2436,7 +2436,20 @@ def _varaschini_find_records(
             # own per-product-scoped fixes elsewhere in this codebase.
             if page_num in (259, 301) and m.group(1).upper() in ('236MA1', '236MA2'):
                 continue
-            name_part = line[m.end():].strip()
+            # When a line carries MULTIPLE "art." triggers side by side
+            # (a multi-column layout -- confirmed on Teli di Copertura
+            # p561: "art. 9466C   system   art. 9478C   customade   art.
+            # 9479C   customade"), each one's name must stop at the START
+            # of the NEXT trigger, not run to end-of-line -- otherwise
+            # every code except the last one on the line swallows every
+            # OTHER code's own "art. CODE" text plus its name into its own
+            # name (confirmed real: 9466C's and 9478C's catalog_index
+            # entries both ended up with a garbled name quoting their
+            # NEIGHBORS' codes instead of a real name of their own, making
+            # their otherwise-correct price rows unreachable by any name
+            # a user would plausibly type).
+            name_end = art_matches[art_idx + 1].start() if art_idx + 1 < len(art_matches) else len(line)
+            name_part = line[m.end():name_end].strip()
             records.append((m.group(1).upper(), page_num, _varaschini_clean_name(name_part)))
         if re.match(r"^art\.?(\s|$)", line, re.IGNORECASE):
             found = False
