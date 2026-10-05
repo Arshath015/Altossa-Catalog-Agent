@@ -1052,10 +1052,62 @@ export class CatalogChat {
 
   /** Find the best-matching product name(s) for a free-text query, sorted best-first. */
   matchProducts(query: string): { name: string; score: number }[] {
-    return this.productNames
+    const scored = this.productNames
       .map(name => ({ name, score: similarity(query, name) }))
       .filter(x => x.score > 0)
       .sort((a, b) => b.score - a.score);
+
+    // Collection-sibling tie promotion: similarity()'s diluted-overlap
+    // formula (overlap / max(qTokens, cTokens) * 60) rewards a SHORTER
+    // candidate name over a longer one even when both share the exact
+    // same single overlapping word -- fine in general (a short name really
+    // is "more fully explained" by a short query than a long one usually
+    // is), but wrong when the short candidate is just "<Collection> <CODE>"
+    // with no real descriptive word of its own. Confirmed real: a bare
+    // "kolonaki" query auto-resolved outright to "Kolonaki 3899K2" (score
+    // 30) over all 6 real "Kolonaki Tavolo fisso (CODE)" products (score
+    // 15 each, outside the existing ±5 tie tolerance) -- "3899K2" is a
+    // generic, catalog-wide shared "Kit movimentazione tavolo"/table-
+    // handling-kit accessory code (already special-cased elsewhere in
+    // this codebase, see extract_catalog.py/parse_prices.py's own
+    // 3899K1/3899K2 handling), not something "kolonaki" alone should ever
+    // resolve to over the collection's own real table products. The right
+    // behavior is the same as any other genuine same-collection tie: ask.
+    // Scoped narrowly to exactly this shape (top scorer's name is ONLY
+    // "<word> <code-shaped-token>", 2 tokens total) rather than a general
+    // formula change, since this pattern recurs for 17 OTHER Varaschini
+    // collections too (Bahia, Bali, Barcode, Bento, Dolmen, Ellisse, Emma,
+    // Flexion, Gianna, Link, Plinto, Smart, System, Tight, Trama, Victor)
+    // -- each gets the same fix via the shared `collection` ground truth,
+    // not a Kolonaki-specific hack.
+    if (scored.length > 0) {
+      const topScore = scored[0].score;
+      // Only in the diluted-overlap tier (< 80) -- an 80+ score means the
+      // query's own tokens fully CONTAIN (or are contained by) this
+      // candidate's name already (similarity()'s token-SET containment
+      // tier), a genuinely exact/unambiguous match that must never be
+      // second-guessed. Confirmed real: without this guard, "Kolonaki
+      // 3899K2 price" (naming the bare-code product's own full name
+      // outright, scoring 80) got needlessly promoted into a 7-way tie
+      // with its "Tavolo fisso" siblings too.
+      if (topScore >= 80) return scored;
+      for (const top of scored.filter(s => s.score === topScore)) {
+        const topCollection = this.productNameToCollection.get(top.name);
+        if (!topCollection) continue;
+        const topTokens = normalize(top.name).replace(/[()]/g, '').split(/\s+/).filter(Boolean);
+        if (topTokens.length !== 2 || !/\d/.test(topTokens[1])) continue;
+        for (const other of scored) {
+          if (other.name === top.name || other.score >= topScore) continue;
+          if (this.productNameToCollection.get(other.name) !== topCollection) continue;
+          const otherTokens = normalize(other.name).replace(/[()]/g, '').split(/\s+/).filter(Boolean);
+          if (otherTokens.length > 2 && otherTokens[0] === topTokens[0]) {
+            other.score = topScore;
+          }
+        }
+      }
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored;
   }
 
   getCatalogEntry(productName: string): CatalogEntry | undefined {
