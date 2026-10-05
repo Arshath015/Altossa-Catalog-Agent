@@ -3238,13 +3238,34 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
     print("[4/6] Cleaning + disambiguating product names...")
     for e in catalog:
         e["product_name"] = _varaschini_strip_name_junk(e["product_name"])
+    # Collision detection below needs a NORMALIZED key, not the raw name --
+    # confirmed via direct PDF text (pages 571/572): pdftotext's kerning for
+    # a "<digit> <digit>/<digit>" inch-fraction (e.g. "19 3/4"") sometimes
+    # drops the space ("193/4"") purely as a rendering quirk of the source
+    # PDF itself (both spacings appear on the SAME page, even in adjacent
+    # columns) -- not a real data difference. Two DIFFERENT real products
+    # (different art_code, different price) can end up with near-identical
+    # names that only differ by this cosmetic spacing (confirmed: "Cuscini
+    # e Tessuti cm 50 x 30 (19 3/4"x 11 3/4")" / art_code 236MA1 / page 572
+    # vs "...(193/4"x 113/4")" / art_code 2725 / page 571), which the raw-
+    # string check below would never catch -- yet the chat layer's own
+    # matching is lenient enough about this exact spacing to treat an
+    # exact-name query as matching BOTH, merging into a false
+    # multi_product response. Normalizing before counting catches this
+    # collision too, so both get the SAME "(CODE)" disambiguation suffix
+    # this mechanism already applies to genuine exact-string duplicates
+    # elsewhere in this collection (e.g. the two "cm 40 x 40 (153/4"...)"
+    # entries, art_codes 2709/2737).
+    def _collision_key(name):
+        return re.sub(r'(?<=\d)\s+(?=\d/\d)', '', name)
+
     name_counts: dict[str, int] = {}
     for e in catalog:
-        name_counts[e["product_name"]] = name_counts.get(e["product_name"], 0) + 1
+        name_counts[_collision_key(e["product_name"])] = name_counts.get(_collision_key(e["product_name"]), 0) + 1
     dupe_names = {n for n, c in name_counts.items() if c > 1}
     disambiguated = 0
     for e in catalog:
-        if e["product_name"] in dupe_names:
+        if _collision_key(e["product_name"]) in dupe_names:
             e["index_heading"] = e["product_name"]
             e["product_name"] = f"{e['product_name']} ({e['art_code']})"
             disambiguated += 1
