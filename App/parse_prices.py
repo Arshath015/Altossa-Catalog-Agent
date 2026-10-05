@@ -4268,6 +4268,62 @@ def _big_light_parser(path, page_num, entries, brand):
     return rows, flags
 
 
+# Matches a "Maggiorazioni" (surcharges) panel line: "<addon name/desc>
+# ... Codice <CODE> ... Prezzo <PRICE>", confirmed on Ceylon p.24 (e.g.
+# "Veli 100% poliestere ... Codice CEVE ... Prezzo +1.699"). This panel
+# appears next to the main tier-price grid on most Bolzan product pages,
+# listing real add-on options (bed-base splits, fire-retardant treatment,
+# extra veils, leather/fabric supplements, etc.) that were previously
+# either silently dropped (no row, no review_flags entry -- the main
+# table scan never recognized this shape) or garbled into a bogus
+# code="Prezzo"/price_eur="MRD40"-style row (see the skip added above).
+_BOLZAN_MAGGIORAZIONI_RE = re.compile(r'Codice\s+(\S+)\s{2,}Prezzo\s*:?\s*(\+?[\d.,]+)\s*$')
+_BOLZAN_NUMERIC_TOKEN_RE = re.compile(r'^[+-]?[\d.,]+$|^-$')
+
+
+def _bolzan_clean_maggiorazioni_label(raw_label_text):
+    """The text before 'Codice' on a Maggiorazioni line is normally just
+    the addon's own name + a short sub-description (e.g. 'Rete divisibile'
+    + 'Per misure 140-150-160-170-180'), separated by the same 2+-space
+    column gap used throughout this -layout-rendered catalog. But on some
+    dense 2-up pages, an UNRELATED tier-price row from the main grid lands
+    on the exact same physical line purely by coincidence of vertical
+    alignment (confirmed on Sommier Albergo/Cameo Flower et al: 'Super
+    1.136 1.222 ... 1.046  Ganci d'unione  Ganci d'unione a letto'). Reuses
+    KNOWN_TIERS -- the same vocabulary try_parse_tier_row already checks
+    against -- to detect and strip that leaked prefix rather than
+    guessing a new one."""
+    segments = [s for s in re.split(r'\s{2,}', raw_label_text.strip()) if s]
+    if segments and segments[0].lower() in KNOWN_TIERS:
+        i = 1
+        while i < len(segments) and _BOLZAN_NUMERIC_TOKEN_RE.match(segments[i]):
+            i += 1
+        segments = segments[i:]
+    return ' '.join(segments)
+
+
+def _bolzan_find_maggiorazioni_rows(lines, page_of_line, product_name, brand):
+    rows = []
+    for idx, raw in enumerate(lines):
+        m = _BOLZAN_MAGGIORAZIONI_RE.search(raw)
+        if not m:
+            continue
+        code = m.group(1)
+        price = m.group(2)
+        if not price.startswith('+'):
+            price = f'+{price}'
+        label = _bolzan_clean_maggiorazioni_label(raw[:m.start()])
+        rows.append({
+            "brand": brand, "product_name": product_name,
+            "model_variant": label or code,
+            "variant_context": label or None,
+            "size": None, "fabric_tier": None, "tier_label": None,
+            "code": code, "price_eur": price,
+            "source_pdf_page": page_of_line[idx],
+        })
+    return rows
+
+
 def parse_file(path, product_name, brand, all_product_names=None):
     all_product_names = all_product_names or [product_name]
     # Sort longest-first so a name like "Poltroncina Jill" is preferred
@@ -4296,6 +4352,23 @@ def parse_file(path, product_name, brand, all_product_names=None):
     rows = []
     for i, line in enumerate(lines):
         if not re.search(r'\bCodice\b', line):
+            continue
+        if re.search(r'\bCodice\b.*\bPrezzo\b', line):
+            # A "Maggiorazioni" (surcharges) panel line -- its own "Codice
+            # <CODE> ... Prezzo <PRICE>" shape, entirely different from
+            # the main price table's "Codice" HEADER line (which never
+            # has "Prezzo" on the same physical line -- confirmed via
+            # direct inspection of Ceylon p.24: the main grid's "Codice"
+            # row lists only size/column codes, "Prezzo" never appears on
+            # it). Treating this line as a main-table Codice line was the
+            # root cause of the garbled code="Prezzo"/price_eur="MRD40"-
+            # style rows (confirmed on Ceylon): the lookahead below starts
+            # at i+1, searching for a "Prezzo" line AFTER this one, so it
+            # skips straight past THIS line's own correct Prezzo value and
+            # pairs this line's Codice-derived column bounds with a
+            # DIFFERENT, unrelated Maggiorazioni entry's Prezzo line
+            # further down. Skip here -- captured correctly as its own
+            # addon row by _bolzan_find_maggiorazioni_rows below instead.
             continue
         # This line may contain TWO tables side-by-side (common in this
         # catalog, e.g. "Comfort" and "Dream" mattresses printed on the same
@@ -4581,6 +4654,7 @@ def parse_file(path, product_name, brand, all_product_names=None):
                                 "price_eur": price,
                                 "source_pdf_page": page_of_line[i],
                             })
+    rows += _bolzan_find_maggiorazioni_rows(lines, page_of_line, product_name, brand)
     return rows
 
 
