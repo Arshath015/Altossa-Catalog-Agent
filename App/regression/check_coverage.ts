@@ -20,6 +20,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { isUnbalancedParenFragment } from '../server/catalogChat';
 
 const ROOT = path.join(__dirname, '..', '..');
 const BASE_URL = process.env.REGRESSION_BASE_URL || 'http://localhost:3000';
@@ -76,7 +77,18 @@ interface PriceRow {
 
 const KEY_SEP = '~|~';
 function rowKey(r: Pick<PriceRow, 'product_name' | 'model_variant' | 'size' | 'fabric_tier' | 'price_eur'>): string {
-  return [r.product_name, r.model_variant, r.size, r.fabric_tier, r.price_eur].join(KEY_SEP);
+  // The live route deliberately nulls model_variant when it's a genuine
+  // truncated-note artifact (isUnbalancedParenFragment -- confirmed
+  // real on exactly 6 values catalog-wide: 2 Varaschini Belt/Belt Air,
+  // 4 Pianca), to avoid showing the same garbled fragment twice. Mirror
+  // that same transformation here on BOTH sides of the comparison (the
+  // stored prices.json row and the live response row both go through
+  // this same function) so the check verifies against what the server
+  // is actually supposed to return, not a naive byte-for-byte dump of
+  // prices.json -- importing the real function rather than duplicating
+  // its logic so the two can never drift apart.
+  const modelVariant = r.model_variant && isUnbalancedParenFragment(r.model_variant) ? null : r.model_variant;
+  return [r.product_name, modelVariant, r.size, r.fabric_tier, r.price_eur].join(KEY_SEP);
 }
 
 async function postChat(brand: string, message: string): Promise<{ matches?: PriceRow[]; status?: string; error?: string }> {

@@ -162,7 +162,7 @@ export function normalize(s: string | null | undefined): string {
  * construction) -- left as a known, disclosed, low-severity cosmetic
  * gap rather than risk a repeat of the Ditre regression by widening
  * this again without equally exhaustive verification. */
-function isUnbalancedParenFragment(phrase: string): boolean {
+export function isUnbalancedParenFragment(phrase: string): boolean {
   const stripped = phrase.trim();
   const openParens = (stripped.match(/\(/g) || []).length;
   const closeParens = (stripped.match(/\)/g) || []).length;
