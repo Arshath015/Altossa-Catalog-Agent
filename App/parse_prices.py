@@ -11718,6 +11718,55 @@ def _tacchini_parse_shape_b(sliced, page_of_line, header_line, product_name, bra
     return rows
 
 
+def _tacchini_finish_core(label):
+    """Strip leaked column noise (a neighboring line's trailing
+    dimension/volume/weight text sharing the same physical line by
+    coincidence of vertical alignment) from a Finitura/fabric_tier label,
+    keeping only the trailing real finish name -- the text after the LAST
+    2+-space column gap, lowercased for comparison. Confirmed correct
+    against all 6 known real duplicate-row cases this is built to collapse
+    (Altar, Clockwise, Serie 500/3, Serie 500/4, Polar Table, E63 -- same
+    code, same price, same real finish, different leaked prefix) AND the
+    one case that looks like a duplicate by (code, price) alone but
+    ISN'T: E63 has two genuinely DIFFERENT finishes (Cromo champagne/
+    Matt champagne gold vs Cromo rame/Satin copper) that happen to share
+    the exact same €1.230 price -- verified against the source page
+    image. Comparing the finish core, not just (code, price), is what
+    keeps that row safe from ever being collapsed."""
+    segments = [s for s in re.split(r'\s{2,}', (label or '').strip()) if s]
+    return (segments[-1] if segments else '').lower()
+
+
+def _tacchini_dedupe_rows(rows):
+    """Collapse rows that are the SAME real (code, price, finish) --
+    confirmed real duplicate shape: a 2-up shared physical line leaks a
+    DIFFERENT prefix each time the exact same real price line gets
+    scanned (this product's own block scanned from two different
+    starting points -- Polar Table; or the same code/finish/price
+    captured once from Main's own text and once from News's, each with
+    different leaked-prefix noise -- Altar/Clockwise/Serie 500/3/Serie
+    500/4/E63, after the Main+News merge). Keyed on (code, price,
+    _tacchini_finish_core(fabric_tier)) rather than (code, price) alone
+    specifically so a genuinely different finish that happens to share a
+    price with another finish (E63's Cromo champagne/Cromo rame, both
+    €1.230) is never collapsed -- see that function's own docstring.
+    When two rows tie on the key, keeps whichever has the SHORTER/
+    cleaner (less leaked-noise) raw label, since the cleaner copy isn't
+    reliably the first OR the second one seen in every case."""
+    seen = {}
+    out = []
+    for r in rows:
+        key = (r['code'], r['price_eur'], _tacchini_finish_core(r.get('fabric_tier')))
+        if key in seen:
+            idx = seen[key]
+            if len(r.get('fabric_tier') or '') < len(out[idx].get('fabric_tier') or ''):
+                out[idx] = r
+            continue
+        seen[key] = len(out)
+        out.append(r)
+    return out
+
+
 def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_text=None):
     """Tacchini price tables -- see this section's own module comment
     above for the 3 confirmed shapes and the 2-up shared-line disambiguation
@@ -11791,7 +11840,7 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
     if not rows and not flags:
         flags.append((page_of_line[0] if page_of_line else None, product_name,
                       "own heading found but no 'Codice...Prezzo'-shaped table recognized -- unknown table shape, not guessed"))
-    return rows, flags
+    return _tacchini_dedupe_rows(rows), flags
 
 
 def main():
