@@ -157,11 +157,13 @@ export function normalize(s: string | null | undefined): string {
  * duplicated-segment check was tried and rejected after each turned up
  * real false positives somewhere in the catalog (Ditre's "2-er sofa",
  * Ditre's own real "H1"-"H5"/"USB"/"BOX" short codes, Bonaldo's bare-
- * number sizes). Doesn't catch Pianca Forma's own "0        R" (a
- * leaked radius-dimension diagram callout, balanced-parens by
- * construction) -- left as a known, disclosed, low-severity cosmetic
- * gap rather than risk a repeat of the Ditre regression by widening
- * this again without equally exhaustive verification. */
+ * number sizes). Pianca Forma's own "0        R" (a leaked radius-
+ * dimension diagram callout, balanced-parens by construction -- this
+ * function could never catch it) is fixed instead at its real source,
+ * parse_prices.py's _PIANCA_SHAPEB_HEADING_RE, which required only a
+ * single trailing letter after a leading digit run; narrowed to the
+ * same 3+-letter-word bar its sibling alternative already uses, rather
+ * than widened here. */
 export function isUnbalancedParenFragment(phrase: string): boolean {
   const stripped = phrase.trim();
   const openParens = (stripped.match(/\(/g) || []).length;

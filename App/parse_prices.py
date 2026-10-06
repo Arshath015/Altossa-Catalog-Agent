@@ -6329,7 +6329,25 @@ _PIANCA_SHAPEB_NAMED_HEADERS = {
     ('Struttura', 'Tappetino'): ['Struttura', 'Tappetino'],
 }
 
-_PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ])')
+# The second alternative (a leading diagram reference NUMBER before the
+# real heading word, e.g. Mambo's "111 Schienali per uso centrostanza",
+# Abaco's "76                                     Struttura") requires
+# {3,} letters after the number for the SAME reason the first alternative
+# does -- confirmed real gap: a single trailing letter was enough to pass
+# ("0        R", Forma p88), but that's a leaked radius-dimension diagram
+# callout (an "R 10"/"R2" corner-radius label's own "R" landing on a line
+# with a stray "0" from a neighboring dimension, confirmed via direct
+# page read), not a real heading -- it has no parens for
+# isUnbalancedParenFragment to ever catch, so this is the correct place
+# to fix it, not that shared function (which already has its own
+# documented caution against widening without equally exhaustive
+# verification, after the Ditre "2-er sofa" regression). Checked every
+# current real use of the digit-prefixed alternative across the whole
+# Pianca catalog before narrowing it: all 8 others already have a real
+# 3+ letter word right after the number (ellittico, Schienali, Top Marmo,
+# Cassetto x2, Panca, Struttura, con allunga a libro) -- none relies on a
+# single-letter match, so this narrowing changes nothing for them.
+_PIANCA_SHAPEB_HEADING_RE = re.compile(r'^([A-Za-zÀ-ÿ]{3,}|\d+\s+[A-Za-zÀ-ÿ]{3,})')
 
 
 def _pianca_shapeb_named_header_columns(line: str):
