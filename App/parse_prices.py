@@ -11145,15 +11145,31 @@ def _tacchini_heading_positions(lines, all_headings):
     """(line_idx, char_start, name) for every occurrence of a known
     Tacchini product's own page-heading signature ("<Name>  Design: ...")
     across the whole file. Longest names checked first so a short name
-    that's a PREFIX of a longer one (none confirmed among Tacchini's 111,
-    but defensive) can't steal a match that belongs to the longer one."""
+    that's a SUBSTRING of a longer one at the SAME match position can't
+    steal a match that belongs to the longer one -- confirmed real on
+    "Sesann"/"Grand Sesann" (2026-10): "Grand Sesann    Design: ..."
+    independently matches BOTH names (longer one at char 0, "Sesann"
+    itself landing at char 6, since it's a literal trailing substring
+    immediately followed by "  Design:" too) -- without de-duplication,
+    both got appended as separate heading occurrences, corrupting Grand
+    Sesann's own row_window to just 6 characters wide (cropped as if
+    "Sesann" were a neighboring OTHER product sharing its line). Fixed
+    by tracking claimed (start, end) spans per line and skipping any
+    shorter name whose own match overlaps one already claimed by a
+    longer name -- sorting longest-first (already in place) is what
+    makes "longer name wins" well-defined when spans overlap."""
     sorted_headings = sorted(set(all_headings), key=len, reverse=True)
     positions = []
     for idx, line in enumerate(lines):
+        claimed = []  # (start, end) spans already matched on this line
         for name in sorted_headings:
             m = re.search(re.escape(name) + r'\s{2,}Design:', line)
-            if m:
-                positions.append((idx, m.start(), name))
+            if not m:
+                continue
+            if any(m.start() < c_end and m.end() > c_start for c_start, c_end in claimed):
+                continue
+            positions.append((idx, m.start(), name))
+            claimed.append((m.start(), m.end()))
     positions.sort()
     return positions
 
@@ -11276,14 +11292,42 @@ def _tacchini_row_window(path, product_name, brand, all_headings, heading_text):
     return lines, page_of_line, sliced, flags
 
 
+def _tacchini_shape_d_columns(header_line, riv_m):
+    """Column names (Italian side only -- header_line is always the
+    Italian half, confirmed via direct inspection: the English line never
+    matches \\bCodice\\b so _tacchini_detect_shape/this helper never see
+    it) for every named price column after Rivestimento/Upholstery,
+    split the same way as every other column boundary in this parser
+    (2+ space gaps)."""
+    after = header_line[riv_m.end():]
+    return [c.strip() for c in re.split(r'\s{2,}', after) if c.strip()]
+
+
 def _tacchini_detect_shape(header_line):
     """Shape dispatch from a single 'Codice ... Prezzo'-ish header line,
     already horizontally sliced to one product's own column. Returns 'A',
-    'B', 'C', or None (not a recognized header at all)."""
+    'B', 'C', 'D', or None (not a recognized header at all).
+
+    Shape D (confirmed via direct page-image inspection -- Victoria
+    p39-40, Five to Nine/Le Mura/Quilt/Labanca/Polar/Artona/Grand
+    Sesann/Chill-Out/Isola/Orsola/Sesann): the SAME fixed 12-tier
+    Rivestimento vocabulary as Shape A, but with TWO (or more) named
+    price columns after it instead of one -- e.g. "Struttura verniciata
+    / Struttura cromata" (painted vs chromed structure), "Standard/Wool
+    Padding", or "Prezzo/Pouf" (a companion ottoman's own price, not a
+    material choice at all). Distinguished from Shape A purely by COUNT
+    of named columns after Rivestimento (>=2), never by checking for the
+    literal word "Prezzo"/"Price" being absent -- confirmed necessary on
+    Labanca/Polar, whose second column genuinely IS named "Prezzo" (the
+    companion piece's own price), so a presence-of-"Prezzo" check would
+    have wrongly classified their real 2-column header as Shape A."""
     if not re.search(r'\bCodice\b', header_line):
         return None
     low = header_line.lower()
-    if re.search(r'\brivestimento\b|\bupholstery\b', low):
+    riv_m = re.search(r'\brivestimento\b|\bupholstery\b', low)
+    if riv_m:
+        if len(_tacchini_shape_d_columns(header_line, riv_m)) >= 2:
+            return 'D'
         return 'A'
     if re.search(r'\bprezzo\b|\bprice\b', low):
         return 'C'
@@ -11545,6 +11589,169 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
     return rows
 
 
+# One (or two) trailing values per Shape D row -- "Price upon" (no
+# "request") is included as its own alternative because the full phrase
+# routinely wraps: the narrower of a product's 2 price columns (e.g.
+# Labanca's/Polar's own "Pouf" column) sometimes can't fit "Price upon
+# request" on one physical line, printing "Price upon" on this line and
+# a bare "request" (sometimes twice, once per column) on the NEXT line
+# -- confirmed via direct raw-text inspection (Polar/Le Mura/Quilt) this
+# is a column-width wrapping artifact, not a different non-numeric
+# state from TACCHINI_PRICE_UPON_REQUEST. Handled by
+# _tacchini_parse_shape_d1's own continuation-line lookahead, never by
+# this regex alone.
+_TACCHINI_D_VALUE = r'(?:\+?[\d.,]+|Price upon request|Price upon)'
+_TACCHINI_D1_CELL_RE = re.compile(
+    r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
+    re.IGNORECASE
+)
+
+
+def _tacchini_d1_match_row(raw, tier_col_start):
+    """Match a D1 tier row at `tier_col_start`, tolerating a small,
+    CONFIRMED-real per-table leftward drift between where the header's
+    "Rivestimento" word starts and where that table's own data column
+    actually begins. Verified via direct raw-text inspection across all
+    12 D1 products: some tables align exactly (Sesann, Polar, Quilt,
+    Labanca, Isola, Orsola, Five to Nine -- offset 0), others drift 1
+    char (Victoria) or 2 chars (Chill-Out, Le Mura, Artona) left -- never
+    more than 2, never rightward, and CONSTANT for a given table (every
+    row drifts the same amount, not per-row noise) in every sample
+    checked. Tries exact alignment first, only falling back to -1/-2
+    when the exact position doesn't yield a recognized tier label --
+    this ordering, plus the final TACCHINI_TIER_LABELS membership check,
+    means a wrong offset can only ever produce a non-match (falls
+    through to the next offset or gives up), never a fabricated row: the
+    short, specific vocabulary makes an accidental false-positive match
+    at the wrong offset effectively impossible."""
+    for delta in (0, -1, -2):
+        start = tier_col_start + delta
+        if start < 0:
+            continue
+        cell = (raw[start:] if len(raw) > start else '').strip()
+        m = _TACCHINI_D1_CELL_RE.match(cell)
+        if m and m.group(1).strip().lower() in TACCHINI_TIER_LABELS:
+            return m
+    return None
+
+
+def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_name, brand, flags):
+    """Shape D, tier-letter variant (D1): the same fixed 12-tier
+    Rivestimento vocabulary as Shape A (see _tacchini_tier_cell), but
+    TWO (or more) named price columns per tier row instead of one.
+    Column positions/names come from the header line itself, same
+    technique as Shape A/B. One row emitted per (tier, column).
+
+    The column name is folded into model_variant (as "<Descrizione> —
+    <column name>", or just "<column name>" when Descrizione is blank)
+    rather than carried in variant_context. This is deliberate, not a
+    style choice: the shared ambiguous-price safety net in main() keys
+    on (product_name, code, fabric_tier, model_variant) ONLY -- it does
+    NOT include variant_context (confirmed by reading that code, and by
+    a real blast-radius check: 149 Bolzan / 455 Varaschini / 40 Pianca
+    existing keys already rely on variant_context to distinguish
+    otherwise-identical rows, so adding it to that shared key would
+    require re-auditing every one of those, well beyond this fix's
+    scope). Two D1 rows for the same tier letter (e.g. Victoria's own
+    "B" under Struttura verniciata vs Struttura cromata) share the same
+    code, so with variant_context alone carrying the column name, they
+    would collide on that shared key and BOTH get marked ambiguous:true
+    -- which the chat layer then treats as "can't confidently show a
+    price" and hides entirely (see the cleanRows/ambiguousRows split in
+    catalogChat.ts), silently defeating this whole fix. Folding the
+    column name into model_variant instead makes the existing key
+    naturally distinct per column, with zero changes to shared code --
+    the same fix shape already used for the Servoquadro_Servogiro
+    collision (see this file's Pianca section). variant_context is left
+    None; buildVariantGroups' own grouping key is (model_variant,
+    variant_context), so distinct model_variant values alone already
+    split the two columns into separate sub-tables in the UI."""
+    low = header_line.lower()
+    riv_m = re.search(r'\brivestimento\b|\bupholstery\b', low)
+    if not riv_m:
+        return []
+    tier_col_start = riv_m.start()
+    col_names = _tacchini_shape_d_columns(header_line, riv_m)
+    if len(col_names) < 2:
+        return []
+    desc_m = re.search(r'\bdescrizione\b', low)
+    desc_col_start = desc_m.start() if desc_m else None
+    info_m = re.search(r'\bdim\.?\s*scatole\b|\bboxes\s*sizes\b|\binformazioni\b|\binformation\b', low)
+    desc_col_end = info_m.start() if info_m else tier_col_start
+
+    rows = []
+    i = 0
+    while i < len(block):
+        line = block[i]
+        code_m = _tacchini_match_code_line(line)
+        if code_m:
+            code = code_m[0]
+            page = block_page_of_line[i]
+            # Code-anchored slice tried FIRST (not desc_col_start, unlike
+            # every other Tacchini shape parser) -- confirmed real need
+            # on Polar: desc_col_start (derived from the header's own
+            # "Descrizione" word position) suffers the SAME small
+            # per-table leftward drift already confirmed for tier labels
+            # (see _tacchini_d1_match_row's own docstring), silently
+            # truncating "Divano 234 cm" to "vano 234 cm" -- a column
+            # POSITION estimate, unlike `len(code)`, which is always
+            # exactly right regardless of any drift elsewhere on the
+            # line. desc_col_start is kept only as a fallback for the
+            # (so-far unseen) case where the code-anchored slice is
+            # empty.
+            desc_it = line[len(code):desc_col_end].strip()
+            if not desc_it and desc_col_start is not None:
+                desc_it = line[desc_col_start:desc_col_end].strip()
+            tier_rows_found = 0
+            j = i
+            steps = 0
+            blank_run = 0
+            while j < len(block) and steps < 80 and blank_run < 3:
+                raw = block[j]
+                steps += 1
+                if j > i and _tacchini_match_code_line(raw):
+                    break
+                m = _tacchini_d1_match_row(raw, tier_col_start)
+                label = m.group(1).strip() if m else None
+                if m:
+                    blank_run = 0
+                    vals = [m.group(2), m.group(3)]
+                    if any(v.strip().lower() == 'price upon' for v in vals) and j + 1 < len(block):
+                        nxt = block[j + 1]
+                        # Widest tried offset (-2) -- safe here even when
+                        # too early, since the continuation line has
+                        # nothing but whitespace before "request" at this
+                        # column in every confirmed sample, and .strip()
+                        # discards any extra leading blank space.
+                        cont_start = max(0, tier_col_start - 2)
+                        cont = (nxt[cont_start:] if len(nxt) > cont_start else '').strip()
+                        if re.match(r'^request(\s+request)?$', cont, re.IGNORECASE):
+                            vals = [TACCHINI_PRICE_UPON_REQUEST if v.strip().lower() == 'price upon' else v
+                                    for v in vals]
+                            j += 1  # consume the "request  request" continuation line
+                    tier = label.upper() if len(label) <= 3 else label
+                    for col_name, val in zip(col_names, vals):
+                        rows.append({
+                            "brand": brand, "product_name": product_name,
+                            "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                            "variant_context": None,
+                            "size": None, "fabric_tier": tier,
+                            "tier_label": "Rivestimento",
+                            "code": code, "price_eur": val.strip(),
+                            "source_pdf_page": page, "ambiguous": False,
+                        })
+                    tier_rows_found += 1
+                elif raw.strip() == '':
+                    blank_run += 1
+                j += 1
+            if tier_rows_found == 0:
+                flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
+            i = j
+        else:
+            i += 1
+    return rows
+
+
 def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, brand, flags):
     """Shape C: single Finitura/Categoria + Prezzo/Price column. One row
     per code, except codes that legitimately repeat for a colorway variant
@@ -11770,11 +11977,30 @@ def _tacchini_dedupe_rows(rows):
     €1.230) is never collapsed -- see that function's own docstring.
     When two rows tie on the key, keeps whichever has the SHORTER/
     cleaner (less leaked-noise) raw label, since the cleaner copy isn't
-    reliably the first OR the second one seen in every case."""
+    reliably the first OR the second one seen in every case.
+
+    _tacchini_finish_core(model_variant) was added to the key alongside
+    fabric_tier's own (2026-10, Shape D) -- Shape D's fabric_tier is
+    always just a short tier LETTER ("B"), identical across its 2 price
+    columns by design (that's the whole point of the shape), while the
+    column name lives in model_variant instead (see
+    _tacchini_parse_shape_d1's own docstring for why). Confirmed real
+    data loss before this fix: Quilt's own Painted/Chromed base columns
+    are priced IDENTICALLY at every tier, so (code, price,
+    finish_core(fabric_tier)="b") collided across both columns and
+    silently dropped the second one -- 12 real rows gone, not just a
+    cosmetic duplicate. Safe to add unconditionally: for every
+    PRE-EXISTING Shape B/C case this function was built to collapse,
+    model_variant is the row's own clean, leaked-noise-free Descrizione
+    text and stays IDENTICAL across the genuine duplicates (the leaked
+    noise bleeds into fabric_tier, never model_variant) -- adding an
+    always-equal field to a key can only ever narrow a group, never
+    wrongly merge two that were correctly kept separate before."""
     seen = {}
     out = []
     for r in rows:
-        key = (r['code'], r['price_eur'], _tacchini_finish_core(r.get('fabric_tier')))
+        key = (r['code'], r['price_eur'], _tacchini_finish_core(r.get('fabric_tier')),
+               _tacchini_finish_core(r.get('model_variant')))
         if key in seen:
             idx = seen[key]
             if len(r.get('fabric_tier') or '') < len(out[idx].get('fabric_tier') or ''):
@@ -11848,6 +12074,8 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
                 rows.extend(_tacchini_parse_shape_c(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
             elif chunk_shape == 'B':
                 rows.extend(_tacchini_parse_shape_b(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+            elif chunk_shape == 'D':
+                rows.extend(_tacchini_parse_shape_d1(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
             # Surcharge rows ("Surcharge for ...") can appear within any
             # shape's own block -- scanned independently of which shape
             # matched, since it's a distinct, narrow pattern, not part of
