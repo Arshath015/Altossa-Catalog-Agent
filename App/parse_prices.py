@@ -11345,7 +11345,26 @@ _TACCHINI_PRICE_TOKEN_RE = re.compile(r'^\+?[\d.,]+$')
 # different rug sizes, 170x240 vs 230x300, not noise): a plain
 # "^0[A-Z0-9]{4,}\*?\s+" match stops at the first whitespace and silently
 # drops the " D", collapsing two distinct size variants onto one code.
-_TACCHINI_CODE_LINE_RE = re.compile(r'^(0[A-Z0-9]{4,}\*?(?:\s[A-Z](?=\s|$))?)(\s+)(.*)$')
+# Leading \s* tolerates a code that doesn't start at column 0 -- confirmed
+# real on Agnese (2026-10-11): its own page is shared with "Victoria,
+# compositions" (a bonus composition summary section, never registered as
+# a heading since it has no "Design:" line of its own), so nothing crops
+# that content out of Agnese's own row-window, leaving ~116 chars of
+# genuine leading blank padding before Agnese's own code on every line --
+# the OLD plain `^(0[A-Z0-9]...)` anchor failed to match at all, and
+# Agnese's own perfectly-normal single-column Shape A table (confirmed via
+# direct page-image inspection -- ordinary 'Rivestimento'/'Prezzo' header,
+# no different shape at all) silently produced zero rows. Safe to widen:
+# every other Tacchini product's own code already starts at column 0
+# after window-cropping, so `\s*` matches zero characters for them,
+# changing nothing. Downstream Shape A/D1 position-based extraction
+# (tier_col_start, desc_col_start) are unaffected -- both are computed as
+# ABSOLUTE positions from the header line, never relative to where this
+# regex's own match starts, and Agnese's own header is shifted by the
+# SAME leading padding as its data rows (confirmed: tier_col_start lined
+# up exactly with Agnese's own "B" tier letter before this fix, zero
+# additional drift).
+_TACCHINI_CODE_LINE_RE = re.compile(r'^\s*(0[A-Z0-9]{4,}\*?(?:\s[A-Z](?=\s|$))?)(\s+)(.*)$')
 
 
 def _tacchini_match_code_line(line):
