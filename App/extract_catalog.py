@@ -2635,6 +2635,73 @@ VARASCHINI_GROUP_A_UNPRICEABLE_NAMES: set[str] = {
     "Reuse 25551B",
 }
 
+# Permanent, hand-verified re-injection for 2 real products a full
+# re-extraction silently drops -- same precedent as
+# VARASCHINI_FALSE_POSITIVE_CODES/VARASCHINI_GROUP_A_UNPRICEABLE_NAMES
+# above (a permanent, documented, code-level constant applied once right
+# before the final write), just the inverse direction (forcing entries IN
+# rather than filtering them OUT), since these are genuine root-cause
+# discovery gaps in the per-page article walk, not extraction artifacts.
+# Both confirmed real, correctly priced, against their source page images
+# (2026-10-12) -- not a parser bug being worked around blind.
+#
+# - Copacabana Granito (4756): p552 prints TWO near-identical umbrella
+#   variants back to back (art. 4754 then art. 4756, same colors/price,
+#   differing only in base dimensions). The per-page article walk only
+#   ever captures the FIRST such block on a page with this repeated
+#   shape -- confirmed via direct fresh-extraction output showing exactly
+#   1 Copacabana entry (4754) where the live, previously-hand-verified
+#   catalog has 2. Price/fields confirmed unchanged against the live
+#   catalog_index.json entry.
+# - Dolmen Prolunga aggiuntiva 60x100 (1820A): p211 prints this as an
+#   accessory/extension sub-table nested within the main "dolmen" art.
+#   1821 table's own page, not as its own standalone per-page article --
+#   the per-page article walk never registers it as a product of its own
+#   at all. Confirmed via direct fresh-extraction output showing 8 Dolmen
+#   entries (the 8 main table variants) and zero for 1820A. Price/fields
+#   confirmed unchanged against the live catalog_index.json entry.
+#
+# NOT debugged at the root-cause/pipeline level (deliberately out of
+# scope per explicit instruction) -- this re-injection is the permanent
+# fix. If the per-page article walk is ever reworked to handle repeated-
+# block pages or nested accessory sub-tables generally, these two would
+# likely be found "for real" and this list could be retired, but there is
+# no such rework planned today.
+VARASCHINI_DROPPED_PRODUCT_OVERRIDES: list[dict] = [
+    {
+        "brand": "Varaschini",
+        "collection": "Copacabana",
+        "product_name": "Copacabana Granito (4756)",
+        "art_code": "4756",
+        "printed_page_start": 552,
+        "printed_page_end": 552,
+        "pdf_page_start": 552,
+        "pdf_page_end": 552,
+        "shape": "B",
+        "section_category": "collection",
+        "mini_pdf": "Varaschini\\pages\\p552.pdf",
+        "images": ["p552.jpg"],
+        "page_images": {"552": "p552.jpg"},
+        "text_file": "Varaschini\\text\\p552.txt",
+    },
+    {
+        "brand": "Varaschini",
+        "collection": "Dolmen",
+        "product_name": "Dolmen Prolunga aggiuntiva 60x100 (1820A)",
+        "art_code": "1820A",
+        "printed_page_start": 211,
+        "printed_page_end": 211,
+        "pdf_page_start": 211,
+        "pdf_page_end": 211,
+        "shape": "A",
+        "section_category": "collection",
+        "mini_pdf": "Varaschini\\pages\\p211.pdf",
+        "images": ["p211.jpg"],
+        "page_images": {"211": "p211.jpg"},
+        "text_file": "Varaschini\\text\\p211.txt",
+    },
+]
+
 def _varaschini_find_records_flat(page_num: int, text: str) -> list[tuple[str, int, str]]:
     """Shape D/E fallback: a bare CODE as the first token of its own
     column-chunk, with a '€' within the next 2 lines. Needed because dense
@@ -3374,6 +3441,17 @@ def run_varaschini(pdf_path: str, brand: str, out_root: Path) -> None:
     if group_a_dropped:
         catalog = [e for e in catalog if e.get("product_name") not in VARASCHINI_GROUP_A_UNPRICEABLE_NAMES]
         print(f"[group A] Excluded {len(group_a_dropped)} confirmed-unpriceable entries from catalog_index.json.")
+
+    # Re-inject the 2 hand-verified products the per-page article walk
+    # never discovers at all -- see VARASCHINI_DROPPED_PRODUCT_OVERRIDES's
+    # own comment. Guarded by product_name so this is a no-op (not a
+    # duplicate) if a future rebuild ever does find them for real.
+    existing_names = {e.get("product_name") for e in catalog}
+    reinjected = [o for o in VARASCHINI_DROPPED_PRODUCT_OVERRIDES if o["product_name"] not in existing_names]
+    if reinjected:
+        catalog.extend(reinjected)
+        print(f"[override] Re-injected {len(reinjected)} hand-verified product(s) the article walk misses: "
+              f"{', '.join(o['product_name'] for o in reinjected)}")
 
     catalog_path = out_root / "catalog_index.json"
     catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
