@@ -11157,13 +11157,31 @@ def _tacchini_heading_positions(lines, all_headings):
     by tracking claimed (start, end) spans per line and skipping any
     shorter name whose own match overlaps one already claimed by a
     longer name -- sorting longest-first (already in place) is what
-    makes "longer name wins" well-defined when spans overlap."""
+    makes "longer name wins" well-defined when spans overlap.
+
+    Any hyphen in `name` matches hyphen, en-dash, OR em-dash in the raw
+    text -- confirmed real on "T-Table" (2026-10): its own dedicated
+    page prints a regular hyphen (matching the registered catalog name),
+    but the SAME product's own reprint on a page SHARED with Core (News
+    p.28) prints an en-dash instead ("T–Table") -- the exact-hyphen-only
+    match left that second occurrence invisible to heading detection
+    entirely, so Core's own horizontal window (sharing that same page)
+    had no boundary to crop against and silently absorbed all of
+    T-Table's own rows as if they were Core's. Widening is scoped to
+    ONLY the dash character itself (every other character in `name`
+    stays an exact literal match via re.escape), so this can't loosen
+    matching for any name without a hyphen -- confirmed via a full scan
+    of the Tacchini catalog this is the only product with an inconsistent
+    dash between its own page occurrences (Chill-Out/Chill-Out Table
+    print a consistent regular hyphen everywhere; Pi–Dou's own registered
+    name already uses an en-dash, matching its own consistent printing)."""
     sorted_headings = sorted(set(all_headings), key=len, reverse=True)
     positions = []
     for idx, line in enumerate(lines):
         claimed = []  # (start, end) spans already matched on this line
         for name in sorted_headings:
-            m = re.search(re.escape(name) + r'\s{2,}Design:', line)
+            name_pattern = re.escape(name).replace(r'\-', '[-–—]')
+            m = re.search(name_pattern + r'\s{2,}Design:', line)
             if not m:
                 continue
             if any(m.start() < c_end and m.end() > c_start for c_start, c_end in claimed):
@@ -11495,7 +11513,27 @@ def _tacchini_tier_cell(cell):
     see _tacchini_parse_shape_a). Mirrors try_parse_tier_row's own
     "trailing numeric run wins, known-label-only" design, generalized to
     Tacchini's own tier vocabulary and its "Price upon request" non-numeric
-    state."""
+    state.
+
+    Leading-whitespace check (BEFORE stripping) rejects a cell whose own
+    real content starts 10+ chars in -- confirmed real need on Le Mura
+    XL's own 0CSC7550CF (2026-10): a physical row that's genuinely BLANK
+    for this code's own column (no right-bound exists on pages sharing
+    an unregistered composition sub-table, see this function's own
+    trailing-gap-tolerance comment below) can still "inherit" an
+    unrelated, far-RIGHT composition row's own tier+price content once
+    the cell is `.strip()`-ed, since stripping removes the large blank
+    run that would otherwise mark it as not-ours -- confirmed on row
+    304, blank for 0CSC7550CF's own column but landing on LM1's own "Z
+    16.060" row 96 chars to the right, which the (then-already-loosened)
+    trailing-gap tolerance below accepted as a real, DUPLICATE "Z" value
+    for 0CSC7550CF. Every genuine same-row tier label in this column
+    format starts flush against tier_col_start (0-2 chars of natural
+    print jitter, never double digits) -- confirmed by direct inspection
+    of every working example in this file."""
+    leading_ws = len(cell) - len(cell.lstrip(' '))
+    if leading_ws >= 10:
+        return None, None
     cell = cell.strip()
     if not cell:
         return None, None
@@ -11510,8 +11548,42 @@ def _tacchini_tier_cell(cell):
     # L3) contain one -- safe to allow broadly since the final
     # TACCHINI_TIER_LABELS membership check (not this character class) is
     # what actually anchors correctness.
-    m = re.match(r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(\+?[\d.,]+)\s*$', cell)
+    #
+    # Trailing match is EITHER true end-of-cell OR an 8+ space gap
+    # followed by NON-PRICE-SHAPED content -- confirmed real need on Le
+    # Mura XL's own 0CSC7550CF/0CSC10050CF (2026-10): these share a
+    # physical page with an UNREGISTERED composition sub-table (no
+    # "Design:" heading of its own, so _tacchini_row_window's horizontal
+    # cropping has no boundary to bound against -- see this product's
+    # own catalog_index entry, page 29), and several of its own real
+    # tier rows (D/E/L/T/U/V/C.O. Fabric) have that neighboring
+    # sub-table's own CODES bleeding in far to the right on the SAME
+    # physical line (e.g. "D   310    LM1  B  10.240  LM2  B  10.100"),
+    # which the OLD strict end-anchor (`\s*$`) rejected outright,
+    # silently dropping real rows.
+    #
+    # The trailing content after the gap must NOT itself look like
+    # another bare price value -- confirmed real danger while verifying
+    # THIS fix: a first version that accepted ANY trailing content after
+    # the gap also silently matched Butter's own BT14/BT15 (2026-10),
+    # whose own cells hold 3 GENUINELY DIFFERENT real prices per tier
+    # (MR1/MR2/MR3 module options, e.g. "B   15.330         15.450
+    # 15.690"), each separated by exactly this same 8+ space gap --
+    # capturing only the first (15.330) as if it were the row's only
+    # price would have silently discarded the other 2 real values with
+    # no ambiguous flag, the exact "looks confident, is actually
+    # incomplete" failure this project treats as the top priority to
+    # avoid (same shape as the original Shape D danger this whole
+    # function's design already guards against). Explicitly rejecting
+    # when the trailing content's own FIRST token is itself a bare price
+    # value closes this -- BT14/BT15 now correctly decline again (zero
+    # rows, safely flagged), while Le Mura XL's own trailing CODE text
+    # ("LM1", not a number) is unaffected.
+    m = re.match(r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(\+?[\d.,]+)(?:\s{8,}(.*))?$', cell)
     if not m:
+        return None, None
+    trailing = m.group(3)
+    if trailing and _TACCHINI_PRICE_TOKEN_RE.match(trailing.split()[0]):
         return None, None
     label = m.group(1).strip()
     if label.lower() not in TACCHINI_TIER_LABELS:
@@ -11648,6 +11720,27 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
                         "source_pdf_page": page, "ambiguous": False,
                     })
                     tier_rows_found += 1
+                    if tier.lower() == 'c.o. leather':
+                        # C.O. Leather is always the FINAL entry in
+                        # TACCHINI_TIER_LABELS' fixed canonical print
+                        # order (B,D,E,L,T/U,V,Z,L1,L2,L3,C.O. Fabric,
+                        # C.O. Leather -- confirmed via every page image
+                        # checked this project, never varies). Stopping
+                        # here as soon as it's found is required by
+                        # _tacchini_tier_cell's own 8+-space trailing-gap
+                        # tolerance (added to recover real same-row
+                        # garbage-bleed cases, e.g. Le Mura XL's own
+                        # 0CSC7550CF/0CSC10050CF): without this stop, the
+                        # same loosened tolerance let the scan walk PAST
+                        # this code's own legitimate block and start
+                        # matching an unrelated NEIGHBORING composition's
+                        # own tier rows that happen to realign at this
+                        # same tier_col_start further down the page --
+                        # confirmed real on 0CSC10050CF, which absorbed
+                        # several thousand-euro rows that actually belong
+                        # to LM3/LM4 (unrelated compositions) before this
+                        # stop was added.
+                        break
                 elif raw.strip() == '':
                     blank_run += 1
                 j += 1
@@ -11730,6 +11823,23 @@ def _tacchini_d1_match_row(raw, tier_col_start):
     return None
 
 
+# Products confirmed (via direct page-image inspection, 2026-10) to have
+# the "2 genuinely different real codes share one combined price grid,
+# one per column" shape -- Reversível's own 0RVRPL104 (standard padding)/
+# 0RVRWLPL104 (wool padding), Polar's own 0PLRDV234A (Sofa)/0PLRPF01 (its
+# companion Pouf), Labanca's own 0LBNDV240/0LBNPF240 (same Sofa/Pouf
+# pattern), Le Mura's own 0LMRTE090DX/0LMRWLTE090DX (standard/wool
+# padding per module). Deliberately an ALLOWLIST, not a blanket behavior
+# change for every D1 product: Five to Nine has a SUPERFICIALLY similar
+# but structurally different multi-sub-variant shape where a later
+# block's own code can get wrongly merged into an earlier block's column
+# if this same logic is applied unscoped (confirmed real: 0FTNTBMT* from
+# the "con tavolino in metallo" sub-variant's own block bled into the
+# unrelated "standard padding" sub-variant's wool-padding column) --
+# left on the ORIGINAL single-code-per-block behavior instead.
+_TACCHINI_D1_TWO_CODE_PRODUCTS = {'Reversível', 'Polar', 'Labanca', 'Le Mura'}
+
+
 def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_name, brand, flags):
     """Shape D, tier-letter variant (D1): the same fixed 12-tier
     Rivestimento vocabulary as Shape A (see _tacchini_tier_cell), but
@@ -11797,14 +11907,58 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
             desc_it = line[len(code):desc_col_end].strip()
             if not desc_it and desc_col_start is not None:
                 desc_it = line[desc_col_start:desc_col_end].strip()
-            tier_rows_found = 0
+            # Two passes, not one: first collect every tier row AND every
+            # code line in this block WITHOUT emitting anything, then
+            # decide code attribution per column once the whole block
+            # shape is known. Needed because a SECOND real code can
+            # appear mid-block (confirmed on Reversível/Polar/Labanca/Le
+            # Mura, 2026-10) -- each column genuinely belongs to its OWN
+            # code (e.g. Polar's own 0PLRDV234A = Sofa, 0PLRPF01 = its
+            # companion Pouf; Reversível's own 0RVRPL104 = standard-
+            # padding SKU, 0RVRWLPL104 = wool-padding SKU), not a single
+            # shared code for both columns -- but the SECOND code's own
+            # label doesn't print until partway down the tier sequence
+            # (Polar: row 3 of 12; Reversível/Labanca/Le Mura: row 2),
+            # so by the time it's seen, column 2's EARLIER rows (already
+            # scanned) ALSO need that same code retroactively. A single
+            # forward pass that emits-as-it-goes can't do that.
+            collected = []  # (j, tier, vals, page)
+            codes_seen = [(code, None)]  # (code, first_tier_seen) per distinct code
             j = i
             steps = 0
             blank_run = 0
             while j < len(block) and steps < 80 and blank_run < 3:
                 raw = block[j]
                 steps += 1
-                if j > i and _tacchini_match_code_line(raw):
+                if j > i and product_name in _TACCHINI_D1_TWO_CODE_PRODUCTS:
+                    other_code_m = _tacchini_match_code_line(raw)
+                    if other_code_m and other_code_m[0] != codes_seen[-1][0] and \
+                            other_code_m[0] not in (c for c, _ in codes_seen):
+                        m_here = _tacchini_d1_match_row(raw, tier_col_start)
+                        here_tier = m_here.group(1).strip().upper() if m_here else None
+                        if here_tier == 'B' or len(codes_seen) >= 2:
+                            # A genuinely NEW block starting fresh at its
+                            # own "B" row (or a 3rd+ distinct code, never
+                            # confirmed real -- too ambiguous to guess
+                            # at) -- end THIS block here, same as the
+                            # original unconditional break.
+                            break
+                        codes_seen.append((other_code_m[0], here_tier))
+                elif j > i and _tacchini_match_code_line(raw):
+                    # Original, UNCONDITIONAL break -- preserved exactly
+                    # for every D1 product NOT in the 2-code allowlist
+                    # below (confirmed real need on Five to Nine, which
+                    # has its OWN, more tangled multi-sub-variant shape:
+                    # a code block's own "column 2" code sometimes isn't
+                    # introduced within that SAME block at all, so the
+                    # merging logic above wrongly attached a LATER,
+                    # unrelated block's own code -- e.g. the "con
+                    # tavolino in metallo" variant's own 0FTNTBMT* --
+                    # onto an EARLIER, unrelated block's wool-padding
+                    # column. Scoping the new behavior to only the
+                    # confirmed-clean products below avoids this without
+                    # touching Five to Nine's own already-correct,
+                    # already-shipped ambiguous-collision handling.)
                     break
                 m = _tacchini_d1_match_row(raw, tier_col_start)
                 label = m.group(1).strip() if m else None
@@ -11825,20 +11979,33 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
                                     for v in vals]
                             j += 1  # consume the "request  request" continuation line
                     tier = label.upper() if len(label) <= 3 else label
-                    for col_name, val in zip(col_names, vals):
-                        rows.append({
-                            "brand": brand, "product_name": product_name,
-                            "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
-                            "variant_context": None,
-                            "size": None, "fabric_tier": tier,
-                            "tier_label": "Rivestimento",
-                            "code": code, "price_eur": val.strip(),
-                            "source_pdf_page": page, "ambiguous": False,
-                        })
-                    tier_rows_found += 1
+                    collected.append((tier, vals, block_page_of_line[j]))
                 elif raw.strip() == '':
                     blank_run += 1
                 j += 1
+            # Column-to-code attribution: 1 code found (the overwhelming
+            # majority of D1 products, e.g. Victoria/Chill-Out/Artona) ->
+            # every column shares it, unchanged from before this fix. 2
+            # codes found -> column 0 gets codes_seen[0], column 1 gets
+            # codes_seen[1] (3rd+ named column in a 2-code block has no
+            # confirmed real precedent -- falls back to codes_seen[0],
+            # same as today's single-code behavior, rather than guessing).
+            col_codes = [codes_seen[0][0]] * len(col_names)
+            if len(codes_seen) == 2:
+                col_codes[1] = codes_seen[1][0]
+            tier_rows_found = 0
+            for tier, vals, page in collected:
+                for col_idx, (col_name, val) in enumerate(zip(col_names, vals)):
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                        "variant_context": None,
+                        "size": None, "fabric_tier": tier,
+                        "tier_label": "Rivestimento",
+                        "code": col_codes[col_idx], "price_eur": val.strip(),
+                        "source_pdf_page": page, "ambiguous": False,
+                    })
+                tier_rows_found += 1
             if tier_rows_found == 0:
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j
