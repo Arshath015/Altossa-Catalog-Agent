@@ -11519,6 +11519,73 @@ def _tacchini_tier_cell(cell):
     return label, m.group(2)
 
 
+# Every genuine price-shaped token this parser recognizes, for the
+# single-value fallback's own "exactly one real price in this cell" check
+# -- deliberately the union of a plain numeric value AND the literal
+# non-numeric "Price upon request" state, since a row using either one
+# still only has ONE real price either way.
+_TACCHINI_ANY_PRICE_TOKEN_RE = re.compile(
+    r'\+?[\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|Price upon request', re.IGNORECASE
+)
+
+
+def _tacchini_single_value_fallback(block, block_page_of_line, i, j, tier_col_start, code,
+                                     desc_it, product_name, brand, rows):
+    """Recovers a code whose own Rivestimento cell holds non-standard
+    material/finish NAMES (e.g. Basilan's "Rattan", Togrul's "Carrara/
+    Pietra Grey and Clay effect base") instead of real B/D/E-style tier
+    letters -- see this function's own call site in
+    _tacchini_parse_shape_a for why it's safe to reuse there now (Shape
+    D's 2-column headers no longer reach Shape A at dispatch time).
+    Scans the SAME (i, j) row range Shape A's own tier scan already
+    covered, emitting one row per cell that has EXACTLY one price-shaped
+    token in it -- 2+ price-shaped tokens anywhere in a single cell (not
+    just a non-greedy match of the LAST one) means THAT row's own shape
+    isn't understood well enough to safely guess at, so only that row is
+    skipped, never the whole code.
+
+    Confirmed real need to emit MULTIPLE rows, not just one, while
+    verifying this against Togrul (0TGRTV160R/180R): 4 distinct real
+    finish-name rows per code, not 1 -- an earlier version of this
+    function returned after its first match and silently dropped the
+    other 3 real prices (7.510/8.030/9.260), which would have been a
+    strictly worse, incomplete-but-looks-complete outcome than the
+    original zero-rows/flagged state. Explicitly skips any line matching
+    the shared surcharge-intro pattern (confirmed real need on the SAME
+    Togrul block: its own "Extra charge for anti-stain treatment on
+    marble top    1.180" surcharge line sits in the identical column
+    slice and would otherwise be double-counted as a bogus 5th
+    "material" row, alongside the correct, separately-captured
+    "+1.180" surcharge row _tacchini_find_surcharge_rows already emits)."""
+    added = 0
+    for k in range(i, j):
+        raw = block[k]
+        if _TACCHINI_SURCHARGE_INTRO_RE.search(raw):
+            continue
+        cell = (raw[tier_col_start:] if len(raw) > tier_col_start else '').strip()
+        if not cell:
+            continue
+        tokens = _TACCHINI_ANY_PRICE_TOKEN_RE.findall(cell)
+        if len(tokens) != 1:
+            continue
+        price = tokens[0]
+        m = re.search(re.escape(price), cell, re.IGNORECASE)
+        label = cell[:m.start()].strip()
+        if not label or not re.search(r'[A-Za-zÀ-ÿ]{2,}', label):
+            continue
+        rows.append({
+            "brand": brand, "product_name": product_name,
+            "model_variant": desc_it or None, "variant_context": None,
+            "size": None, "fabric_tier": label,
+            "tier_label": "Rivestimento",
+            "code": code,
+            "price_eur": TACCHINI_PRICE_UPON_REQUEST if price.lower() == TACCHINI_PRICE_UPON_REQUEST.lower() else price,
+            "source_pdf_page": block_page_of_line[k], "ambiguous": False,
+        })
+        added += 1
+    return added
+
+
 def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name, brand, flags):
     """Shape A: fixed 11-tier letter grid. Column positions come from the
     header line itself (same technique as Shape B) because, confirmed via
@@ -11585,22 +11652,31 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
                     blank_run += 1
                 j += 1
             if tier_rows_found == 0:
-                # A single-value fallback (reusing Shape C's "label +
-                # trailing numeric" pattern) was tried here for codes using
-                # a non-standard material name instead of a real tier
-                # letter (e.g. Basilan's Sedia/Rattan) -- REVERTED after
-                # confirming it produces real wrong data: for Shape D's
-                # 2-axis rows (e.g. Victoria's "B   2.980   3.290"), the
-                # non-greedy label group silently swallowed the FIRST
-                # numeric value as if it were text (fabric_tier ended up
-                # as the literal string "2.980"), hiding the fact a second,
-                # different price exists for the same cell -- exactly the
-                # "silently wrong, not just incomplete" failure this
-                # project treats as the top priority to avoid. Zero rows
-                # (flagged below) is the safe, correct behavior here;
-                # recovering the Rattan-style cases needs a fallback that
-                # can positively rule out a second trailing value, not
-                # just reuse a pattern that happens to also match them.
+                # Narrow single-value fallback for codes using a
+                # non-standard material name instead of a real tier letter
+                # (e.g. Basilan's own "Rattan" row) -- an EARLIER, broader
+                # attempt at this (reusing Shape C's generic "label +
+                # trailing numeric" pattern) was reverted after confirming
+                # it ALSO matched Shape D's 2-axis rows (e.g. Victoria's
+                # "B   2.980   3.290"), the non-greedy label silently
+                # swallowing the FIRST of 2 real prices as if it were text.
+                # Two structural changes make THIS version safe where that
+                # one wasn't: (1) Shape D's own 2+-named-column headers now
+                # route to _tacchini_parse_shape_d1 at dispatch time (see
+                # _tacchini_detect_shape), so a block ever reaching Shape A
+                # at all is already known to have exactly ONE named price
+                # column -- Victoria's own 2-column case structurally can't
+                # land here anymore. (2) This fallback additionally scans
+                # the WHOLE cell for every price-shaped token and only
+                # fires when there is EXACTLY one, not just pattern-
+                # matching "some text then digits at the end" -- so even a
+                # row with 2+ genuine price-shaped numbers for some other
+                # reason is safely left alone rather than guessed at.
+                tier_rows_found += _tacchini_single_value_fallback(
+                    block, block_page_of_line, i, j, tier_col_start, code, desc_it,
+                    product_name, brand, rows
+                )
+            if tier_rows_found == 0:
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j
         else:
