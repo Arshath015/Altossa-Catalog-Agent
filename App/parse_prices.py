@@ -11793,6 +11793,17 @@ _TACCHINI_D1_CELL_RE = re.compile(
     r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
     re.IGNORECASE
 )
+# D2's own row label is a free-text MATERIAL/FINISH name (e.g. "Shiny
+# Patagonia", "Laccato Goffrato/Embossed"), not a short tier letter --
+# confirmed real on Joaquim/Kelly T these routinely exceed D1's own
+# 20-char cap (e.g. "Laccato Goffrato/Embossed" is 25 chars), so a wider
+# class+length is needed; see _tacchini_d2_match_row for why this is
+# only ever tried as a FALLBACK after D1's own tier-letter scan finds
+# nothing, never a first choice.
+_TACCHINI_D2_CELL_RE = re.compile(
+    r'^([A-Za-zÀ-ÿ0-9.\'/\- ]{1,40}?)\s{2,}(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
+    re.IGNORECASE
+)
 
 
 def _tacchini_d1_match_row(raw, tier_col_start):
@@ -11819,6 +11830,42 @@ def _tacchini_d1_match_row(raw, tier_col_start):
         cell = (raw[start:] if len(raw) > start else '').strip()
         m = _TACCHINI_D1_CELL_RE.match(cell)
         if m and m.group(1).strip().lower() in TACCHINI_TIER_LABELS:
+            return m
+    return None
+
+
+# Products confirmed (via direct page-image inspection, 2026-10) to have
+# Shape D's "D2" variant: the same 2-named-column Rivestimento header as
+# D1, but each row's own label is a free-text MATERIAL/FINISH name (e.g.
+# Joaquim's "Shiny Patagonia"/"Elegant Brown", Kelly T's "Laccato
+# Goffrato/Embossed"/"Laccato Velvet") instead of a canonical B/D/E-style
+# tier letter -- so D1's own TACCHINI_TIER_LABELS vocabulary check
+# correctly declines on every one of their rows (confirmed zero rows,
+# safely flagged, before this fix). Both confirmed products print
+# EXACTLY 2 such rows per code, never more or fewer.
+_TACCHINI_D2_PRODUCTS = {'Joaquim', 'Kelly T'}
+
+
+def _tacchini_d2_match_row(raw, tier_col_start):
+    """D2 counterpart to _tacchini_d1_match_row -- same per-table
+    left-drift tolerance, same 2-trailing-value cell shape, but the
+    label itself is free text (anything with at least one real letter),
+    not restricted to TACCHINI_TIER_LABELS. Deliberately ONLY called as
+    a fallback after D1's own tier-letter scan finds zero rows for a
+    code (see its own call site in _tacchini_parse_shape_d1), and
+    further scoped to _TACCHINI_D2_PRODUCTS -- a free-text label match
+    with no fixed vocabulary to anchor against is a much weaker safety
+    net than D1's own closed 12-entry set, so this is deliberately NOT
+    tried for every D1 product that happens to return zero tier rows,
+    only the 2 specific products confirmed via direct page-image
+    inspection to have this exact shape."""
+    for delta in (0, -1, -2):
+        start = tier_col_start + delta
+        if start < 0:
+            continue
+        cell = (raw[start:] if len(raw) > start else '').strip()
+        m = _TACCHINI_D2_CELL_RE.match(cell)
+        if m and re.search(r'[A-Za-zÀ-ÿ]{2,}', m.group(1)):
             return m
     return None
 
@@ -12006,6 +12053,43 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
                         "source_pdf_page": page, "ambiguous": False,
                     })
                 tier_rows_found += 1
+            if tier_rows_found == 0 and product_name in _TACCHINI_D2_PRODUCTS:
+                # D2 fallback: same (i, j) block, free-text material-name
+                # labels instead of tier letters (see
+                # _tacchini_d2_match_row's own docstring). Requires
+                # EXACTLY 2 matching rows -- the confirmed real shape for
+                # both D2 products -- and refuses to guess if more or
+                # fewer are found, same discipline as every other
+                # fallback in this file. Stops at the first surcharge
+                # intro line (confirmed real on Joaquim: its own
+                # "Extra charge for anti-stain treatment on marble top
+                # 230   230" continuation line ALSO matches the D2 cell
+                # shape -- label="treatment on marble top", 2 trailing
+                # values -- which would otherwise make 3 matches instead
+                # of 2, correctly tripping the exactly-2 check below but
+                # silently producing zero rows instead of the real
+                # material-tier data; surcharges are captured separately
+                # by _tacchini_find_surcharge_rows regardless of shape).
+                d2_rows = []
+                for k in range(i, j):
+                    if _TACCHINI_SURCHARGE_INTRO_RE.search(block[k]):
+                        break
+                    m2 = _tacchini_d2_match_row(block[k], tier_col_start)
+                    if m2:
+                        d2_rows.append((m2.group(1).strip(), [m2.group(2), m2.group(3)], block_page_of_line[k]))
+                if len(d2_rows) == 2:
+                    for label2, vals2, page2 in d2_rows:
+                        for col_idx, (col_name, val) in enumerate(zip(col_names, vals2)):
+                            rows.append({
+                                "brand": brand, "product_name": product_name,
+                                "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                                "variant_context": None,
+                                "size": None, "fabric_tier": label2,
+                                "tier_label": "Rivestimento",
+                                "code": code, "price_eur": val.strip(),
+                                "source_pdf_page": page2, "ambiguous": False,
+                            })
+                    tier_rows_found = len(d2_rows)
             if tier_rows_found == 0:
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j
