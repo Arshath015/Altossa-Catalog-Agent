@@ -12030,6 +12030,120 @@ def _tacchini_dedupe_rows(rows):
     return out
 
 
+# Short alphanumeric composition/bundle codes (e.g. "BT5", "LM10") on
+# Butter's and Le Mura XL's own "<Product>, compositions" bonus pages --
+# confirmed real, narrowly scoped, 2026-10 (flag_triage.json's own
+# "_CATALOG_WIDE: Butter/Soap composition bundle codes" entry; "Soap"
+# turned out NOT to have a composition section at all once checked --
+# only Butter and Le Mura XL do). These codes have no leading "0" and are
+# only 2-4 characters, so _TACCHINI_CODE_LINE_RE/_TACCHINI_CODE_RE never
+# match them at all -- entirely unscanned-for by the main shape dispatch,
+# not just unparsed. Deliberately product_name-SCOPED (not a catalog-wide
+# pattern widening) since a short 2-4-char alphanumeric token is common
+# enough elsewhere in this catalog's own dimension/code text that a
+# generic widening risks false positives on unrelated products never
+# audited for this.
+# Trailing (?!\w), not \b, after the optional "*" (confirmed real on Le
+# Mura XL's own "LM10*"): a plain trailing \b fails to match right after
+# an asterisk followed by whitespace, since neither side of that boundary
+# is a word character -- \b requires an actual word/non-word transition.
+_TACCHINI_COMPOSITION_CODE_RE = re.compile(r'\b([A-Z]{2,4}[0-9]{1,3}\*?)(?!\w)')
+_TACCHINI_COMPOSITION_PRODUCTS = {'Butter', 'Le Mura XL'}
+
+
+def _tacchini_find_composition_rows(lines, page_of_line, product_name, brand, flags):
+    """Finds each composition code's own 12-tier Rivestimento price row on
+    a "<Product>, compositions" bonus page and reuses the EXISTING,
+    already-verified single-value _tacchini_tier_cell matcher per code's
+    own column -- never a new multi-value parser. A composition code only
+    prints once, on its own FIRST tier row (e.g. "BT5   B   16.200");
+    every tier row below it repeats only the tier+price, column-aligned
+    under where the code itself was found (same convention as every other
+    Tacchini shape's own code-then-tier-rows layout). Column boundaries
+    are derived PER CODE-BEARING LINE (several compositions side by side,
+    same 2-up-density convention as the rest of this brand), not assumed
+    constant across the whole page -- confirmed necessary: Butter's own
+    composition rows vary from 2 to 4 compositions per line.
+
+    Some composition rows (confirmed: Butter's BT14/BT15) print 2-3
+    PRICES per tier instead of one (named module-count variants like
+    MR1/MR2/MR3) -- a second, genuinely different shape this function
+    deliberately does NOT attempt to parse. _tacchini_tier_cell's own
+    "\\s*$" end anchor already makes this safe by construction: a column
+    slice with extra trailing numeric content simply fails to match
+    (falls through to the flag below), it can never silently capture
+    just the first of several real prices as if it were the only one."""
+    rows = []
+    current_cols = []  # [(start, end, code)] for the composition block we're in
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        code_matches = list(_TACCHINI_COMPOSITION_CODE_RE.finditer(line))
+        # A genuine codes-row always has 2+ side-by-side compositions
+        # (confirmed: every real instance in both products has 2-4) --
+        # requiring 2+ here is what keeps a single coincidental
+        # code-shaped token elsewhere on the page (a finish code, a
+        # dimension fragment) from being mistaken for one.
+        if len(code_matches) >= 2:
+            starts = [m.start() for m in code_matches] + [None]
+            new_cols = []
+            any_plausible = False
+            for idx, m in enumerate(code_matches):
+                end = starts[idx + 1]
+                cell = line[m.end():end].strip()
+                tier, price = _tacchini_tier_cell(cell)
+                if cell and tier is None:
+                    # Non-blank content that ISN'T a single recognized tier
+                    # row (confirmed real on Butter's own BT14/BT15: 2-3
+                    # prices per tier instead of one) -- this SPECIFIC
+                    # column is excluded, both from emission and from
+                    # becoming a future column boundary, but doesn't
+                    # block its neighbors on the same line.
+                    continue
+                any_plausible = True
+                if tier is not None:
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": None, "variant_context": None,
+                        "size": None, "fabric_tier": tier, "tier_label": "Rivestimento",
+                        "code": m.group(1), "price_eur": price,
+                        "source_pdf_page": page_of_line[i], "ambiguous": False,
+                    })
+                new_cols.append((m.start(), end, m.group(1)))
+            if any_plausible:
+                # Code positions become the active column boundaries even
+                # when this specific line had no values yet (confirmed
+                # real on Le Mura XL's LM5/LM6/LM7/LM8: the code prints
+                # alone on its own line, with the first tier+price row
+                # following on the NEXT line at the same column).
+                current_cols = new_cols
+                i += 1
+                continue
+            # No column on this line looked plausible at all -- don't let
+            # it reset current_cols (keep whatever block we were already in).
+        if current_cols:
+            matched_any = False
+            for start, end, code in current_cols:
+                cell = line[start:end].strip()
+                tier, price = _tacchini_tier_cell(cell)
+                if tier is not None:
+                    matched_any = True
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": None, "variant_context": None,
+                        "size": None, "fabric_tier": tier, "tier_label": "Rivestimento",
+                        "code": code, "price_eur": price,
+                        "source_pdf_page": page_of_line[i], "ambiguous": False,
+                    })
+            if not matched_any and line.strip() == '':
+                pass  # blank line within a composition's own block -- keep current_cols
+            elif not matched_any:
+                current_cols = []  # left the composition block entirely
+        i += 1
+
+    return rows
+
+
 def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_text=None):
     """Tacchini price tables -- see this section's own module comment
     above for the 3 confirmed shapes and the 2-up shared-line disambiguation
@@ -12042,6 +12156,8 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
         return [], flags
 
     rows = []
+    if product_name in _TACCHINI_COMPOSITION_PRODUCTS:
+        rows.extend(_tacchini_find_composition_rows(sliced, page_of_line, product_name, brand, flags))
     i = 0
     while i < len(sliced):
         shape = _tacchini_detect_shape(sliced[i])
