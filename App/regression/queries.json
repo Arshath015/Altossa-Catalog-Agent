@@ -978,11 +978,90 @@
     "cat": "pdf_overlap",
     "brand": "Tacchini",
     "query": "give me all prices for Colonna",
-    "note": "News-only product (not in Main at all, pdf page 24 offset to source_pdf_page 1024) with a named multi-finish grid (MR1/MR2/MR3) rather than Shape A's standard letter tiers -- verifies a product that only exists in the News file still gets a real catalog entry and real prices, not silently dropped.",
+    "note": "News-only product (not in Main at all, pdf page 24 offset to source_pdf_page 1024), Shape E (Finitura header + 3 named price columns MR1/MR2/MR3, not Shape A's standard letter tiers) -- verifies a product that only exists in the News file still gets a real catalog entry and real prices, not silently dropped. Row count updated 2026-10-17 from 6 to 12: the original count reflected a pre-fix bug (misrouted to Shape B, which treated MR1/MR2/MR3 as if they were material names and silently dropped the anti-stain surcharge row entirely) -- the real table has 2 codes x (1 material row + 1 surcharge row) x 3 columns = 12.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Colonna"
+    ]
+  },
+  {
+    "id": 101,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Cage",
+    "note": "The last zero-row Tacchini product (2026-10-17 fix): Shape E, a 'Finitura' (not 'Rivestimento') header with 3 named price columns (Base cromata/Base verniciata T136/Base verniciata -- the last 2 columns share one identical Italian name, disambiguated via the English header's own 'T136' suffix) and free-text material labels (Specchio/Mirror, Carrara, Marquinia, Calacatta), not tier letters. 2 codes x (4 materials + 1 anti-stain surcharge) x 3 columns = 30 rows, verified against source pdf page 56.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 30,
+    "expect_product": [
+      "Cage"
+    ]
+  },
+  {
+    "id": 102,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Cage Specchio",
+    "note": "Shape E tier/material filter: Cage's own Specchio/Mirror finish across both codes and all 3 price columns (Base cromata/Base verniciata T136/Base verniciata), verified against source pdf page 56 (1.690/1.330/1.230 for the Ø50 code, 2.570/2.050/1.850 for the Ø100 code).",
+    "expect_status": "full_price_grid",
+    "expect_prices_subset": [
+      "1.690",
+      "1.330",
+      "1.230",
+      "2.570",
+      "2.050",
+      "1.850"
+    ],
+    "expect_product": [
+      "Cage"
+    ]
+  },
+  {
+    "id": 103,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Chill-Out Table",
+    "note": "Shape E, same fix as Cage (2026-10-17) -- distinct from the unrelated Shape D product 'Chill-Out' (id 97). Pre-fix this was silently misrouted to Shape B (1 wrong-labeled row per code, no surcharge). 2 codes x (2 materials + 1 anti-stain surcharge) x 2 columns (Base verniciata/Base cromata) = 12 rows, verified against source pdf page 57.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Chill-Out Table"
+    ]
+  },
+  {
+    "id": 104,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Soap",
+    "note": "Shape E fix (2026-10-17): own material name 'Sahara noir + anti-stain' deliberately excluded from the surcharge-word detector (would otherwise false-positive on the bare word 'anti-stain') since its own anti-stain treatment is compulsory and already included in the price, per the page's own footnote. Also exercises the duplicate-column-name disambiguator: both 'Base cromata' columns share one Italian name, distinguished via a separate line's own T24/T25 suffix (not the English header line itself, unlike Cage). 2 codes x (3 materials + 1 surcharge) x 3 columns = 24 rows, verified against source pdf page 64.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 24,
+    "expect_product": [
+      "Soap"
+    ]
+  },
+  {
+    "id": 105,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for PietraForma",
+    "note": "Shape E fix (2026-10-17), News-only product (pdf page 25 offset to source_pdf_page 1025). 1 code x (2 materials + 1 surcharge) x 2 columns (Struttura in frassino/Struttura in noce) = 6 rows.",
     "expect_status": "full_price_grid",
     "expect_row_count": 6,
     "expect_product": [
-      "Colonna"
+      "PietraForma"
+    ]
+  },
+  {
+    "id": 106,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Tesis",
+    "note": "News-only product (source_pdf_page 26). Shape E structurally, but deliberately NOT auto-parsed: its own material label wraps across several physical lines with no price of its own until the 2nd name in each group (e.g. 'T212 Ceppo Appia' + 4 more continuation lines all share T212's own price), which the auto-parser's accumulate-forward design gets backwards. All 36 rows hand-transcribed into manual_additions.json instead, verified against the page image and its own color-swatch legend (5 marble codes split 3/2 across the table's 2 real price tiers). 4 codes x (2 materials + 1 surcharge) x 3 columns = 36 rows.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 36,
+    "expect_product": [
+      "Tesis"
     ]
   }
 ]

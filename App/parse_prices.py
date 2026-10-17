@@ -11324,7 +11324,7 @@ def _tacchini_shape_d_columns(header_line, riv_m):
 def _tacchini_detect_shape(header_line):
     """Shape dispatch from a single 'Codice ... Prezzo'-ish header line,
     already horizontally sliced to one product's own column. Returns 'A',
-    'B', 'C', 'D', or None (not a recognized header at all).
+    'B', 'C', 'D', 'E', or None (not a recognized header at all).
 
     Shape D (confirmed via direct page-image inspection -- Victoria
     p39-40, Five to Nine/Le Mura/Quilt/Labanca/Polar/Artona/Grand
@@ -11338,7 +11338,32 @@ def _tacchini_detect_shape(header_line):
     literal word "Prezzo"/"Price" being absent -- confirmed necessary on
     Labanca/Polar, whose second column genuinely IS named "Prezzo" (the
     companion piece's own price), so a presence-of-"Prezzo" check would
-    have wrongly classified their real 2-column header as Shape A."""
+    have wrongly classified their real 2-column header as Shape A.
+
+    Shape E (confirmed via direct page-image inspection, 2026-10 -- Cage,
+    Chill-Out Table, Soap, Colonna, PietraForma, Tesis, the only 6
+    products in the whole catalog whose own header matches this
+    structurally): a "Finitura"/"Finish" header (NOT "Rivestimento") with
+    TWO or more named price columns after it -- Shape D's own sibling,
+    but with free-text material names (e.g. Cage's "Specchio/Mirror",
+    "Carrara") instead of D's fixed 12-tier letter vocabulary, same
+    relationship Shape C (single Finitura+Prezzo column) has to Shape A.
+    Checked BEFORE the Informazioni check below (not after) -- confirmed
+    necessary on all 6 of this shape's own products except Cage: each
+    ALSO prints a "Dim. scatole"/"Informazioni" column earlier in the
+    same header, which would otherwise satisfy the Informazioni check
+    first and silently misroute to Shape B (confirmed this was ALREADY
+    happening live for all 5 of them before this fix -- Shape B then
+    treated each named price-column header, e.g. "Frassino tinto", as if
+    it were itself a material name, emitting one wrong-labeled row per
+    code and silently dropping every material beyond the first). Guarded
+    on the ABSENCE of Prezzo/Price so Shape C's own "Finitura + Prezzo"
+    single-column header (sharing the word "Finitura") is never
+    reachable here -- redundant with the >=2 column-count check below
+    (Shape C always has exactly 1 column after Finitura) but kept
+    explicit since this shape's own defining trait is a Finitura header
+    with NO Prezzo/Price column at all, same structural signature as
+    Shape D's own Rivestimento/Prezzo split."""
     if not re.search(r'\bCodice\b', header_line):
         return None
     low = header_line.lower()
@@ -11349,6 +11374,9 @@ def _tacchini_detect_shape(header_line):
         return 'A'
     if re.search(r'\bprezzo\b|\bprice\b', low):
         return 'C'
+    fin_m = re.search(r'\bfinitura\b|\bfinish\b', low)
+    if fin_m and len(_tacchini_shape_d_columns(header_line, fin_m)) >= 2:
+        return 'E'
     # "Informazioni" present but no Rivestimento/Prezzo at all -> Shape B
     # (the finish names themselves stand in for a price-column header).
     if re.search(r'\binformazioni\b|\binformation\b', low):
@@ -12098,6 +12126,225 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
     return rows
 
 
+# Products confirmed (via direct page-image inspection, 2026-10) to use
+# Shape E -- the ONLY 6 products in the whole catalog whose own header
+# matches this shape structurally (see _tacchini_detect_shape's own
+# docstring). Kept as an explicit allowlist, same discipline as
+# _TACCHINI_D2_PRODUCTS/_TACCHINI_D1_TWO_CODE_PRODUCTS above, so a future
+# product that happens to ALSO print a bare "Finitura" header with 2+
+# named columns (never seen so far) is flagged for manual review rather
+# than silently run through a parser never verified against its own page.
+# Tesis is deliberately NOT included here despite structurally matching
+# Shape E (confirmed real need, 2026-10): its own material label genuinely
+# wraps across several physical lines with NO price of its own (e.g. "T212
+# Ceppo Appia" / "Antica, T235 Breccia" / "Sarda/Sardinian" / "Breccia,
+# T236 Orobico" / "Grigio/Grey Orobico" are 5 lines naming 3 equivalent top
+# options, all sharing T212's own earlier-printed price -- confirmed via
+# direct page-image + the page's own color-swatch legend, which lists
+# exactly these 5 marble codes split 3/2 across the table's 2 real price
+# tiers). This function's own accumulate-FORWARD design (attach pending
+# text to the NEXT price it finds) gets that direction backwards for
+# Tesis specifically -- every other Shape E product prints one price-
+# bearing line per material, so the ambiguity never arises for them. A
+# second, lookback-based heuristic was tried and rejected: it cannot
+# reliably tell "this line starts a new material name" apart from "this
+# line is the tail of a wrapped surcharge intro" (both have non-empty
+# label text with no identifying marker), so it fixed Tesis's 2 material
+# rows but broke its own surcharge row instead. Per this project's own
+# standing discipline (stop after a second fragile fix attempt, don't
+# ship under momentum), Tesis's 36 real rows are hand-transcribed into
+# data/Tacchini/manual_additions.json instead -- verified against the
+# page image, not guessed.
+_TACCHINI_SHAPE_E_PRODUCTS = {'Cage', 'Chill-Out Table', 'Soap', 'Colonna', 'PietraForma'}
+
+# Marks a Shape E row as the anti-stain/marble-top surcharge rather than a
+# real material option -- confirmed real need on Soap: its own GENUINE
+# material name "Sahara noir + anti-stain" (the marble itself; its own
+# anti-stain treatment is compulsory and already folded into the price,
+# per that product's own page footnote) would otherwise false-positive
+# against a bare "anti-stain" check. Every real surcharge row on all 6
+# Shape E products carries at least one of these 4 words/phrases
+# (Italian "Supplemento"/"antimacchia", English "Extra charge"/
+# "Surcharge") -- "anti-stain" alone is deliberately NOT in this list.
+_TACCHINI_E_SURCHARGE_WORDS_RE = re.compile(
+    r'supplemento|antimacchia|extra charge|surcharge', re.IGNORECASE
+)
+_TACCHINI_E_EXTRA_CHARGE_FOR_RE = re.compile(r'extra charge for\s*(.*)$', re.IGNORECASE)
+
+
+def _tacchini_shape_e_columns(header_line, fin_m):
+    """Column names + their own character start positions for every named
+    price column after Finitura -- same technique as Shape B's own
+    col_starts (str.find resumed AFTER each previous match), which also
+    correctly handles a column name printed MORE THAN ONCE (confirmed
+    real on Soap: its own Italian header prints "Base cromata" twice for
+    2 genuinely different chrome-color price groups, only distinguished
+    in the English line by a trailing "T24"/"T25" -- resuming the search
+    after each match still finds each occurrence at its own, later
+    position)."""
+    col_names = _tacchini_shape_d_columns(header_line, fin_m)
+    col_starts = []
+    search_from = fin_m.end()
+    for name in col_names:
+        pos = header_line.find(name, search_from)
+        if pos == -1:
+            return None, None
+        col_starts.append(pos)
+        search_from = pos + len(name)
+    return col_names, col_starts
+
+
+def _tacchini_parse_shape_e(block, block_page_of_line, header_line, product_name, brand, flags):
+    """Shape E: "Finitura" (not "Rivestimento") header with 2+ NAMED price
+    columns, free-text material-name labels (not Shape D's fixed 12-tier
+    Rivestimento vocabulary) -- see _tacchini_detect_shape's own docstring
+    for the structural rule and _TACCHINI_SHAPE_E_PRODUCTS for the
+    confirmed-by-page-image allowlist this is scoped to.
+
+    A material label can print across SEVERAL physical lines before its
+    own price row appears -- confirmed real on Tesis: "T212 Ceppo Appia" /
+    "Antica, T235 Breccia" / "Sarda/Sardinian" / "Breccia, T236 Orobico" /
+    "Grigio/Grey Orobico" are 5 lines of ONE real label, naming 5
+    equivalent top options all priced identically (verified against the
+    page image, not guessed). This function accumulates every line's own
+    Finitura-column text until it reaches a line where EVERY named column
+    has a real price on it -- that's what actually marks a priced row,
+    never a fixed/assumed line count. The anti-stain surcharge row is the
+    SAME physical shape (its own "label" just happens to describe a
+    treatment instead of a material) and is captured by this same scan,
+    not a separate function -- distinguished only by
+    _TACCHINI_E_SURCHARGE_WORDS_RE matching its accumulated label text,
+    which routes it to the existing '+'-prefixed addon convention instead
+    of a plain fabric_tier row.
+
+    model_variant folds the column name in for EVERY row, material or
+    surcharge (same convention and same reason as Shape D1 -- see that
+    function's own docstring: the shared ambiguous-price safety net keys
+    on (product_name, code, fabric_tier, model_variant), and several of
+    these 6 products price two+ columns identically, e.g. Chill-Out
+    Table's own Basaltina/Carrara rows, so the column name is what keeps
+    each column's own row uniquely keyed)."""
+    low = header_line.lower()
+    fin_m = re.search(r'\bfinitura\b|\bfinish\b', low)
+    if not fin_m:
+        return []
+    tier_col_start = fin_m.start()
+    col_names, col_starts = _tacchini_shape_e_columns(header_line, fin_m)
+    if not col_names or len(col_names) < 2:
+        return []
+    col_bounds = col_starts + [None]
+    n = len(col_names)
+
+    # Disambiguate a column name that prints MORE THAN ONCE -- confirmed
+    # real on Cage/Soap (2026-10): their own Italian header names 2 of
+    # their 3 price columns identically ("Base verniciata" x2 / "Base
+    # cromata" x2 -- 2 genuinely different chrome/paint-color GROUPS that
+    # just happen to share one Italian name), which, left as-is, folds
+    # into an IDENTICAL model_variant for both columns and collides on
+    # the shared ambiguous-price safety net's own key, wrongly hiding 16
+    # (Cage) / 10 (Soap) real, unambiguous prices behind the "can't
+    # confidently show a price" screenshot fallback. The distinguishing
+    # text (Cage: "T136" vs none; Soap: "T24"/"T25") is real, printed
+    # content -- just not always on the SAME line: Cage prints it
+    # directly on the English header line (block[0]), Soap prints it on
+    # a THIRD line below that (block[1]) instead. Scanning both and
+    # appending whatever's found at each column's own position (same
+    # col_bounds the price cells use) covers both layouts without
+    # guessing which one a given product uses; a column name that
+    # already prints uniquely is left untouched.
+    if len(set(col_names)) < len(col_names):
+        def _disambig_cell(src_line, idx):
+            start = col_bounds[idx]
+            end = col_bounds[idx + 1] if col_bounds[idx + 1] is not None else len(src_line)
+            return src_line[start:end].strip() if start < len(src_line) else ''
+
+        extra_lines = [ln for ln in block[:2] if not _tacchini_match_code_line(ln)]
+        disambiguated = []
+        for idx, name in enumerate(col_names):
+            if col_names.count(name) <= 1:
+                disambiguated.append(name)
+                continue
+            extra = ' '.join(t for t in (_disambig_cell(ln, idx) for ln in extra_lines) if t).strip()
+            disambiguated.append(f"{name} ({extra})" if extra else f"{name} (col {idx + 1})")
+        col_names = disambiguated
+
+    info_m = re.search(r'\bdim\.?\s*scatole\b|\bboxes\s*sizes\b|\binformazioni\b|\binformation\b', low)
+    desc_col_end = info_m.start() if info_m else tier_col_start
+
+    def _cell(line, idx):
+        start = col_bounds[idx]
+        end = col_bounds[idx + 1] if col_bounds[idx + 1] is not None else len(line)
+        return line[start:end].strip() if start < len(line) else ''
+
+    def _is_price(tok):
+        return bool(tok) and (
+            tok.lower() == TACCHINI_PRICE_UPON_REQUEST.lower() or _TACCHINI_PRICE_TOKEN_RE.match(tok)
+        )
+
+    rows = []
+    i = 0
+    while i < len(block):
+        line = block[i]
+        code_m = _tacchini_match_code_line(line)
+        if not code_m:
+            i += 1
+            continue
+        code = code_m[0]
+        cut = desc_col_end - len(code)
+        desc_it = code_m[1][:cut].strip() if cut > 0 else code_m[1].strip()
+
+        pending = []
+        found_any = False
+        j = i
+        steps = 0
+        while j < len(block) and steps < 60:
+            steps += 1
+            raw = block[j]
+            if j > i:
+                boundary_m = _tacchini_match_code_line(raw)
+                if boundary_m and boundary_m[0] != code:
+                    break
+            label_cell = (raw[tier_col_start:col_bounds[0]] if len(raw) > tier_col_start else '').strip()
+            price_cells = [_cell(raw, c) for c in range(n)]
+            if all(_is_price(c) for c in price_cells):
+                label = ' '.join(p for p in (pending + [label_cell]) if p).strip()
+                pending = []
+                if not label:
+                    j += 1
+                    continue
+                is_surcharge = bool(_TACCHINI_E_SURCHARGE_WORDS_RE.search(label))
+                desc = None
+                if is_surcharge:
+                    m = _TACCHINI_E_EXTRA_CHARGE_FOR_RE.search(label)
+                    desc = m.group(1).strip() if (m and m.group(1).strip()) else label
+                for col_idx, col_name in enumerate(col_names):
+                    val = price_cells[col_idx]
+                    price = TACCHINI_PRICE_UPON_REQUEST if val.lower() == TACCHINI_PRICE_UPON_REQUEST.lower() else val
+                    if is_surcharge and price != TACCHINI_PRICE_UPON_REQUEST and not price.startswith('+'):
+                        price = f'+{price}'
+                    base_desc = desc if is_surcharge else desc_it
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": f"{base_desc} — {col_name}" if base_desc else col_name,
+                        "variant_context": None,
+                        "size": None,
+                        "fabric_tier": None if is_surcharge else label,
+                        "tier_label": None if is_surcharge else "Finitura",
+                        "code": code, "price_eur": price,
+                        "source_pdf_page": block_page_of_line[j] if j < len(block_page_of_line) else None,
+                        "ambiguous": False,
+                    })
+                found_any = True
+            elif label_cell:
+                pending.append(label_cell)
+            j += 1
+        if not found_any:
+            page = block_page_of_line[i] if i < len(block_page_of_line) else None
+            flags.append((page, product_name, f"code {code!r} found but no recognized Finitura/price row followed it"))
+        i = j
+    return rows
+
+
 def _tacchini_parse_shape_c(sliced, page_of_line, header_line, product_name, brand, flags):
     """Shape C: single Finitura/Categoria + Prezzo/Price column. One row
     per code, except codes that legitimately repeat for a colorway variant
@@ -12538,11 +12785,34 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
                 rows.extend(_tacchini_parse_shape_b(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
             elif chunk_shape == 'D':
                 rows.extend(_tacchini_parse_shape_d1(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+            elif chunk_shape == 'E':
+                if product_name in _TACCHINI_SHAPE_E_PRODUCTS:
+                    rows.extend(_tacchini_parse_shape_e(chunk_block, block_page_of_line, chunk_header, product_name, brand, flags))
+                else:
+                    # Structurally matches Shape E but never verified
+                    # against this product's own page image -- flag for
+                    # manual review rather than silently guess (same
+                    # discipline as every other allowlist-scoped fallback
+                    # in this file).
+                    flags.append((block_page_of_line[0] if block_page_of_line else None, product_name,
+                                   "header matches Shape E (Finitura + 2+ named columns) but product "
+                                   "is not in the page-image-verified allowlist -- not parsed"))
             # Surcharge rows ("Surcharge for ...") can appear within any
             # shape's own block -- scanned independently of which shape
             # matched, since it's a distinct, narrow pattern, not part of
-            # the tier/finish grid itself.
-            rows.extend(_tacchini_find_surcharge_rows(chunk_block, block_page_of_line, product_name, brand))
+            # the tier/finish grid itself. Shape E is excluded: it already
+            # captures its OWN surcharge rows per named column (see
+            # _tacchini_parse_shape_e's own docstring) -- confirmed real
+            # need, not just redundant, while verifying this against
+            # Chill-Out Table/Colonna: this generic single-price scanner's
+            # own end-anchored regex grabs the LAST of several trailing
+            # per-column prices as if it were the row's only price,
+            # producing an extra, uncolumned duplicate addon row (and, on
+            # Tesis specifically, a flatly WRONG price bled in from an
+            # unrelated neighboring code -- the exact bug that surfaced
+            # this whole shape gap).
+            if chunk_shape != 'E':
+                rows.extend(_tacchini_find_surcharge_rows(chunk_block, block_page_of_line, product_name, brand))
         i = j
 
     if not rows and not flags:
