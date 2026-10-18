@@ -358,6 +358,10 @@ addCase('2prod', 'Claire Pop and Mirelle Pop', ['Claire', 'Mirelle'], [
   { product: 'Claire', tier: 'Pop', price: '1.660' },
   { product: 'Mirelle', tier: 'Pop', price: '1.690' },
 ], undefined, 'Monography');
+addCase('2prod', 'Alaya consolle Pop and Montreal consolle Pop', ['Alaya (Consolle)', 'Montreal (Consolle)'], [
+  { product: 'Alaya (Consolle)', tier: 'Pop', price: '2.520' },
+  { product: 'Montreal (Consolle)', tier: 'Pop', price: '3.380' },
+], undefined, 'Monography');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

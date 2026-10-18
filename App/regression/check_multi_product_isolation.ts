@@ -259,6 +259,16 @@ const CASES: Case[] = [
       { product: 'Mirelle', tier: 'Pop', price: '1.690', excludePrices: ['1.660'] },
     ],
   },
+  {
+    id: 'monography-alaya-montreal-consolle-pop-isolation',
+    brand: 'Monography',
+    query: 'Alaya consolle Pop and Montreal consolle Pop',
+    note: 'Monography batch 4 (Cupboards & Libraries + Occasionals & Desks) cross-product isolation -- exercises BOTH the "Alaya" and "Montreal" within-brand collisions at once (Alaya: Modular Sofa/Sofa Table/Consolle; Montreal: Bookshelf/Consolle/Back Sofa Consolle), same "Pop" tier name, different prices (2.520 vs 3.380).',
+    required: [
+      { product: 'Alaya (Consolle)', tier: 'Pop', price: '2.520', excludePrices: ['3.380'] },
+      { product: 'Montreal (Consolle)', tier: 'Pop', price: '3.380', excludePrices: ['2.520'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

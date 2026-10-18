@@ -1336,5 +1336,29 @@
     "expect_product": [
       "Chelsea"
     ]
+  },
+  {
+    "id": 129,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Montreal bookshelf",
+    "note": "Monography batch 4 (Cupboards & Libraries + Occasionals & Desks). 5 size variants x 2 rows (Pop + Finishing Bright) = 10 rows -- also exercises the 'Montreal' within-brand collision (Bookshelf vs Consolle vs Back Sofa Consolle, 3 different categories). Verified against the page image (p39).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 10,
+    "expect_product": [
+      "Montreal (Bookshelf)"
+    ]
+  },
+  {
+    "id": 130,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Pharell consolle",
+    "note": "Only product in the catalog whose printed category label is a 2-word phrase ('Wood Finishing', not just 'Finishing') -- the category_re regex captures just 'Wood' (matching on the first known category word), a minor cosmetic label simplification, not a price bug: all 3 real values (Pop/Bright/Special) are still correctly extracted. Verified against the page image (p42).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 3,
+    "expect_product": [
+      "Pharell (Consolle)"
+    ]
   }
 ]
