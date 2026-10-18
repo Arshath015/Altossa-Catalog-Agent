@@ -354,6 +354,10 @@ addCase('2prod', 'Petite Pop and Pharell table base Pop', ['Petite', 'Pharell (T
   { product: 'Petite', tier: 'Pop', price: '1.010' },
   { product: 'Pharell (Table Base)', tier: 'Pop', price: '3.080' },
 ], undefined, 'Monography');
+addCase('2prod', 'Claire Pop and Mirelle Pop', ['Claire', 'Mirelle'], [
+  { product: 'Claire', tier: 'Pop', price: '1.660' },
+  { product: 'Mirelle', tier: 'Pop', price: '1.690' },
+], undefined, 'Monography');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

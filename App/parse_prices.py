@@ -13724,10 +13724,24 @@ def parse_file_monography(path, product_name, brand, flags):
     # used as-is.
     pop_re = re.compile(r"\bPOP\s*:\s*([\d.]+)\s*€", re.IGNORECASE)
     com_re = re.compile(r"C\.O\.M\.\s*:\s*([\d.]+)\s*€")
-    mtl_re = re.compile(r"fabric\s+mtl\.?\s*([\d,]+)\s*/\s*leather\s*m[²2]\.?\s*([\d,]+)", re.IGNORECASE)
+    # 2 products (Mirelle, Soleil) print this yardage note in Italian
+    # ("tessuto mtl. X / pelle m². Y") instead of English -- confirmed via
+    # an exhaustive grep, only these 2 -- matched alongside the English
+    # phrasing so the C.O.M. row's own model_variant note isn't silently
+    # incomplete for them.
+    mtl_re = re.compile(r"(?:fabric|tessuto)\s+mtl\.?\s*([\d,]+)\s*/\s*(?:leather|pelle)\s*m[²2]\.?\s*([\d,]+)", re.IGNORECASE)
     category_re = re.compile(r"^\s*(Fabric|Leather|Finishing|Marble|Metal|Top|Wood)\b(.*)$")
     option_re = re.compile(r"([A-ZÀ-Ý][A-ZÀ-Ý' ]*?)\s*\+\s*([\d.]+)\s*€")
     on_request_extra_re = re.compile(r"^\s*([A-Z][A-Za-zÀ-ÿ' ]+?)\s*\+\s*([\d.]+)\s*€\s*$")
+    # A rare extra on-request option's own "price" is sometimes TEXT, not a
+    # number at all -- confirmed real on 4 products (Magic (Dressing
+    # Table), Memories, Nuage (Sideboard), Nuage (TV Cabinet)): "Intreccio
+    # leather                       same as pop price." under the same
+    # On request label. Captured as a row with the literal printed phrase
+    # as price_eur (never silently dropped, same discipline as storing
+    # "On request" itself rather than guessing a number or defaulting to
+    # blank/zero).
+    on_request_text_re = re.compile(r"^\s*([A-Z][A-Za-zÀ-ÿ' ]+?)\s{2,}(same as [a-zà-ÿ ]+?)\.?\s*$", re.IGNORECASE)
     dim_h_re = re.compile(r"\bH\s*(\d+(?:/\d+)?)\b")
     dim_sh_re = re.compile(r"\bSH\s*(\d+)\b")
     dim_w_re = re.compile(r"\bW\s*(\d+)\b")
@@ -13803,6 +13817,18 @@ def parse_file_monography(path, product_name, brand, flags):
                     "size": size, "fabric_tier": mo.group(1).strip(),
                     "tier_label": "On Request Option",
                     "code": None, "price_eur": f"+{mo.group(2)}",
+                    "source_pdf_page": lpage or block_page, "ambiguous": False,
+                })
+                found_any = True
+                continue
+            mt = on_request_text_re.match(line.strip())
+            if mt:
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": "On request", "variant_context": None,
+                    "size": size, "fabric_tier": mt.group(1).strip(),
+                    "tier_label": "On Request Option",
+                    "code": None, "price_eur": mt.group(2).strip().capitalize(),
                     "source_pdf_page": lpage or block_page, "ambiguous": False,
                 })
                 found_any = True

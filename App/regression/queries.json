@@ -1312,5 +1312,29 @@
     "expect_product": [
       "Domino"
     ]
+  },
+  {
+    "id": 127,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "Magic Dressing Table Intreccio leather price",
+    "note": "Monography batch 3 (Chairs + Beds + Bedroom Complements). A rare extra on-request option whose own printed 'price' is TEXT, not a number at all ('Intreccio leather   same as pop price.', confirmed real on 4 products across 2 different later-batch sections too) -- stored as the literal phrase, never silently dropped or guessed at a number. Verified against the page image (p35).",
+    "expect_status": "ok",
+    "expect_price": "Same as pop price",
+    "expect_product": [
+      "Magic (Dressing Table)"
+    ]
+  },
+  {
+    "id": 128,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Chelsea",
+    "note": "Bed with 2 size variants, each carrying its own distinct extra on-request option (king: 'Intreccio leather', queen: 'Entangled leather' -- 2 different real option NAMES for the same underlying premium-leather upsell, not a repeat) -- 7 rows per variant x 2 = 14 rows, verified against the page image (p31).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 14,
+    "expect_product": [
+      "Chelsea"
+    ]
   }
 ]

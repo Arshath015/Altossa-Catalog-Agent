@@ -249,6 +249,16 @@ const CASES: Case[] = [
       { product: 'Pharell (Table Base)', tier: 'Pop', price: '3.080', excludePrices: ['1.010'] },
     ],
   },
+  {
+    id: 'monography-claire-mirelle-pop-isolation',
+    brand: 'Monography',
+    query: 'Claire Pop and Mirelle Pop',
+    note: 'Monography batch 3 (Chairs + Beds + Bedroom Complements) cross-product isolation -- Dining Chair category, same "Pop" tier name, different prices (1.660 vs 1.690).',
+    required: [
+      { product: 'Claire', tier: 'Pop', price: '1.660', excludePrices: ['1.690'] },
+      { product: 'Mirelle', tier: 'Pop', price: '1.690', excludePrices: ['1.660'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
