@@ -37,7 +37,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 const ROOT = path.join(__dirname, '..', '..');
-const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca', 'Tacchini', 'Nube Italia'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca', 'Tacchini', 'Nube Italia', 'Monography'];
 
 interface CatalogEntry {
   product_name: string;
@@ -110,6 +110,37 @@ function pageTextFor(entry: CatalogEntry, imageFilename: string, allText: string
   return allText.slice(start + marker.length, end);
 }
 
+// Monography-specific case, found 2026-10 building this brand: every PDF
+// page (6-49) is a real 2-up spread with 2 independent printed products
+// side by side (confirmed via pdfinfo -- A3 landscape, exactly 2x a plain
+// A4 page), and extract_catalog.py's own _monography_rewrite_texts
+// deliberately ISOLATES each product's own text/<slug>.txt to ONLY its
+// own content (bounded by the NEXT product's own start position) -- so,
+// unlike every other brand, a sibling sharing the same spread's image
+// genuinely does NOT have the other sibling's heading anywhere in its own
+// text file (that's the correct, intended behavior for price-parsing,
+// confirmed via direct page-image inspection on 3 representative pages
+// before this design was built -- see monography_brand_state.md). The
+// existing isLegitimatePair's literal-heading cross-reference can
+// therefore never hold here even for a genuinely correct pair, making
+// every real Monography spread-mate flag as "suspicious".
+// The real, independent safety signal for this brand: each product's own
+// pdf_page_start/pdf_page_end (and derived page_images) are computed
+// ENTIRELY from the real per-half footer scan (build_monography_page_map
+// + compute_ranges_monography) -- there is no manual per-product page-
+// range override mechanism anywhere in this brand's pipeline (unlike
+// PAGE_RANGE_OVERRIDES used elsewhere), so two products' own
+// independently-computed page_images both naming the exact same file can
+// only happen because they really were extracted from the same real PDF
+// page -- the RICHARD-class bug this whole check exists to catch (an
+// image silently copied from a totally unrelated page/file) has no
+// possible code path here.
+function isMonographySharedSpreadPair(entryP: CatalogEntry, otherEntry: CatalogEntry): boolean {
+  const pPages = new Set(Object.keys(entryP.page_images || {}));
+  const otherPages = Object.keys(otherEntry.page_images || {});
+  return otherPages.some(pg => pPages.has(pg));
+}
+
 function isBlankPageCollision(products: string[], files: string[], idx: CatalogEntry[], textFor: (p: string) => string): boolean {
   for (const p of products) {
     const entry = idx.find(e => e.product_name === p)!;
@@ -180,7 +211,11 @@ function checkBrand(brand: string): { suspicious: number; legitimate: number } {
       for (const other of products) {
         if (other === p) continue;
         const otherEntry = idx.find(e => e.product_name === other)!;
-        if (!isLegitimatePair(pText, otherEntry)) isLegit = false;
+        if (brand === 'Monography') {
+          if (!isMonographySharedSpreadPair(entryP, otherEntry)) isLegit = false;
+        } else if (!isLegitimatePair(pText, otherEntry)) {
+          isLegit = false;
+        }
       }
     }
 

@@ -346,6 +346,10 @@ addCase('2prod', 'Rise Essenza and Ottavio Laccato opaco', ['Rise', 'Ottavio'], 
   { product: 'Rise', tier: 'Essenza', price: '1.085' },
   { product: 'Ottavio', tier: 'Laccato opaco', price: '2.410' },
 ], undefined, 'Nube Italia');
+addCase('2prod', 'Gala Pop and Aramis Pop', ['Gala', 'Aramis'], [
+  { product: 'Gala', tier: 'Pop', price: '3.500' },
+  { product: 'Aramis', tier: 'Pop', price: '3.880' },
+], undefined, 'Monography');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

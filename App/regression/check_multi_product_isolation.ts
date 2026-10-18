@@ -229,6 +229,16 @@ const CASES: Case[] = [
       { product: 'Ottavio', tier: 'Laccato opaco', price: '2.410', excludePrices: ['1.085'] },
     ],
   },
+  {
+    id: 'monography-gala-aramis-pop-isolation',
+    brand: 'Monography',
+    query: 'Gala Pop and Aramis Pop',
+    note: 'First Monography (brand #9) cross-product isolation case, batch 1. Both products share the SAME tier name ("Pop", this brand\'s base-price tier -- there is no per-product code to disambiguate by, unlike every other brand in this file) at very different prices (3.500 vs 3.880).',
+    required: [
+      { product: 'Gala', tier: 'Pop', price: '3.500', excludePrices: ['3.880'] },
+      { product: 'Aramis', tier: 'Pop', price: '3.880', excludePrices: ['3.500'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

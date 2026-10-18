@@ -1627,6 +1627,263 @@ NUBE_WITHIN_FILE_DISAMBIGUATION: dict[tuple[str, int], str] = {
 }
 
 
+# Monography's real vocabulary of 22 product categories, derived
+# empirically via an exhaustive page-by-page sweep of the whole document
+# (not guessed) -- see monography_brand_state.md memory for the full
+# product-count reconciliation (65 products) this was verified against.
+# Ordered longest-phrase-first so e.g. "MODULAR SOFA"/"BACK SOFA CONSOLLE"
+# match before the bare "SOFA"/"CONSOLLE" they'd otherwise collide with.
+MONOGRAPHY_CATEGORIES = [
+    "MODULAR SOFA", "BACK SOFA CONSOLLE", "SOFA TABLE", "SIDE TABLE", "TABLE BASE",
+    "TABLE TOP", "DINING CHAIR", "NIGHT TABLE", "CHEST OF DRAWERS", "DRESSING TABLE",
+    "TV CABINET", "SIDEBOARD", "DISPLAY CABINET", "BOOKSHELF", "CONSOLLE", "DESK",
+    "MIRROR", "WALL DECORATION", "RUG", "ARMCHAIR", "SOFA", "BED",
+]
+
+
+def _monography_half_text(pdf_path: str, page: int, side: str) -> str:
+    """Extracts just ONE half (printed page) of a Monography A3 landscape
+    spread (1190.55pt wide = exactly 2x a normal A4 page, confirmed via
+    `pdfinfo -box` -- pages 1/57 are plain A4, pages 2-56 are the 2-up
+    spreads). Naive whole-page `pdftotext -layout` interleaves the two
+    halves' text unpredictably row-by-row (confirmed: product name/
+    category/description lines from BOTH halves merge onto single
+    physical text lines) -- cropping each half separately via pdftotext's
+    own -x/-W flags (x=0,W=595 for the left half; x=595,W=596 for the
+    right -- verified clean against 3 pages' own rendered images, one per
+    distinct content density: Sofas/Dining Tables/Rugs) produces fully
+    separated, correctly-ordered text per half instead."""
+    x, w = (0, 595) if side == "L" else (595, 596)
+    result = subprocess.run(
+        [PDFTOTEXT, "-layout", "-enc", "UTF-8", "-f", str(page), "-l", str(page),
+         "-x", str(x), "-y", "0", "-W", str(w), "-H", "842", pdf_path, "-"],
+        capture_output=True,
+    )
+    return result.stdout.decode("utf-8", errors="replace")
+
+
+def _monography_half_footer(lines: list[str]) -> int | None:
+    """The footer page number is NOT always the half's own last line --
+    confirmed real on printed page 27 ("CESAR / MODULAR SOFA..."): trailing
+    bled-in content ("side element relax") from a later row sits AFTER the
+    footer line. Scans every line for a standalone 1-3 digit token,
+    keeping the LAST such match (the real footer is always the last
+    purely-numeric line, whatever bleeds in after it)."""
+    footer = None
+    for raw in lines:
+        m = re.match(r"^(\d{1,3})$", raw.strip())
+        if m:
+            footer = int(m.group(1))
+    return footer
+
+
+def _monography_find_products(lines: list[str]) -> list[tuple[int, str, str]]:
+    """Finds every product header (name + category) in one half's text, in
+    top-to-bottom order. A header is: a line starting with a known
+    category word (MONOGRAPHY_CATEGORIES), immediately preceded (skipping
+    blanks) by a line that looks like a real product name -- confirmed
+    real guards needed for 2 false-positive classes: (1) a section-divider
+    page's own bare heading (e.g. "SOFA TABLES") has no real name line
+    before it at all (walking back hits the top of the page, j<0 -- no
+    guess, just skipped); (2) a product's OWN second price-table block
+    repeating its category word (confirmed on JOLIE's oval-top block) has
+    a price-description line immediately above it instead of a name
+    (">30 chars or contains ':'" rejects it; a real name like "MAXIME
+    soft" -- confirmed real, mixed-case -- still passes)."""
+    found = []
+    for i, raw in enumerate(lines):
+        l = raw.strip()
+        if not l:
+            continue
+        for cat in MONOGRAPHY_CATEGORIES:
+            if l == cat or l.startswith(cat + " "):
+                j = i - 1
+                while j >= 0 and lines[j].strip() == "":
+                    j -= 1
+                if j < 0:
+                    break
+                name = lines[j].strip()
+                if len(name) > 30 or ":" in name or not name[:1].isupper():
+                    break
+                # Returns j (the NAME line's own index), not i (the
+                # category line) -- this is the product's real text-block
+                # START boundary; using i instead silently dropped the
+                # product's own name heading from every rewritten text
+                # file (confirmed real on Alaya (Modular Sofa): its text
+                # started at "MODULAR SOFA", missing "ALAYA" above it).
+                found.append((j, name, cat))
+                break
+    return found
+
+
+def parse_index_monography(pdf_path: str, total_pages: int) -> list[tuple[str, int]]:
+    """Monography has a real printed TOC (PDF page 2, unlike Nube) but its
+    own stated page numbers drift increasingly out of sync with the real
+    pagination as the document progresses -- confirmed: unlisted blank
+    filler pages sit before several section dividers, pushing each later
+    section's real start further past what the TOC claims (Sofas matches
+    exactly; by Decorations the drift is +6 pages). The TOC is therefore
+    used only for SECTION ORDER, never as ground truth for page numbers.
+    Real ground truth: every half's own footer (a bare running page
+    number, read via _monography_half_footer) plus its own NAME+CATEGORY
+    header (read via _monography_find_products).
+
+    PDF pages 6-49 cover printed pages 10-97 (real content: the Sofas
+    divider through the last Rugs entry). Pages 1-5 are the cover/TOC/
+    Sales Conditions/Guide -- excluded per explicit instruction, including
+    the Guide's own FACSIMILE 1/2 example products (confirmed to be the
+    SAME real products shown again properly in their own real sections --
+    "Vague/Sofa" and "Montreal/Bookshelf" -- so excluding the GUIDE PAGES
+    themselves is sufficient; no separate per-name exclusion needed).
+    Pages 50-57 are an unpaginated materials/color-swatch glossary
+    appendix (no footer number at all -- confirmed via direct inspection:
+    LEATHER/TEXTILE/ICON/FINISHES/WOOD/METALS/STONES swatch legend for the
+    MO.xxx material codes referenced in real product descriptions).
+
+    Within-brand name collisions: 16 bare names (e.g. "Antibes") are each
+    reused across 2-4 DIFFERENT categories -- a structural family/
+    collection-naming pattern confirmed via an exhaustive scan, not a rare
+    exception -- so every bare name used by more than one category here is
+    auto-qualified as "Name (Category)" generically, rather than via a
+    small hand-maintained lookup like Nube's NUBE_WITHIN_FILE_DISAMBIGUATION."""
+    name_categories: dict[str, set] = {}
+    raw_hits: list[tuple[str, str, int]] = []  # (bare_name, category, printed_page)
+    for p in range(6, 50):
+        for side in ("L", "R"):
+            text = _monography_half_text(pdf_path, p, side)
+            lines = text.split("\n")
+            footer = _monography_half_footer(lines)
+            if footer is None:
+                continue
+            for _, name, cat in _monography_find_products(lines):
+                raw_hits.append((name, cat, footer))
+                name_categories.setdefault(name, set()).add(cat)
+
+    entries: list[tuple[str, int]] = []
+    for name, cat, footer in raw_hits:
+        if len(name_categories[name]) > 1:
+            display = f"{name.title()} ({cat.title()})"
+        else:
+            display = name.title()
+        entries.append((display, footer))
+    return entries
+
+
+def build_monography_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Maps each half's own printed-page footer -> its real PDF page index
+    (both halves of one spread map to the SAME PDF page, same convention
+    as every other brand's own page_map -- a shared spread image for 2
+    sibling printed pages is an already-established, already-gated
+    pattern, see check_images.ts's own 'legitimate shared-page image
+    group' allowance)."""
+    page_map: dict[int, int] = {}
+    for p in range(6, 50):
+        for side in ("L", "R"):
+            text = _monography_half_text(pdf_path, p, side)
+            footer = _monography_half_footer(text.split("\n"))
+            if footer is not None:
+                page_map[footer] = p
+    return page_map
+
+
+def compute_ranges_monography(entries: list[tuple[str, int]], last_printed_page: int) -> list[dict]:
+    """Tie-aware range computation -- NOT compute_ranges, deliberately, same
+    rationale as compute_ranges_tacchini: multiple Monography products
+    routinely share one printed page (e.g. Aramis and Jean both land on
+    printed page 32, confirmed real -- 2 compact Armchair entries fit one
+    half). Feeding ties straight into the generic compute_ranges would
+    silently swallow every entry in between the tied pair and whatever the
+    NEXT distinct page's start is. Groups by distinct printed_start
+    instead: every entry sharing a page gets end = (next distinct page's
+    start - 1), so a tied group's range is never wider than it should be."""
+    distinct_starts = sorted(set(p for _, p in entries))
+    next_distinct = {s: distinct_starts[i + 1] for i, s in enumerate(distinct_starts[:-1])}
+    ranges = []
+    for name, start in entries:
+        end = max(start, next_distinct.get(start, last_printed_page) - 1)
+        ranges.append({"name": name, "printed_start": start, "printed_end": end})
+    return ranges
+
+
+def _monography_rewrite_texts(pdf_path: str, out_root: Path, catalog: list[dict]) -> None:
+    """Post-processing step, run AFTER the generic asset-writing loop
+    (mini_pdf/images/naive whole-page text) has already populated `catalog`
+    -- OVERWRITES each product's text/<slug>.txt with the real, correctly
+    ISOLATED per-product text block instead of the generic loop's naive
+    whole-PDF-page text (which, for Monography, is 2 printed pages'
+    interleaved content, not this one product's own text -- see
+    _monography_half_text's own docstring). Re-scans the whole document
+    (same technique as parse_index_monography, deliberately NOT sharing
+    cached state with it -- simpler and safer than threading scan results
+    across two separate call sites) to build a single GLOBAL, ORDERED
+    sequence of every product's own start position (pdf_page, side,
+    line_idx) in true reading order, then slices each product's own text
+    block as "everything from its own start position up to the NEXT
+    product's start position" -- this is the only way to correctly bound a
+    product whose own variant list spans MULTIPLE page-halves (confirmed
+    real: Alaya's own Modular Sofa listing spans 7 half-pages, p11_L
+    through p15_R)."""
+    name_categories: dict[str, set] = {}
+    raw_hits: list[tuple[str, str, int, str, int]] = []  # (bare_name, cat, pdf_page, side, line_idx)
+    half_cache: dict[tuple[int, str], list[str]] = {}
+    for p in range(6, 50):
+        for side in ("L", "R"):
+            text = _monography_half_text(pdf_path, p, side)
+            lines = text.split("\n")
+            half_cache[(p, side)] = lines
+            footer = _monography_half_footer(lines)
+            if footer is None:
+                continue
+            for line_idx, name, cat in _monography_find_products(lines):
+                raw_hits.append((name, cat, p, side, line_idx))
+                name_categories.setdefault(name, set()).add(cat)
+
+    # Build the qualified display name for each hit, matching
+    # parse_index_monography's own exact same rule (independently -- not
+    # reused on purpose, see this function's own docstring).
+    ordered = []  # (display_name, pdf_page, side, line_idx)
+    for name, cat, p, side, line_idx in raw_hits:
+        display = f"{name.title()} ({cat.title()})" if len(name_categories[name]) > 1 else name.title()
+        ordered.append((display, p, side, line_idx))
+    # True reading order: PDF page ascending, Left before Right, top to
+    # bottom within a half.
+    side_rank = {"L": 0, "R": 1}
+    ordered.sort(key=lambda t: (t[1], side_rank[t[2]], t[3]))
+
+    by_name = {c["product_name"]: c for c in catalog}
+    half_pages_sorted = [(p, s) for p in range(6, 50) for s in ("L", "R")]
+    half_rank = {ps: i for i, ps in enumerate(half_pages_sorted)}
+
+    for idx, (display, p, side, line_idx) in enumerate(ordered):
+        entry = by_name.get(display)
+        if entry is None:
+            continue  # shouldn't happen -- same scan logic as the index build
+        # End boundary: the NEXT product's own start position (exclusive),
+        # or the end of the whole scanned range for the very last product.
+        if idx + 1 < len(ordered):
+            _, end_p, end_side, end_line = ordered[idx + 1]
+        else:
+            end_p, end_side, end_line = 49, "R", 10 ** 9
+
+        chunks = []
+        cur_rank = half_rank[(p, side)]
+        end_rank = half_rank[(end_p, end_side)]
+        for r in range(cur_rank, end_rank + 1):
+            hp, hs = half_pages_sorted[r]
+            lines = half_cache[(hp, hs)]
+            start_line = line_idx if r == cur_rank else 0
+            stop_line = end_line if r == end_rank else len(lines)
+            chunk_lines = lines[start_line:stop_line]
+            if chunk_lines:
+                chunks.append(f"<<<PDFPAGE:{hp}>>>\n" + "\n".join(chunk_lines))
+
+        # entry["text_file"] was stored relative to args.out (the parent of
+        # out_root, which is args.out / brand) by the generic asset-writing
+        # loop -- same join other call sites in this file use.
+        text_path = out_root.parent / entry["text_file"]
+        text_path.write_text("\n\n".join(chunks), encoding="utf-8", newline="")
+
+
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Pianca's INDICE page(s) via -tsv coordinates. Two mutually
     exclusive per-PAGE formats are supported (confirmed real, distinct
@@ -3550,7 +3807,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -3626,10 +3883,11 @@ def main():
         return
 
     if (not args.index_pages and not args.single_product and not args.manual_entries_file
-            and args.style not in ("varaschini", "tacchini", "nube")):
+            and args.style not in ("varaschini", "tacchini", "nube", "monography")):
         print("ERROR: --index-pages is required for --style "
               f"{args.style!r} (only 'varaschini', 'tacchini', 'nube', "
-              "--single-product, and --manual-entries-file can omit it).")
+              "'monography', --single-product, and --manual-entries-file "
+              "can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
@@ -3640,6 +3898,11 @@ def main():
               "(no fixed index-page range -- see parse_index_tacchini's own "
               "module comment)...")
         entries, tacchini_last_printed_page = parse_index_tacchini(pdf_path, total_pages)
+    elif args.style == "monography":
+        print("[1/5] Scanning PDF pages 6-49's own per-half (2-up spread) "
+              "text for product NAME+CATEGORY headers (no reliable TOC page "
+              "numbers -- see parse_index_monography's own module comment)...")
+        entries = parse_index_monography(pdf_path, total_pages)
     elif args.style == "nube":
         print(f"[1/5] Scanning all {total_pages} pages' own running footers "
               "(no photographic index, no printed page numbers at all -- "
@@ -3718,6 +3981,13 @@ def main():
         # throughout, same as Bonaldo/Ditre's own confirmed-1:1 case.
         page_map = {p: p for p in range(1, total_pages + 1)}
         page_fallback = lambda p: p
+    elif args.style == "monography":
+        page_map = build_monography_page_map(pdf_path, total_pages)
+        # No known universal formula for the rare unreadable-footer half
+        # (none confirmed in practice -- every real-content half's footer
+        # read cleanly); identity is the safest fallback, same rationale
+        # as Bonaldo/Ditre.
+        page_fallback = lambda p: p
     elif args.style == "pianca":
         page_map = build_pianca_page_map(pdf_path, total_pages)
         # Unlike bonaldo/ditre, Pianca's printed page numbers do NOT equal
@@ -3741,6 +4011,9 @@ def main():
     print("[3/5] Computing per-product page ranges...")
     if args.style == "tacchini":
         ranges = compute_ranges_tacchini(entries, tacchini_last_printed_page)
+    elif args.style == "monography":
+        last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1]
+        ranges = compute_ranges_monography(entries, last_printed_page_guess)
     else:
         last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1] + 1
         ranges = compute_ranges(entries, last_printed_page_guess)
@@ -3983,6 +4256,12 @@ def main():
               f"name (verify against the real page before trusting):")
         for name, orig, final in slug_collisions:
             print(f"   - \"{name}\": slug '{orig}' already taken -> used '{final}' instead")
+
+    if args.style == "monography":
+        print("[4/5] Rewriting per-product text files from precise "
+              "per-half (2-up spread) extraction (see "
+              "_monography_rewrite_texts's own module comment)...")
+        _monography_rewrite_texts(pdf_path, out_root, catalog)
 
     catalog_path = out_root / "catalog_index.json"
     if args.merge and catalog_path.exists():

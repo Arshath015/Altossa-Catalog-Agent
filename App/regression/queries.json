@@ -1206,6 +1206,42 @@
     ]
   },
   {
+    "id": 122,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Alaya Asix",
+    "note": "First Monography regression case (brand #9, batch 1/Sofas+Modular Sofas+Armchairs, 2026-10). No per-product code at all in this brand -- products identified purely by name + size-variant text. 6 rows per variant (Pop/Jazz/Blues/Swing/Soul/C.O.M.) x 3 variants = 18 rows, verified against the page image (p7).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 18,
+    "expect_product": [
+      "Alaya Asix"
+    ]
+  },
+  {
+    "id": 123,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "Coline 2 seats cm. 200 Jazz price",
+    "note": "Surcharges are stored and shown as a '+delta' add-on on top of the Pop base price, never combined into a replacement price (explicit design decision) -- verified live: this query correctly returns '+370', not '6.680'. Verified against the page image (p8).",
+    "expect_status": "ok",
+    "expect_price": "+370",
+    "expect_product": [
+      "Coline"
+    ]
+  },
+  {
+    "id": 124,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Gala",
+    "note": "Flat Pop-only product -- no OPTIONS table, no C.O.M., no On request section at all. Tests the simplest possible shape (1 row) alongside the far more complex Alaya Asix case above.",
+    "expect_status": "ok",
+    "expect_price": "3.500",
+    "expect_product": [
+      "Gala"
+    ]
+  },
+  {
     "id": 118,
     "cat": "full_catalog",
     "brand": "Nube Italia",

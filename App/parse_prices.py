@@ -13555,6 +13555,264 @@ def parse_file_nube(path, product_name, brand, flags):
     return rows, flags
 
 
+def parse_file_monography(path, product_name, brand, flags):
+    """Monography -- no per-product code at all (confirmed: every product
+    identified purely by name + size-variant text, never an alphanumeric
+    SKU like every other brand in this file). Each product's own text file
+    (see extract_catalog.py's _monography_rewrite_texts) starts with the
+    product's own BARE name (pre-disambiguation, e.g. "ALAYA" even for the
+    catalog's own qualified "Alaya (Modular Sofa)" product_name) on its
+    very first line -- used here to find every VARIANT block boundary
+    ("<BARE_NAME> <lowercase variant descriptor>", e.g. "ALAYA ASIX 2
+    seats", "GALA desk", "CARRÈ rug oval" -- confirmed present even on
+    single-variant products).
+
+    Within each variant block:
+      - "Pop: X €" (also seen "Pop : X €", "POP: X €") -- the base price,
+        emitted as fabric_tier="Pop", tier_label="Option" (there's no
+        single printed column header for this 2-level Option/Value
+        structure in the source the way Nube prints "Materiale" --
+        "Option" is the closest honest generic label for what varies
+        here).
+      - OPTIONS table rows ("Fabric   JAZZ + 470 €   BLUES + 1.530 €") --
+        each named option is a SURCHARGE delta on top of Pop, never a
+        replacement price (explicit instruction) -- emitted as its own
+        row, fabric_tier=<option name>, tier_label=<category>,
+        price_eur="+<delta>".
+      - "C.O.M.: X €" (customer-own-material alternate base price) --
+        its own row, fabric_tier="C.O.M.", tier_label="Option". Always
+        printed under an "On request" row-label (confirmed via an
+        exhaustive grep across every extracted text file: "On request"
+        ONLY ever appears as this row-group label or inside unrelated
+        prose like "decorative pillows on request" -- never as a literal
+        price value replacing a number) -- captured as model_variant="On
+        request", never silently dropped.
+      - "fabric mtl. X / leather m². Y" -- the C.O.M. row's own required-
+        yardage reference (not itself a price) -- folded into the C.O.M.
+        row's own model_variant text alongside "On request".
+      - A rare extra named option occasionally sits under the SAME "On
+        request" label (confirmed on Astoria's "Bright Finishing +220 €"
+        and Cartesio's "Intreccio leather +210 €") -- its own row,
+        tier_label="On Request Option" (no single clean category word to
+        split out safely; capturing the whole printed label verbatim is
+        more honest than guessing), model_variant="On request".
+      - "Pillow(s): See page 9 of pricelist." -- NOT a price, never
+        emitted as a row. The Decorative Pillows/Fabric/Leather reference
+        data this points to is its own set of reference-only catalog
+        entries (see parse_file_monography_reference below) per the
+        agreed design -- there being no per-row "note" field in this
+        schema, this docstring plus the brand's own flag_triage.json
+        entry are the "note on product pages" this points to.
+      - H/SH/W/D dimension labels -- folded into the row's own `size`
+        field alongside the variant name (e.g. "2 seats (W204 D100/140
+        H64/83 SH40)"), whichever of the 4 are actually present (rugs
+        have no H/SH; some tables have no SH) -- never guessed when
+        absent.
+
+    Row-key uniqueness: product_name + size (which always embeds the real
+    variant name) + fabric_tier together are never identical across two
+    genuinely different rows -- confirmed real need, since this brand has
+    no code field at all to fall back on."""
+    text = Path(path).read_text(encoding="utf-8")
+    page_re = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+    raw_lines = text.split("\n")
+    lines: list[tuple[str, int | None]] = []
+    page = None
+    for raw in raw_lines:
+        m = page_re.match(raw.strip())
+        if m:
+            page = int(m.group(1))
+            continue
+        lines.append((raw, page))
+
+    bare_name = None
+    for raw, _ in lines:
+        if raw.strip():
+            bare_name = raw.strip()
+            break
+    if not bare_name:
+        flags.append((None, product_name, "empty text file, no bare product name found on its own first line"))
+        return [], flags
+
+    # Suffix is REQUIRED (not optional) -- the product's own bare-name-alone
+    # header line (written once per file by extract_catalog.py's
+    # _monography_rewrite_texts, directly above the category line) is NOT
+    # itself a real variant block start; every genuine variant heading
+    # confirmed in this catalog always has a lowercase descriptor after the
+    # name ("GALA desk", "ALAYA ASIX 2 seats", "CARRÈ rug oval" -- even
+    # single-variant products). Matching the bare name alone as a marker
+    # spuriously carved out a content-free block (the category/description
+    # paragraph) that always "failed" to find a price row.
+    #
+    # Matches only the FIRST WORD of bare_name, case-insensitively -- 2
+    # confirmed real divergences between the header line and the variant
+    # sub-heading: (1) Coline/Jean (Sofa)/Louise/Vague (Sofa) print their
+    # own variant sub-headings in Title Case ("Coline 2 seats"), not the
+    # header's ALL-CAPS ("COLINE"); (2) Maxime Soft's own sub-heading drops
+    # the second word entirely ("MAXIME chair", not "MAXIME soft chair").
+    # Matching only the first word, case-insensitively, handles both
+    # without needing a per-product override -- safe here specifically
+    # because this regex only ever runs against ONE product's own already-
+    # isolated text file (see _monography_rewrite_texts), never a shared
+    # page, so there is no cross-product false-match risk.
+    first_word = bare_name.split()[0] if bare_name.split() else bare_name
+    marker_re = re.compile(r"^\s*" + re.escape(first_word) + r"\s+(\S.*)$", re.IGNORECASE)
+    markers = []
+    for i, (raw, _) in enumerate(lines):
+        m = marker_re.match(raw)
+        if not m:
+            continue
+        stripped = raw.strip()
+        suffix = m.group(1).strip()
+        # For a multi-word bare_name (e.g. "ALAYA ASIX", "HYDE PARK"), a
+        # real variant heading sometimes still echoes the remaining word(s)
+        # before its own descriptor ("ALAYA ASIX 2 seats" -> suffix "ASIX 2
+        # seats") -- strip that leftover prefix so the user-facing size
+        # field reads "2 seats", not "ASIX 2 seats". Only strips an EXACT
+        # word-boundary match, so it never touches suffix text that merely
+        # starts similarly.
+        rest_words = " ".join(bare_name.split()[1:])
+        if rest_words and suffix.lower().startswith(rest_words.lower() + " "):
+            suffix = suffix[len(rest_words) + 1:].strip()
+        # 2 confirmed false-positive classes from the case-insensitive
+        # first-word match above:
+        # (1) a MULTI-WORD bare_name's own header-alone line matches
+        #     itself -- e.g. bare_name="ALAYA ASIX" makes "ALAYA ASIX"
+        #     (the header, no real variant) match with suffix="ASIX" (its
+        #     own 2nd word misread as a variant descriptor). Guard:
+        #     reject when the whole matched line IS the bare_name, verbatim.
+        # (2) a lowercase Italian footer CAPTION bleeding together with
+        #     the printed page number on one line (confirmed real:
+        #     "cesar                                   29", a footer
+        #     caption for Cesar's own page) -- reject when the suffix is
+        #     purely digits (no real variant descriptor is ever bare
+        #     digits in this catalog).
+        if stripped.lower() == bare_name.lower():
+            continue
+        if suffix.isdigit():
+            continue
+        # The marker's own variant name is NOT always unique by itself --
+        # confirmed real on Atrium (Modular Sofa): 3 separate "side
+        # element 200" blocks at 3 different real prices, distinguished
+        # ONLY by an extra sub-descriptor line immediately below the
+        # marker ("Double cushion" / "Single cushion, marble top" /
+        # "Single cushion, pouf") -- silently dropping it collapsed all 3
+        # onto one ambiguous row key. Folded into the variant name
+        # whenever present; a dimension line (H/SH/W/D), a Pop price
+        # line, or a blank line immediately below means there's no real
+        # sub-descriptor for this variant (most products, e.g. "GALA
+        # desk"), so nothing is appended.
+        j = i + 1
+        if j < len(lines):
+            nxt = lines[j][0].strip()
+            if (nxt and not re.match(r"^(H|SH|W|D)\s*\d", nxt)
+                    and not re.match(r"\bPOP\s*:", nxt, re.IGNORECASE)
+                    and len(nxt) <= 60):
+                suffix = f"{suffix}, {nxt}"
+        markers.append((i, suffix))
+    if not markers:
+        flags.append((None, product_name, f"no variant block markers found (bare_name={bare_name!r})"))
+        return [], flags
+
+    # Every real price in this catalog is a whole euro amount with a dot
+    # thousands-separator and NO decimal/cents part at all (e.g. "3.500 €",
+    # "175 €") -- confirmed via an exhaustive regex scan across every
+    # extracted text file, zero exceptions. This is already this project's
+    # own "whole euros, dot thousands" display convention, so unlike Nube
+    # (whose source prints a redundant ",00" that needs stripping), no
+    # price normalization is needed here at all -- the captured group is
+    # used as-is.
+    pop_re = re.compile(r"\bPOP\s*:\s*([\d.]+)\s*€", re.IGNORECASE)
+    com_re = re.compile(r"C\.O\.M\.\s*:\s*([\d.]+)\s*€")
+    mtl_re = re.compile(r"fabric\s+mtl\.?\s*([\d,]+)\s*/\s*leather\s*m[²2]\.?\s*([\d,]+)", re.IGNORECASE)
+    category_re = re.compile(r"^\s*(Fabric|Leather|Finishing|Marble|Metal|Top|Wood)\b(.*)$")
+    option_re = re.compile(r"([A-ZÀ-Ý][A-ZÀ-Ý' ]*?)\s*\+\s*([\d.]+)\s*€")
+    on_request_extra_re = re.compile(r"^\s*([A-Z][A-Za-zÀ-ÿ' ]+?)\s*\+\s*([\d.]+)\s*€\s*$")
+    dim_h_re = re.compile(r"\bH\s*(\d+(?:/\d+)?)\b")
+    dim_sh_re = re.compile(r"\bSH\s*(\d+)\b")
+    dim_w_re = re.compile(r"\bW\s*(\d+)\b")
+    dim_d_re = re.compile(r"\bD\s*(\d+(?:/\d+)?)\b")
+
+    rows = []
+    for bi, (start_idx, variant) in enumerate(markers):
+        end_idx = markers[bi + 1][0] if bi + 1 < len(markers) else len(lines)
+        block = lines[start_idx:end_idx]
+        block_text = "\n".join(l for l, _ in block)
+        block_page = next((p for _, p in block if p is not None), None)
+
+        dims = []
+        mh, msh, mw, md = (r.search(block_text) for r in (dim_h_re, dim_sh_re, dim_w_re, dim_d_re))
+        if mw: dims.append(f"W{mw.group(1)}")
+        if md: dims.append(f"D{md.group(1)}")
+        if mh: dims.append(f"H{mh.group(1)}")
+        if msh: dims.append(f"SH{msh.group(1)}")
+        size = f"{variant} ({' '.join(dims)})" if dims else variant
+
+        found_any = False
+
+        mp = pop_re.search(block_text)
+        if mp:
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": None, "variant_context": None,
+                "size": size, "fabric_tier": "Pop", "tier_label": "Option",
+                "code": None, "price_eur": mp.group(1),
+                "source_pdf_page": block_page, "ambiguous": False,
+            })
+            found_any = True
+
+        for line, lpage in block:
+            mc = category_re.match(line)
+            if not mc:
+                continue
+            category, rest = mc.group(1), mc.group(2)
+            for om in option_re.finditer(rest):
+                opt_name, price = om.group(1).strip(), om.group(2)
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": None, "variant_context": None,
+                    "size": size, "fabric_tier": opt_name.title(), "tier_label": category,
+                    "code": None, "price_eur": f"+{price}",
+                    "source_pdf_page": lpage or block_page, "ambiguous": False,
+                })
+                found_any = True
+
+        mcom = com_re.search(block_text)
+        if mcom:
+            mmtl = mtl_re.search(block_text)
+            note = "On request"
+            if mmtl:
+                note += f" (fabric mtl. {mmtl.group(1)} / leather m². {mmtl.group(2)})"
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": note, "variant_context": None,
+                "size": size, "fabric_tier": "C.O.M.", "tier_label": "Option",
+                "code": None, "price_eur": mcom.group(1),
+                "source_pdf_page": block_page, "ambiguous": False,
+            })
+            found_any = True
+
+        for line, lpage in block:
+            if category_re.match(line) or com_re.search(line):
+                continue
+            mo = on_request_extra_re.match(line.strip())
+            if mo:
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": "On request", "variant_context": None,
+                    "size": size, "fabric_tier": mo.group(1).strip(),
+                    "tier_label": "On Request Option",
+                    "code": None, "price_eur": f"+{mo.group(2)}",
+                    "source_pdf_page": lpage or block_page, "ambiguous": False,
+                })
+                found_any = True
+
+        if not found_any:
+            flags.append((block_page, product_name, f"variant {variant!r} has no recognized price row"))
+
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -13570,7 +13828,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -13935,6 +14193,9 @@ def main():
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             elif args.format == "nube":
                 rows, flags = parse_file_nube(str(text_path), p["product_name"], p["brand"], [])
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "monography":
+                rows, flags = parse_file_monography(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

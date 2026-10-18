@@ -48,6 +48,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Pianca': 'pianca',
   'Tacchini': 'tacchini',
   'Nube Italia': 'nube',
+  'Monography': 'monography',
 };
 
 interface Flag {

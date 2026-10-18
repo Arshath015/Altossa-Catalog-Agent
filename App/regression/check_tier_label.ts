@@ -275,6 +275,15 @@ const CASES: Case[] = [
     expectedHeader: 'MATERIALE',
     note: 'Nube Italia is an Excel-exported price list with no printed category word in the usual position -- the real source label is the "Material" column header seen on each price table, parsed into tier_label="Materiale". First brand added where codes/sizes are hand-transcribed from page images (vector graphics) but tiers/prices come from the text layer.',
   },
+  {
+    id: 'monography-aramis-option-tier',
+    category: 'armchair (Monography)',
+    brand: 'Monography',
+    query: 'give me all prices for Aramis',
+    productName: 'Aramis',
+    expectedHeader: 'OPTION',
+    note: 'First Monography (brand #9) regression case in this file. This brand has no single printed column header the way Nube prints "Materiale" -- its own 2-level Option-category/Option-value structure (Pop/C.O.M. under the generic "Option" label; Fabric/Leather/Finishing as their own real printed category words) means the FIRST row\'s own tier_label ("Option", from the Pop row) wins here, not a mislabeled fallback.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {
