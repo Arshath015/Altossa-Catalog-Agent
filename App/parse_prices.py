@@ -11817,6 +11817,7 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
 # _tacchini_parse_shape_d1's own continuation-line lookahead, never by
 # this regex alone.
 _TACCHINI_D_VALUE = r'(?:\+?[\d.,]+|Price upon request|Price upon)'
+
 _TACCHINI_D1_CELL_RE = re.compile(
     r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
     re.IGNORECASE
@@ -11914,6 +11915,29 @@ def _tacchini_d2_match_row(raw, tier_col_start):
 # left on the ORIGINAL single-code-per-block behavior instead.
 _TACCHINI_D1_TWO_CODE_PRODUCTS = {'Reversível', 'Polar', 'Labanca', 'Le Mura'}
 
+# Five to Nine (2026-10): codes 0FTNDB20001/0FTNWLDB20001 each print 3
+# times on page 18 (confirmed via direct page-image + raw-text inspection,
+# not inferred from position) -- 1st occurrence (plain, no table) has its
+# own desc_it ("Daybed 200 cm") captured in full on the code's own line,
+# already naturally distinct, no fix needed. 2nd (with metal table,
+# 0FTNTBMT*) and 3rd (with concrete table, 0FTNTBCM*) occurrences both
+# capture the SAME desc_it ("Daybed 200 cm standard padding"/"...wool
+# padding") on the code's own line -- the real distinguishing text ("con
+# tavolino in metallo"/"con tavolino in cemento") belongs to the
+# following, separately-coded table-reference line instead (0FTNTBMT*/
+# 0FTNTBCM*, confirmed via the page's own footnote "*= the code refers
+# only to the table" -- not a price source, so NOT folded in via the
+# 2-code mechanism above, which is for a genuine second PRICED code, not
+# a reference-only one), which this function's own per-block scan never
+# reaches (unconditional break at the next code line, by design -- see
+# that break's own comment for why merging 0FTNTBMT*'s text in generically
+# broke an earlier attempt). Keyed by 1-based occurrence number per code;
+# an occurrence with no entry (1st) is left exactly as before.
+_TACCHINI_FTN_SUBVARIANT_SUFFIXES = {
+    '0FTNDB20001': {2: ' con tavolino in metallo/with metal table', 3: ' con tavolino in cemento/with concrete table'},
+    '0FTNWLDB20001': {2: ' con tavolino in metallo/with metal table', 3: ' con tavolino in cemento/with concrete table'},
+}
+
 
 def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_name, brand, flags):
     """Shape D, tier-letter variant (D1): the same fixed 12-tier
@@ -11961,6 +11985,7 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
 
     rows = []
     i = 0
+    code_occurrence_count = {}
     while i < len(block):
         line = block[i]
         code_m = _tacchini_match_code_line(line)
@@ -11982,6 +12007,11 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
             desc_it = line[len(code):desc_col_end].strip()
             if not desc_it and desc_col_start is not None:
                 desc_it = line[desc_col_start:desc_col_end].strip()
+            if product_name == 'Five to Nine':
+                code_occurrence_count[code] = code_occurrence_count.get(code, 0) + 1
+                suffix = _TACCHINI_FTN_SUBVARIANT_SUFFIXES.get(code, {}).get(code_occurrence_count[code])
+                if suffix:
+                    desc_it = f"{desc_it}{suffix}" if desc_it else suffix.strip()
             # Two passes, not one: first collect every tier row AND every
             # code line in this block WITHOUT emitting anything, then
             # decide code attribution per column once the whole block

@@ -1063,5 +1063,17 @@
     "expect_product": [
       "Tesis"
     ]
+  },
+  {
+    "id": 107,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Five to Nine",
+    "note": "RESOLVED 2026-10-18: codes 0FTNDB20001/0FTNWLDB20001 reused across 3 real page-18 sub-variants (plain, with metal table, with concrete table) previously collided on an identical model_variant and were marked ambiguous:true (28 rows). New _TACCHINI_FTN_SUBVARIANT_SUFFIXES disambiguates via the real printed table-type text. 178 total rows (176 real + 2 previously wrongly dedupe-collapsed 'C.O. Leather: Price upon request' rows now correctly kept separate), 0 ambiguous, verified against page 18's own image.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 178,
+    "expect_product": [
+      "Five to Nine"
+    ]
   }
 ]
