@@ -13257,6 +13257,63 @@ _NUBE_CODE_SIZE_OVERRIDES: dict[str, list[tuple[str, str]]] = {
     "Stream": [
         ("N197001", "55x46 h.45/77cm"),
     ],
+    # Batch 4 (Tavolino group), pp. 62-73 -- final batch, completes the
+    # brand. Disk's own N250001M/002M/003M and all of Raffles' repeated
+    # "second/third colorway" blocks are REAL codes with REAL size
+    # diagrams (unlike Tender (Bed)/Yard above) whose only price cell is a
+    # genuine 0,00 placeholder in the source -- same confirmed pattern as
+    # Pacific Coast/Sophie in batch 1, not a missing-transcription gap.
+    "Disk": [
+        ("N250001L", "54x54 h.52cm (side table)"),
+        ("N250002L", "94x94 h.22cm (coffee table)"),
+        ("N250003L", "124x124 h.22cm (coffee table)"),
+        ("N250001M", "54x54 h.52cm (side table, Marmo)"),
+        ("N250002M", "94x94 h.22cm (coffee table, Marmo)"),
+        ("N250003M", "124x124 h.22cm (coffee table, Marmo)"),
+    ],
+    # The only product in the brand with 2 rows sharing one literal IT
+    # label ("Essenza" x2, 2 different real wood finishes/prices) -- see
+    # _find_label_continuation()'s own comment for how the 2nd row's real
+    # wood name is recovered from its wrapped EN continuation text.
+    "Ottavio": [
+        ("N251001", "100x100 h.25cm"),
+    ],
+    # RAFFLES -- per-code-per-colorway catalog: each code repeats once per
+    # colorway option, confirmed via the page images' own printed
+    # IT/EN colorway labels (e.g. "marrone - arancione scuro | brown -
+    # dark orange"), hand-transcribed into the size field alongside the
+    # dimension since this brand's size/color system has no separate slot
+    # for it. Only ONE colorway per code is actually priced in the source
+    # (MONOCOLORE/BICOLORE); every other colorway for that same code is a
+    # genuine 0,00 placeholder (same confirmed pattern as Disk's M
+    # variants above) -- not a missing-transcription gap, a real "only
+    # this one colorway has a quoted price" catalog design. Order here is
+    # the exact page/top-to-bottom order _nube_extract_blocks finds them
+    # in (confirmed: the real [2,2,2,0,0,0,2,2,2,0,0,0] row-count pattern
+    # matches this transcription exactly).
+    "Raffles": [
+        ("N185007", "40x40 h.39cm, round side table (brown - dark orange)"),
+        ("N185008", "70x70 h.33cm, round coffee table (cream - taupe)"),
+        ("N185003", "100x100 h.27cm, round coffee table (taupe - brown)"),
+        ("N185007", "40x40 h.39cm, round side table (mustard - cream)"),
+        ("N185008", "70x70 h.33cm, round coffee table (dark green - sage)"),
+        ("N185003", "100x100 h.27cm, round coffee table (dark green - black)"),
+        ("N185005", "49x33 h.39cm, irregular side table (dark orange - brown)"),
+        ("N185001", "80x54 h.33cm, irregular coffee table (taupe - cream)"),
+        ("N185002", "77x59 h.27cm, irregular coffee table (brown - mustard)"),
+        ("N185005", "49x33 h.39cm, irregular side table (cream - sage)"),
+        ("N185001", "80x54 h.33cm, irregular coffee table (dark green - black)"),
+        ("N185002", "77x59 h.27cm, irregular coffee table (sage - dark green)"),
+    ],
+    "Rise": [
+        ("N184001", "45x45 h.57cm"),
+    ],
+    "Turn": [
+        ("N170002", "62x62 h.45cm (side table)"),
+        ("N170003", "62x62 h.25cm (coffee table)"),
+        ("N170004", "62x62 h.36cm (extra coffee table)"),
+        ("N170001", "120x120 h.25cm (coffee table)"),
+    ],
 }
 
 
@@ -13309,6 +13366,50 @@ def _nube_extract_blocks(text):
     surcharge_re = re.compile(r"\s{2,}([\d.]+,\d{2})\s*€\s*\*\s*$")
     header_re = re.compile(r"\bMaterial\b\s*(.*?)\s*\bPrice\b")
 
+    # Standalone, additive-only regex to recover the EN descriptor text
+    # pipe_row_re's own main match deliberately leaves non-capturing (every
+    # other brand/row only ever needs the IT label + price) -- applied
+    # separately in _find_label_continuation below so pipe_row_re's own
+    # groups/call sites are completely untouched.
+    _inline_en_re = re.compile(r"\|\s*(.+?)\s{2,}[\d.]+,\d{2}\s*€\s*$")
+
+    def _find_label_continuation(start_idx, label_col):
+        # OTTAVIO-only case (confirmed via exhaustive scan across every
+        # Nube Italia product -- the only block anywhere in this brand
+        # with two rows sharing one literal IT label "Essenza" at two
+        # different real prices, distinguished only by which wood finish
+        # the EN text names). The EN label can wrap onto the line right
+        # after the row, landing at the SAME fixed column offset as the
+        # row's own IT label (pdftotext -layout's column is stable across
+        # the file) -- e.g. "...Essenza | Veneered wood rovere" then next
+        # line "...terotrattato - canaletto" at the identical column. Only
+        # used to disambiguate an actually-duplicated label (see
+        # parse_file_nube); every other row's own continuation (if found)
+        # is simply unused, so this cannot change output for any row that
+        # isn't already ambiguous.
+        inline = _inline_en_re.search(lines[start_idx])
+        inline_text = inline.group(1).strip() if inline else None
+        if start_idx + 1 >= n:
+            return inline_text
+        nxt = lines[start_idx + 1]
+        # A real new-block boundary needs "Volume (m...)" FOLLOWED BY a
+        # colon+digits (matches the main loop's own boundary test above) --
+        # a bare "Volume (m³)" substring alone is the Informazioni column's
+        # own continuation text legitimately bleeding onto this exact row
+        # (confirmed real: Ottavio's own first "Essenza" row's continuation
+        # line is "...Volume (m³)                     terotrattato -
+        # canaletto", not a boundary at all). Using the same crude "any
+        # 'Volume (m' mention" guard as _find_surcharge below wrongly
+        # discarded this real continuation.
+        if "Volume (m" in nxt and ":" in nxt.split("Volume (m", 1)[1][:6]:
+            return inline_text
+        if len(nxt) <= label_col:
+            return inline_text
+        tail = nxt[label_col:].strip()
+        if not tail or "|" in tail or "€" in tail or re.search(r"\d,\d{2}", tail):
+            return inline_text
+        return f"{inline_text} {tail}".strip() if inline_text else tail
+
     def _find_surcharge(start_idx):
         # Bounded lookahead (confirmed real need: the Informazioni
         # column's own independent text, e.g. "Tessuto (h. 1,40 m):
@@ -13352,7 +13453,7 @@ def _nube_extract_blocks(text):
             m2 = bare_row_re.match(stripped)
             if m2 and m2.group(2) != "0,00":
                 label, price = m2.group(1), m2.group(2)
-                current["rows"].append((label, price, _find_surcharge(i)))
+                current["rows"].append((label, price, _find_surcharge(i), None))
             continue
         label, price = m.group(1).strip(), m.group(2)
         if price == "0,00":
@@ -13370,7 +13471,8 @@ def _nube_extract_blocks(text):
             # context "0,00" + "€" ever appears together outside the
             # surcharge sub-line (already excluded separately above).
             continue
-        current["rows"].append((label, price, _find_surcharge(i)))
+        continuation = _find_label_continuation(i, m.start(1))
+        current["rows"].append((label, price, _find_surcharge(i), continuation))
     if current is not None:
         blocks.append(current)
     return blocks
@@ -13394,6 +13496,7 @@ def parse_file_nube(path, product_name, brand, flags):
     entry at all, or fewer override entries than real blocks found, is
     flagged rather than guessed -- never emits a row with a fabricated or
     missing code."""
+    from collections import Counter
     text = Path(path).read_text(encoding="utf-8")
     blocks = _nube_extract_blocks(text)
     overrides = _NUBE_CODE_SIZE_OVERRIDES.get(product_name)
@@ -13417,8 +13520,19 @@ def parse_file_nube(path, product_name, brand, flags):
         if not block["rows"]:
             flags.append((page, product_name, f"code {code!r} ({size}) has no recognized tier row"))
             continue
-        for label, price, surcharge in block["rows"]:
+        # Duplicate-label detection (OTTAVIO only, confirmed via exhaustive
+        # scan) -- when the SAME literal IT label appears twice in one
+        # block at two different real prices, the real wrapped EN
+        # continuation text (e.g. "rovere terotrattato - canaletto" vs
+        # "frassino") is the only thing distinguishing them, so it's
+        # folded into model_variant ONLY for the rows that actually need
+        # it -- every other row/product's output is completely unchanged,
+        # since this label_counts check is 1 everywhere else in the brand.
+        label_counts = Counter(r[0] for r in block["rows"])
+        for label, price, surcharge, continuation in block["rows"]:
             model_variant = annotation if annotation else None
+            if label_counts[label] > 1 and continuation:
+                model_variant = f"{model_variant} ({continuation})" if model_variant else continuation
             rows.append({
                 "brand": brand, "product_name": product_name,
                 "model_variant": model_variant, "variant_context": None,

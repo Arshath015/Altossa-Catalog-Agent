@@ -1204,5 +1204,53 @@
     "expect_product": [
       "Tender (Bed)"
     ]
+  },
+  {
+    "id": 118,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Disk",
+    "note": "Batch 4 (Tavolino group, final batch of the brand) regression case. Also the first Nube Italia product with a named-finish (non-'Cat.'/non-fabric) tier grid: Essenza/Laccato lucido/Laccato opaco/Marmo botticino/Cassa legno. 3 priced codes (N250001L/002L/003L) x 5 tiers = 15 rows; their own Marmo-top (M-suffix) siblings are a confirmed known_gap (literal 0,00 in source), correctly contributing 0 rows.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 15,
+    "expect_product": [
+      "Disk"
+    ]
+  },
+  {
+    "id": 119,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Ottavio",
+    "note": "Single code (N251001), 4 rows, but 2 of them share the literal IT label 'Essenza' at 2 different real prices (3.570 rovere terotrattato - canaletto vs 3.090 frassino) -- the only duplicate-label block in the whole brand. Disambiguated via model_variant recovered from the wrapped EN continuation text (_find_label_continuation), verified against the page image (p65).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 4,
+    "expect_product": [
+      "Ottavio"
+    ]
+  },
+  {
+    "id": 120,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Raffles",
+    "note": "Per-colorway catalog -- 6 real codes x 2 rows (MONOCOLORE/BICOLORE) = 12 rows, each code's colorway hand-transcribed into the size field. The other 6 colorway duplicates per code are a confirmed known_gap (literal 0,00 in source), correctly contributing 0 rows -- proves the 0,00-filter generalizes to a genuinely new shape (per-colorway repeated codes, not per-tier) without fabricating or losing data.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Raffles"
+    ]
+  },
+  {
+    "id": 121,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Turn",
+    "note": "Final batch 4 regression case, closes out Nube Italia (28/28 products accounted for). 4 codes x 3 tiers = 12 rows, verified against both page images (p72-73).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12,
+    "expect_product": [
+      "Turn"
+    ]
   }
 ]

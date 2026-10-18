@@ -5060,23 +5060,11 @@
     },
     "Disk": {
       "status": "known_gap",
-      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
-    },
-    "Ottavio": {
-      "status": "known_gap",
-      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+      "note": "CONFIRMED genuine known_gap, not pending. N250001M/N250002M/N250003M are real codes with real size diagrams (54x54 h.52cm / 94x94 h.22cm / 124x124 h.22cm, pp. 63-64) -- the Marmo (marble-top) variant of each of N250001L/002L/003L -- but every one of their price cells is a literal 0,00 in the source PDF (confirmed via page image, same confirmed non-real-value pattern as Pacific Coast/Sophie). The L-suffix codes at the same 3 sizes ARE fully priced and live. 2026-10-18."
     },
     "Raffles": {
       "status": "known_gap",
-      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
-    },
-    "Rise": {
-      "status": "known_gap",
-      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
-    },
-    "Turn": {
-      "status": "known_gap",
-      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+      "note": "CONFIRMED genuine known_gap, not pending. RAFFLES is a per-colorway catalog: each of its 6 codes (N185001/002/003/005/007/008) repeats once per colorway option, with the colorway hand-transcribed into the size field (e.g. \"(mustard - cream)\") since this is the only way to distinguish otherwise-identical repeated codes. Only ONE colorway per code is actually priced (MONOCOLORE/BICOLORE); every other colorway for that same code is a literal 0,00 in the source PDF (confirmed via page image, pp. 66-70) -- a real \"only this one colorway is quoted\" catalog design, not a missing-transcription gap. 6 of the 12 real codes are fully priced and live; the other 6 (the unpriced colorway duplicates) correctly contribute 0 rows. 2026-10-18."
     },
     "Pacific Coast": {
       "status": "known_gap",

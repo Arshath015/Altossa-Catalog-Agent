@@ -219,6 +219,16 @@ const CASES: Case[] = [
       { product: 'Fency (Chair)', tier: 'Cat. A', price: '1.380', excludePrices: ['1.580'] },
     ],
   },
+  {
+    id: 'nube-rise-ottavio-isolation',
+    brand: 'Nube Italia',
+    query: 'Rise Essenza and Ottavio Laccato opaco',
+    note: 'Nube Italia batch 4 (final batch) cross-product isolation -- Tavolino group, both products use the named-finish tier system (Essenza/Laccato lucido/Laccato opaco) rather than Cat. A-E, a different tier vocabulary than every earlier Nube Italia isolation case in this file.',
+    required: [
+      { product: 'Rise', tier: 'Essenza', price: '1.085', excludePrices: ['2.410'] },
+      { product: 'Ottavio', tier: 'Laccato opaco', price: '2.410', excludePrices: ['1.085'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

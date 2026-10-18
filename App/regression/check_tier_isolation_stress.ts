@@ -342,6 +342,10 @@ addCase('2prod', 'Carol Cat. A and Fency chair Cat. A', ['Carol', 'Fency (Chair)
   { product: 'Carol', tier: 'Cat. A', price: '1.580' },
   { product: 'Fency (Chair)', tier: 'Cat. A', price: '1.380' },
 ], undefined, 'Nube Italia');
+addCase('2prod', 'Rise Essenza and Ottavio Laccato opaco', ['Rise', 'Ottavio'], [
+  { product: 'Rise', tier: 'Essenza', price: '1.085' },
+  { product: 'Ottavio', tier: 'Laccato opaco', price: '2.410' },
+], undefined, 'Nube Italia');
 
 console.log(`Built ${CASES.length} cases.\n`);
 
