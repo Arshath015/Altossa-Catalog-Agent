@@ -11987,6 +11987,38 @@ def _tacchini_d1_match_row(raw, tier_col_start):
 # EXACTLY 2 such rows per code, never more or fewer.
 _TACCHINI_D2_PRODUCTS = {'Joaquim', 'Kelly T'}
 
+# Quilt/Victoria (2026-10-18): each has exactly 1 small accessory code
+# (0QLTPSGNZ/0VCTPSGNZ, a joining plate) sitting outside its own main
+# 12-tier Rivestimento grid -- confirmed via direct page-image inspection.
+# Structurally simpler than D2, not a variant of it: the Rivestimento
+# column holds no label text AT ALL here (the code's own Descrizione,
+# "Piastra di collegamento"/"di giunzione", already correctly captured as
+# desc_it, is the row's only real identifying text) -- confirmed real via
+# direct inspection: _tacchini_d2_match_row's own regex requires a
+# non-empty label group and correctly declines on a bare "90   90" cell
+# with nothing in front of it. _TACCHINI_D1_ACCESSORY_CELL_RE below is
+# the bare 2-value shape this actually needs.
+_TACCHINI_D1_ACCESSORY_PRODUCTS = {'Quilt', 'Victoria'}
+_TACCHINI_D1_ACCESSORY_CELL_RE = re.compile(
+    r'^(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
+    re.IGNORECASE
+)
+
+
+def _tacchini_d1_accessory_match_row(raw, tier_col_start):
+    """Same small per-table left-drift tolerance as _tacchini_d1_match_row/
+    _tacchini_d2_match_row, but matching a bare 2-value cell with no label
+    at all (see _TACCHINI_D1_ACCESSORY_PRODUCTS' own comment for why)."""
+    for delta in (0, -1, -2):
+        start = tier_col_start + delta
+        if start < 0:
+            continue
+        cell = (raw[start:] if len(raw) > start else '').strip()
+        m = _TACCHINI_D1_ACCESSORY_CELL_RE.match(cell)
+        if m:
+            return m
+    return None
+
 
 def _tacchini_d2_match_row(raw, tier_col_start):
     """D2 counterpart to _tacchini_d1_match_row -- same per-table
@@ -12261,6 +12293,40 @@ def _tacchini_parse_shape_d1(block, block_page_of_line, header_line, product_nam
                                 "source_pdf_page": page2, "ambiguous": False,
                             })
                     tier_rows_found = len(d2_rows)
+            if tier_rows_found == 0 and product_name in _TACCHINI_D1_ACCESSORY_PRODUCTS:
+                # Quilt (0QLTPSGNZ)/Victoria (0VCTPSGNZ), confirmed via
+                # direct page-image inspection: a single small accessory
+                # price ("Piastra di collegamento/giunzione" -- a joining
+                # plate) sitting OUTSIDE the main 12-tier Rivestimento
+                # grid, with no tier letter OR label at all in the
+                # Rivestimento column itself -- just the code's own
+                # Descrizione (already correctly captured as desc_it) and
+                # 2 bare trailing prices (see
+                # _tacchini_d1_accessory_match_row's own docstring for why
+                # this needs its own regex, not D2's). fabric_tier/
+                # tier_label are correctly None (a flat accessory price,
+                # not a Rivestimento option). Requires EXACTLY 1 match,
+                # the confirmed real shape for both products.
+                acc_rows = []
+                for k in range(i, j):
+                    if _TACCHINI_SURCHARGE_INTRO_RE.search(block[k]):
+                        break
+                    m3 = _tacchini_d1_accessory_match_row(block[k], tier_col_start)
+                    if m3:
+                        acc_rows.append(([m3.group(1), m3.group(2)], block_page_of_line[k]))
+                if len(acc_rows) == 1:
+                    vals3, page3 = acc_rows[0]
+                    for col_idx, (col_name, val) in enumerate(zip(col_names, vals3)):
+                        rows.append({
+                            "brand": brand, "product_name": product_name,
+                            "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                            "variant_context": None,
+                            "size": None, "fabric_tier": None,
+                            "tier_label": None,
+                            "code": code, "price_eur": val.strip(),
+                            "source_pdf_page": page3, "ambiguous": False,
+                        })
+                    tier_rows_found = 1
             if tier_rows_found == 0:
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j

@@ -1092,5 +1092,35 @@
     "expect_product": [
       "Butter"
     ]
+  },
+  {
+    "id": 109,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "Quilt Piastra di collegamento price",
+    "note": "RESOLVED 2026-10-18: code 0QLTPSGNZ (p34) is a single small accessory price (a joining plate) sitting outside Quilt's main 12-tier Rivestimento grid, with no tier label or tier-column text at all (unlike D2's own free-text-label rows, which still have SOME text in the Rivestimento column). New _tacchini_d1_accessory_match_row/_TACCHINI_D1_ACCESSORY_PRODUCTS fallback. Verified against page 34's own image (90/90, Base verniciata/Base cromata).",
+    "expect_status": "multiple_options",
+    "expect_prices": [
+      "90",
+      "90"
+    ],
+    "expect_product": [
+      "Quilt"
+    ]
+  },
+  {
+    "id": 110,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "Victoria Piastra di giunzione price",
+    "note": "RESOLVED 2026-10-18: code 0VCTPSGNZ (p40), same shape and same fix as Quilt's own 0QLTPSGNZ (id 109) -- see that entry's own note. Real price is 100/100 (Struttura verniciata/Struttura cromata), verified against page 40's own image -- the brand's prior flag_triage.json note had wrongly assumed the same 90/90 value as Quilt without checking this product's own page, corrected 2026-10-18.",
+    "expect_status": "multiple_options",
+    "expect_prices": [
+      "100",
+      "100"
+    ],
+    "expect_product": [
+      "Victoria"
+    ]
   }
 ]
