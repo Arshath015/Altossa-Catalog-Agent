@@ -1288,5 +1288,29 @@
     "expect_product": [
       "Turn"
     ]
+  },
+  {
+    "id": 125,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Antibes Sofa Table",
+    "note": "Monography batch 2 (Sofa Tables + Dining Tables). Tests a product with a THIRD finish option value on top of Bright/Special (2-value Finishing row, not just 1), plus a Marble category with Rock/Lounge -- 2 size variants x 5 rows each = 10 rows, verified against the page image (p20).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 10,
+    "expect_product": [
+      "Antibes (Sofa Table)"
+    ]
+  },
+  {
+    "id": 126,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Domino",
+    "note": "Table Top shape -- the printed catalog's own surcharge values carry a trailing '*' footnote marker ('SPECIAL + 1.550 € *', referencing 'Pixel inserts not present.') that must not break the surcharge regex. 3 size variants x 2 rows (Pop + Finishing Special) = 6 rows, verified against the page image (p25).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 6,
+    "expect_product": [
+      "Domino"
+    ]
   }
 ]

@@ -239,6 +239,16 @@ const CASES: Case[] = [
       { product: 'Aramis', tier: 'Pop', price: '3.880', excludePrices: ['3.500'] },
     ],
   },
+  {
+    id: 'monography-petite-pharell-pop-isolation',
+    brand: 'Monography',
+    query: 'Petite Pop and Pharell table base Pop',
+    note: 'Monography batch 2 (Sofa Tables + Dining Tables) cross-product isolation -- again the same "Pop" tier name, different prices (1.010 vs 3.080). Pharell (Table Base) also exercises the brand\'s auto-qualified name-collision disambiguation (vs Pharell (Consolle)).',
+    required: [
+      { product: 'Petite', tier: 'Pop', price: '1.010', excludePrices: ['3.080'] },
+      { product: 'Pharell (Table Base)', tier: 'Pop', price: '3.080', excludePrices: ['1.010'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

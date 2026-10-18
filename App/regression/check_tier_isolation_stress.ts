@@ -350,6 +350,10 @@ addCase('2prod', 'Gala Pop and Aramis Pop', ['Gala', 'Aramis'], [
   { product: 'Gala', tier: 'Pop', price: '3.500' },
   { product: 'Aramis', tier: 'Pop', price: '3.880' },
 ], undefined, 'Monography');
+addCase('2prod', 'Petite Pop and Pharell table base Pop', ['Petite', 'Pharell (Table Base)'], [
+  { product: 'Petite', tier: 'Pop', price: '1.010' },
+  { product: 'Pharell (Table Base)', tier: 'Pop', price: '3.080' },
+], undefined, 'Monography');
 
 console.log(`Built ${CASES.length} cases.\n`);
 
