@@ -13205,6 +13205,39 @@ _NUBE_CODE_SIZE_OVERRIDES: dict[str, list[tuple[str, str]]] = {
         ("N167009", "116x116 h.42/82cm (Corner)"),
         ("N167008 SX/DX", "120x200 h.42/82cm (Dormeuse)"),
     ],
+    # Batch 2 (Panca/Poltrona/Pouf group), pp. 43-54.
+    "Landina": [
+        ("N248001", "160x60 h.39cm"),
+        ("N248002", "160x60 h.39cm"),
+    ],
+    "Fency (Armchair)": [
+        ("N193001", "84x90 h.41/78cm"),
+        ("N193004", "60x60 h.37cm (Pouf)"),
+    ],
+    # Both blocks share code N246001 and size -- the real distinction is the
+    # "BASE MDF VERN" vs "BASE MASSELLO" Material header, auto-captured by
+    # _nube_extract_blocks()'s header_re into model_variant, not from here.
+    "Glove": [
+        ("N246001", "77x85 h.45/73cm"),
+        ("N246001", "77x85 h.45/73cm"),
+    ],
+    # Same pattern as Glove -- one code/size, "TESSUTO + PELLE" vs
+    # "MONOCOLORE" Material header distinguishes the two blocks.
+    "Rest": [
+        ("N181001", "67x82 h.42/74cm"),
+        ("N181001", "67x82 h.42/74cm"),
+    ],
+    "Sir": [
+        ("N175002", "69x66 h.42/73cm"),
+    ],
+    "Sunday": [
+        ("N247001", "80x78 h.41/70cm"),
+    ],
+    "Squash": [
+        ("N249001", "60x60 h.38cm"),
+        ("N249002", "90x90 h.38cm"),
+        ("N249003", "110x110 h.38cm"),
+    ],
 }
 
 
@@ -13245,7 +13278,16 @@ def _nube_extract_blocks(text):
         r"[A-Za-zÀ-ÿ0-9.'/+ ]{1,40}?\s{2,}([\d.]+,\d{2})\s*€\s*$"
     )
     bare_row_re = re.compile(r"^([A-Z]{3,20})\s{2,}([\d.]+,\d{2})\s*€\s*$")
-    surcharge_re = re.compile(r"^\s*([\d.]+,\d{2})\s*€\s*\*\s*$")
+    # Requires a 2+ space column-gap immediately before the number (not a
+    # full-line match) -- confirmed real need: Landina's own Pelle row has
+    # a genuine non-zero surcharge (2.460,00) whose line is column-bled
+    # with the Informazioni column's wrapped "Rivestimento supplementare"
+    # label text ("Rivestimento                 2.460,00 €   *"), which a
+    # whole-line-anchored regex silently failed to match, dropping a real
+    # price to a false "no surcharge" -- the exact class of bug this
+    # brand's "never default to zero" rule exists to catch. Same
+    # column-gap discipline as pipe_row_re above.
+    surcharge_re = re.compile(r"\s{2,}([\d.]+,\d{2})\s*€\s*\*\s*$")
     header_re = re.compile(r"\bMaterial\b\s*(.*?)\s*\bPrice\b")
 
     def _find_surcharge(start_idx):
@@ -13259,7 +13301,7 @@ def _nube_extract_blocks(text):
             la = lines[k]
             if "Volume (m" in la:
                 return None
-            m = surcharge_re.match(la)
+            m = surcharge_re.search(la)
             if m:
                 return m.group(1)
             if pipe_row_re.search(la) or bare_row_re.match(la.strip()):

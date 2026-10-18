@@ -199,6 +199,16 @@ const CASES: Case[] = [
       { product: "Lando'", tier: 'Cat. A', price: '5.390', excludePrices: ['3.320'] },
     ],
   },
+  {
+    id: 'nube-sir-sunday-cat-a-isolation',
+    brand: 'Nube Italia',
+    query: 'Sir Cat. A and Sunday Cat. A',
+    note: 'Nube Italia batch 2 cross-product isolation -- same tier letter (Cat. A), very different prices (2.125 vs 3.350). Both products are single-block/single-size (no SX/DX, no end-elements), the simplest possible 2-product case for this brand, added right after fixing the column-bled surcharge regex bug.',
+    required: [
+      { product: 'Sir', tier: 'Cat. A', price: '2.125', excludePrices: ['3.350'] },
+      { product: 'Sunday', tier: 'Cat. A', price: '3.350', excludePrices: ['2.125'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

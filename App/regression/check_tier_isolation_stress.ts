@@ -334,6 +334,10 @@ addCase('2prod', "Bold 90x103 Cat. A and Lando' 200x95 Cat. A", ['Bold', "Lando'
   { product: 'Bold', tier: 'Cat. A', price: '3.320' },
   { product: "Lando'", tier: 'Cat. A', price: '5.390' },
 ], undefined, 'Nube Italia');
+addCase('2prod', 'Sir Cat. A and Sunday Cat. A', ['Sir', 'Sunday'], [
+  { product: 'Sir', tier: 'Cat. A', price: '2.125' },
+  { product: 'Sunday', tier: 'Cat. A', price: '3.350' },
+], undefined, 'Nube Italia');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

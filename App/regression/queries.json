@@ -1158,5 +1158,28 @@
     "expect_product": [
       "Pacific Coast"
     ]
+  },
+  {
+    "id": 114,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Squash",
+    "note": "Batch 2 (Panca/Poltrona/Pouf group) regression case. 3 codes (N249001/002/003) x 8 tiers = 24 rows, verified against both page images (p53-54).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 24,
+    "expect_product": [
+      "Squash"
+    ]
+  },
+  {
+    "id": 115,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "Landina 160x60 Cat. A price",
+    "note": "Landina's own same-size-different-code collision -- both N248001 and N248002 print the identical size string (160x60 h.39cm) on page 43, distinguished only by code/price (2.215 vs 2.325). Proves this collision resolves to multiple_options with both real codes/prices intact, no silent data loss -- the same class of bug the dedicated same-size-different-code regression gate exists to catch, now exercised for Nube Italia too.",
+    "expect_status": "multiple_options",
+    "expect_product": [
+      "Landina"
+    ]
   }
 ]
