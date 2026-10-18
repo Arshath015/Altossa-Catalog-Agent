@@ -1181,5 +1181,28 @@
     "expect_product": [
       "Landina"
     ]
+  },
+  {
+    "id": 116,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Stream",
+    "note": "Batch 3 (Sedia group) regression case. Single code (N197001) x 8 tiers = 8 rows, verified against the page image (p57).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 8,
+    "expect_product": [
+      "Stream"
+    ]
+  },
+  {
+    "id": 117,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Tender Bed",
+    "note": "Confirms Tender (Bed)'s own confirmed known_gap (both its code/size, the only 'Letto | Bed' category product along with Yard whose Dimensioni column is genuinely blank in the source PDF -- no code or size printed anywhere, verified via text layer and a fresh 200dpi re-render) returns status no_price_data honestly, never a fabricated row -- even though its real prices/tiers (including a genuine 6.165,00 surcharge on Cat. E) exist in the text layer and are simply unattributable to any code.",
+    "expect_status": "no_price_data",
+    "expect_product": [
+      "Tender (Bed)"
+    ]
   }
 ]

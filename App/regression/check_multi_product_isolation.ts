@@ -209,6 +209,16 @@ const CASES: Case[] = [
       { product: 'Sunday', tier: 'Cat. A', price: '3.350', excludePrices: ['2.125'] },
     ],
   },
+  {
+    id: 'nube-carol-fency-chair-cat-a-isolation',
+    brand: 'Nube Italia',
+    query: 'Carol Cat. A and Fency chair Cat. A',
+    note: 'Nube Italia batch 3 cross-product isolation -- also exercises the FENCY in-brand name collision (Fency (Armchair) vs Fency (Chair), NUBE_WITHIN_FILE_DISAMBIGUATION) alongside a sibling product in the same multi_product call.',
+    required: [
+      { product: 'Carol', tier: 'Cat. A', price: '1.580', excludePrices: ['1.380'] },
+      { product: 'Fency (Chair)', tier: 'Cat. A', price: '1.380', excludePrices: ['1.580'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

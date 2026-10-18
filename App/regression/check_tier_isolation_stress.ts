@@ -338,6 +338,10 @@ addCase('2prod', 'Sir Cat. A and Sunday Cat. A', ['Sir', 'Sunday'], [
   { product: 'Sir', tier: 'Cat. A', price: '2.125' },
   { product: 'Sunday', tier: 'Cat. A', price: '3.350' },
 ], undefined, 'Nube Italia');
+addCase('2prod', 'Carol Cat. A and Fency chair Cat. A', ['Carol', 'Fency (Chair)'], [
+  { product: 'Carol', tier: 'Cat. A', price: '1.580' },
+  { product: 'Fency (Chair)', tier: 'Cat. A', price: '1.380' },
+], undefined, 'Nube Italia');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

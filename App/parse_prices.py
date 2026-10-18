@@ -13238,6 +13238,25 @@ _NUBE_CODE_SIZE_OVERRIDES: dict[str, list[tuple[str, str]]] = {
         ("N249002", "90x90 h.38cm"),
         ("N249003", "110x110 h.38cm"),
     ],
+    # Batch 3 (Sedia/Letto group), pp. 55-61. Tender (Bed) and Yard (both
+    # "Letto | Bed" category, pp. 58-61) are DELIBERATELY ABSENT from this
+    # table -- confirmed via both the text layer (no "COD." line at all,
+    # unlike every other product) and a fresh 200dpi re-render straight
+    # from the source PDF (not an extraction/crop artifact): their own
+    # Dimensioni column is genuinely blank in the source PDF itself, no
+    # code or size printed anywhere. This is a stronger case than this
+    # brand's usual "vector graphic, unreadable as text" gap -- there is
+    # nothing to read at all. Logged as known_gap (flag_triage.json),
+    # never guessed.
+    "Carol": [
+        ("N253001", "55x55 h.46/82cm"),
+    ],
+    "Fency (Chair)": [
+        ("N193002", "59x61 h.45/81cm"),
+    ],
+    "Stream": [
+        ("N197001", "55x46 h.45/77cm"),
+    ],
 }
 
 
