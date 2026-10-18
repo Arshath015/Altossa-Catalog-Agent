@@ -1122,5 +1122,41 @@
     "expect_product": [
       "Victoria"
     ]
+  },
+  {
+    "id": 111,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Bold",
+    "note": "First Nube Italia regression case (brand #8, batch 1/Divano group, 2026-10). Code/size are hand-transcribed from the page image (_NUBE_CODE_SIZE_OVERRIDES, App/parse_prices.py) -- this is an Excel-exported price list where codes/dimensions are vector graphics, not text. Every price/tier IS parsed fresh from the text layer. 4 codes x 8 tiers (Tessuto cliente/Cat. A-E/Pelle/Pelle Plus) = 32 rows, verified against the page image (p6-7).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 32,
+    "expect_product": [
+      "Bold"
+    ]
+  },
+  {
+    "id": 112,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "Avenue 250x95 Cat. C price",
+    "note": "Size+tier narrowing for Nube Italia's own size-as-text-field convention (size has no separate code concept to filter by in the usual sense -- size string IS the real distinguishing dimension text hand-transcribed from the page image). Verified against page 2's own image (code N180005, 250x95 h.39/81cm, Cat. C = 5.940).",
+    "expect_status": "ok",
+    "expect_price": "5.940",
+    "expect_product": [
+      "Avenue"
+    ]
+  },
+  {
+    "id": 113,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Pacific Coast",
+    "note": "Confirms Pacific Coast's own genuine known_gap (code N134006 DX, p27) is NOT silently fabricated as a €0 row -- parse_file_nube deliberately treats a 0,00 main-tier price as 'no real value' (see App/parse_prices.py's own module comment), so this code contributes 0 rows while the other 6 codes (48 rows) are fully priced. Verified against the page image: every N134006 DX tier cell genuinely shows 0,00 in the source PDF, unlike its own paired N134006 SX code.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 48,
+    "expect_product": [
+      "Pacific Coast"
+    ]
   }
 ]

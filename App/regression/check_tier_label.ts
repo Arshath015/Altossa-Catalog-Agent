@@ -266,6 +266,15 @@ const CASES: Case[] = [
     expectedHeader: 'FINITURA',
     note: 'Deliberate DIVERGENCE from the Baobab case above -- same brand, but this product\'s real tier is a named multi-column finish grid (MR1/MR2/MR3), not a standard letter tier, confirmed via tier_label on the parsed row.',
   },
+  {
+    id: 'nube-bold-material-tier',
+    category: 'upholstered sofa (Nube Italia)',
+    brand: 'Nube Italia',
+    query: 'give me all prices for Bold',
+    productName: 'Bold',
+    expectedHeader: 'MATERIALE',
+    note: 'Nube Italia is an Excel-exported price list with no printed category word in the usual position -- the real source label is the "Material" column header seen on each price table, parsed into tier_label="Materiale". First brand added where codes/sizes are hand-transcribed from page images (vector graphics) but tiers/prices come from the text layer.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

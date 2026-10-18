@@ -13030,6 +13030,356 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
     return _tacchini_dedupe_rows(rows), flags
 
 
+# ---------------------------------------------------------------------------
+# Nube Italia (brand #8, 2026-10) -- Excel-exported working price list, NOT
+# an InDesign catalog (confirmed via pdfinfo: Creator "Microsoft Excel
+# 2016"). Every price, tier/material label, and the red "base type"
+# annotation (e.g. "BASE MDF VERN", "MONOCOLORE") ARE real extractable
+# text. The product CODE, the dimension diagram, and (RAFFLES only) the
+# color-combo label are NOT: confirmed via direct text search (zero
+# occurrences of "COD." or any dimension number anywhere in the 73-page
+# document, with BOTH -layout and raw extraction) and via pdffonts --
+# this content is a vector graphic, not text with a ToUnicode mapping.
+# code/size are therefore hand-transcribed from the page images into
+# _NUBE_CODE_SIZE_OVERRIDES below (never guessed, never inferred from
+# position alone beyond matching accumulation ORDER -- see that table's
+# own module comment) while every price/tier/surcharge value is parsed
+# fresh from the text layer here, same "shared pipeline, narrow verified
+# override" discipline as every other brand in this file.
+#
+# One price-table BLOCK (= one code, one size) is delimited by its own
+# "Volume (m³): X,XX" line (confirmed present at the start of every
+# single block across every product/category checked -- Divano, Poltrona,
+# Pouf, Sedia, Letto, Panca, Tavolino). Within a block, a tier/material
+# row is one line matching "<label IT> | <label EN>   <price> €" (most
+# categories) or a bare "<LABEL>   <price> €" with no pipe (RAFFLES'
+# own MONOCOLORE/BICOLORE rows only, confirmed via direct inspection --
+# no English counterpart printed at all for those 2 labels). Each tier
+# row's own "Rivestimento supplementare/Additional cover" surcharge sits
+# on a LATER physical line as a bare "<price> €   *" (not always the
+# immediately next line -- the Informazioni column's own independent text
+# flow, e.g. "Tessuto (h. 1,40 m): X,XX", can sit between them) -- usually
+# "0,00" (not emitted as a row at all) but confirmed NOT always: TENDER
+# (Letto)'s own Cat. E / 2nd size has a real €6.165,00 surcharge, found by
+# an exhaustive scan BEFORE assuming this field was always safe to default
+# to zero (see this brand's own flag_triage.json / nube_italia_brand_state
+# memory for the full story).
+# Hand-transcribed (code, size) pairs, one per price-table block, in the
+# EXACT top-to-bottom / page order _parse_file_nube encounters them --
+# the ONLY ordering that can ever be matched against an un-extractable
+# code, confirmed verified against the real page image for every entry
+# (not guessed, not inferred from any other signal). A size string
+# format of "<W>x<D> h.<H>cm" (or "<W>x<D> h.<H1>/<H2>cm" when the
+# diagram shows two heights, e.g. a sofa's front/back) reproduces
+# exactly what's printed under each code, left-to-right/top-to-bottom,
+# with the real sub-type label (e.g. "(Pouf)", "(End element)") appended
+# whenever this code's own small label differs from the product's own
+# main category (confirmed real on AVENUE, whose own "Divano" section
+# also contains a Pouf and several sofa-module sub-types under the same
+# running footer).
+_NUBE_CODE_SIZE_OVERRIDES: dict[str, list[tuple[str, str]]] = {
+    "Avenue": [
+        ("N180003", "200x95 h.39/81cm"),
+        ("N180004", "220x95 h.39/81cm"),
+        ("N180005", "250x95 h.39/81cm"),
+        ("N180006", "280x95 h.39/81cm"),
+        ("N180011", "100x100 h.39cm (Pouf)"),
+        ("N180012 SX/DX", "100x95 h.39/81cm (End element)"),
+        ("N180013 SX/DX", "125x95 h.39/81cm (End element)"),
+        ("N180014 SX/DX", "192x95 h.39/81cm (End element)"),
+        ("N180015 SX/DX", "242x95 h.39/81cm (End element)"),
+        ("N180016", "92x95 h.39/81cm (Central element)"),
+        ("N180017", "117x95 h.39/81cm (Central element)"),
+        ("N180018", "95x95 h.39/81cm (Corner)"),
+        ("N180019 SX/DX", "125x200 h.39/81cm (Dormeuse)"),
+    ],
+    "Bold": [
+        ("N242001", "90x103 h.40/74cm (Armchair)"),
+        ("N242002", "180x103 h.40/74cm"),
+        ("N242003", "240x103 h.40/74cm"),
+        ("N242004", "90x70 h.40cm (Pouf)"),
+    ],
+    "Dolmen": [
+        ("N243001", "200x105 h.39/72cm"),
+        ("N243002", "220x105 h.39/72cm"),
+        ("N243003", "250x105 h.39/72cm"),
+        ("N243004", "290x105 h.39/72cm"),
+        ("N243005 SX/DX", "125x105 h.39/72cm (End element)"),
+        ("N243006 SX/DX", "145x105 h.39/72cm (End element)"),
+        ("N243007 SX/DX", "230x105 h.39/72cm (End element)"),
+        ("N243008 SX/DX", "270x105 h.39/72cm (End element)"),
+        ("N243009 SX/DX", "150x105 h.39/72cm (Open end element)"),
+        ("N243010", "105x105 h.39/72cm (Central element)"),
+        ("N243011", "125x105 h.39/72cm (Central element)"),
+        ("N243012 SX/DX", "105x216 h.39/72cm (Corner)"),
+        ("N243013 SX/DX", "105x216 h.39/72cm (Dormeuse)"),
+    ],
+    "Gemini": [
+        ("N203003", "200x95 h.38/69cm"),
+        ("N203004", "220x95 h.38/69cm"),
+        ("N203005", "250x95 h.38/69cm"),
+        ("N203007", "280x95 h.38/69cm"),
+        ("N203008", "100x100 h.38cm (Pouf)"),
+        ("N203010 SX/DX", "110x95 h.38/69cm (End element)"),
+        ("N203011 SX/DX", "125x95 h.38/69cm (End element)"),
+        ("N203013 SX/DX", "200x95 h.38/69cm (End element)"),
+        ("N203014 SX/DX", "230x95 h.38/69cm (End element)"),
+        ("N203017", "90x95 h.38/69cm (Central element)"),
+        ("N203018", "105x95 h.38/69cm (Central element)"),
+        ("N203019", "95x95 h.38/69cm (Corner)"),
+        ("N203020 SX/DX", "110x165 h.38/69cm (Dormeuse)"),
+    ],
+    "Joe": [
+        ("N221002", "190x95 h.40/80cm"),
+        ("N221003", "210x95 h.40/80cm"),
+        ("N221004", "240x95 h.40/80cm"),
+        ("N221005", "260x95 h.40/80cm"),
+        ("N221006", "290x95 h.40/80cm"),
+        ("N221015", "100x100 h.40cm (Pouf)"),
+        ("N221007 SX/DX", "105x95 h.40/80cm (End element)"),
+        ("N221008 SX/DX", "180x95 h.40/80cm (End element)"),
+        ("N221009 SX/DX", "200x95 h.40/80cm (End element)"),
+        ("N221010 SX/DX", "230x95 h.40/80cm (End element)"),
+        ("N221011 SX/DX", "250x95 h.40/80cm (End element)"),
+        ("N221012", "95x95 h.40/80cm (Corner)"),
+        ("N221013 SX/DX", "100x157 h.40/80cm (Dormeuse)"),
+    ],
+    "Lando'": [
+        ("N111003", "200x95 h.39/76cm"),
+        ("N111004", "230x95 h.39/76cm"),
+        ("N111005", "260x95 h.39/76cm"),
+        ("N111006", "290x95 h.39/76cm"),
+    ],
+    "Pacific Coast": [
+        ("N134002", "200x119/50 h.38/73cm"),
+        ("N134003", "220x119/50 h.38/73cm"),
+        ("N134004", "250x119/50 h.38/73cm"),
+        ("N134005", "280x119/50 h.38/73cm"),
+        ("N134006 SX", "280x119/50 h.38/73cm"),
+        ("N134006 DX", "280x119/50 h.38/73cm"),
+        ("N134007", "100x100 h.37cm (Pouf)"),
+    ],
+    "Sophie": [
+        ("N171001", "200x110 h.43/74cm"),
+        ("N171002", "220x110 h.43/74cm"),
+        ("N171003", "250x110 h.43/74cm"),
+        ("N171004", "280x110 h.43/74cm"),
+        ("N171006", "100x100 h.43cm (Pouf)"),
+        ("N171005", "60x25 h.10cm (Extra cushions)"),
+    ],
+    "Sailor": [
+        ("N245001", "100x96 h.41/78cm (Armchair)"),
+        ("N245002", "200x100 h.41/78cm"),
+        ("N245003", "225x100 h.41/78cm"),
+        ("N245004", "250x100 h.41/78cm"),
+        ("N245005", "280x100 h.41/78cm"),
+        ("N245006", "100x100 h.41cm (Pouf)"),
+        ("N245007 SX/DX", "140x100 h.41/78cm (End element)"),
+        ("N245008 SX/DX", "200x100 h.41/78cm (End element)"),
+        ("N245009 SX/DX", "225x100 h.41/78cm (End element)"),
+        ("N245010 SX/DX", "255x100 h.41/78cm (End element)"),
+        ("N245012 SX/DX", "202x100 h.41/78cm (Open end element)"),
+        ("N245011", "115x100 h.41/78cm (Central element)"),
+        ("N245013 SX/DX", "100x165 h.41/78cm (Dormeuse)"),
+        ("N245014", "100x100 h.41/78cm (Corner)"),
+        ("N245015", "100x100 h.41cm (Corner)"),
+        ("N245016", "100x100 h.18cm (Wooden corner)"),
+    ],
+    "Sunset": [
+        ("N244001", "200x108/40 h.43/78cm"),
+        ("N244002", "225x108/40 h.43/78cm"),
+        ("N244003", "250x108/40 h.43/78cm"),
+        ("N244004", "280x108/40 h.43/78cm"),
+        ("N244005", "100x100 h.40cm (Pouf)"),
+    ],
+    "Tender (Sofa)": [
+        ("N167001", "240x115 h.42/82cm"),
+        ("N167002", "280x115 h.42/82cm"),
+        ("N167003", "320x115 h.42/82cm"),
+        ("N167010", "80x80 h.42cm (Pouf)"),
+        ("N167011", "100x100 h.42cm (Pouf)"),
+        ("N167004 SX/DX", "160x115 h.42/82cm (End element)"),
+        ("N167005 SX/DX", "200x115 h.42/82cm (End element)"),
+        ("N167006 SX/DX", "240x115 h.42/82cm (End element)"),
+        ("N167007 SX/DX", "280x115 h.42/82cm (End element)"),
+        ("N167009", "116x116 h.42/82cm (Corner)"),
+        ("N167008 SX/DX", "120x200 h.42/82cm (Dormeuse)"),
+    ],
+}
+
+
+_NUBE_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+
+
+def _nube_extract_blocks(text):
+    """Split one product's own raw text into price-table BLOCKS (one per
+    code/size) and, within each, every (label, price, surcharge_or_None)
+    row -- see this section's own module comment for the exact shapes
+    matched. Returns a list of dicts (one per block: rows/annotation/page),
+    in page/top-to-bottom order -- the same order
+    _NUBE_CODE_SIZE_OVERRIDES must be hand-transcribed in. `page` is the
+    REAL PDF page the block's own code line (first row) sits on, read from
+    this file's own "<<<PDFPAGE:N>>>" markers (written by
+    extract_catalog.py) -- used so the chat layer can show the one real
+    page image for a row, not every page in a multi-page product's range."""
+    lines = text.split("\n")
+    n = len(lines)
+    blocks = []
+    current = None
+    header_annotation = None
+    page = None
+
+    # Label group is bounded to SINGLE-spaced words only (no embedded 2+
+    # space run) and REQUIRES a 2+ space gap immediately before it --
+    # confirmed real need: a looser "any run of letters/spaces" group
+    # also matched backward across an unrelated Informazioni-column word
+    # sharing the same physical line (e.g. "supplementare" from
+    # "Rivestimento\nsupplementare", wrapped onto the same row as the
+    # NEXT tier's own "Pelle Plus | Leather Plus" by coincidence of
+    # vertical alignment), silently prefixing it onto the real label.
+    # Anchoring on the 2+ space column gap is the same discipline every
+    # other brand's own same-line-column parsing already uses in this
+    # file.
+    pipe_row_re = re.compile(
+        r"\s{2,}([A-Za-zÀ-ÿ0-9.'/+]+(?:[ ][A-Za-zÀ-ÿ0-9.'/+]+)*)\s*\|\s*"
+        r"[A-Za-zÀ-ÿ0-9.'/+ ]{1,40}?\s{2,}([\d.]+,\d{2})\s*€\s*$"
+    )
+    bare_row_re = re.compile(r"^([A-Z]{3,20})\s{2,}([\d.]+,\d{2})\s*€\s*$")
+    surcharge_re = re.compile(r"^\s*([\d.]+,\d{2})\s*€\s*\*\s*$")
+    header_re = re.compile(r"\bMaterial\b\s*(.*?)\s*\bPrice\b")
+
+    def _find_surcharge(start_idx):
+        # Bounded lookahead (confirmed real need: the Informazioni
+        # column's own independent text, e.g. "Tessuto (h. 1,40 m):
+        # X,XX" or "Fabric (h. 1,40 m)", can sit between a tier row and
+        # its own surcharge line) -- stops at the next tier/bare row or
+        # block boundary so it can never attribute a LATER row's own
+        # surcharge to this one.
+        for k in range(start_idx + 1, min(start_idx + 5, n)):
+            la = lines[k]
+            if "Volume (m" in la:
+                return None
+            m = surcharge_re.match(la)
+            if m:
+                return m.group(1)
+            if pipe_row_re.search(la) or bare_row_re.match(la.strip()):
+                return None
+        return None
+
+    for i, line in enumerate(lines):
+        pm = _NUBE_PDFPAGE_RE.match(line.strip())
+        if pm:
+            page = int(pm.group(1))
+            continue
+        hm = header_re.search(line)
+        if hm:
+            header_annotation = hm.group(1).strip() or None
+        if "Volume (m" in line and ":" in line.split("Volume (m", 1)[1][:6]:
+            if current is not None:
+                blocks.append(current)
+            current = {"rows": [], "annotation": header_annotation, "page": page}
+            # Fall through (no `continue`) -- confirmed real need: the
+            # block's own FIRST tier row (e.g. "Tessuto cliente") sits on
+            # this SAME physical line as "Volume (m³): X,XX", not a
+            # separate one. Skipping straight to the next line here
+            # silently dropped every product's own first tier entirely.
+        if current is None:
+            continue
+        m = pipe_row_re.search(line)
+        if not m:
+            stripped = line.strip()
+            m2 = bare_row_re.match(stripped)
+            if m2 and m2.group(2) != "0,00":
+                label, price = m2.group(1), m2.group(2)
+                current["rows"].append((label, price, _find_surcharge(i)))
+            continue
+        label, price = m.group(1).strip(), m.group(2)
+        if price == "0,00":
+            # NOT a real €0 price -- confirmed via direct page-image
+            # inspection on RAFFLES: a material-GROUP header row (e.g.
+            # "Vetro retroverniciato | Back-painted glass") prints with a
+            # bare "0,00 €" placeholder whenever this specific code/color
+            # combo has no real price entered for it. Sometimes real
+            # MONOCOLORE/BICOLORE sub-rows follow on later lines (this
+            # placeholder is just noise, correctly dropped); sometimes
+            # NOTHING follows at all (a genuine, disclosed gap -- the
+            # block ends up with zero real rows, which this function's
+            # own caller already flags rather than fabricating a €0
+            # price). Confirmed via exhaustive scan this is the ONLY
+            # context "0,00" + "€" ever appears together outside the
+            # surcharge sub-line (already excluded separately above).
+            continue
+        current["rows"].append((label, price, _find_surcharge(i)))
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
+def _nube_normalize_price(price):
+    """Every single price in this 73-page document ends in a literal
+    ',00' (confirmed via exhaustive regex scan, zero exceptions -- real
+    cents are never used) -- stripped here so Nube Italia's own price_eur
+    values match every other brand's established "whole euros, dot
+    thousands separator" convention (e.g. Tacchini's own "1.690", never
+    "1.690,00")."""
+    return price[:-3] if price.endswith(",00") else price
+
+
+def parse_file_nube(path, product_name, brand, flags):
+    """Nube Italia -- see this section's own module comment above for the
+    full shape writeup. Each text-derived BLOCK is matched, in order, to
+    its own hand-transcribed (code, size) pair from
+    _NUBE_CODE_SIZE_OVERRIDES[product_name]; a product with no override
+    entry at all, or fewer override entries than real blocks found, is
+    flagged rather than guessed -- never emits a row with a fabricated or
+    missing code."""
+    text = Path(path).read_text(encoding="utf-8")
+    blocks = _nube_extract_blocks(text)
+    overrides = _NUBE_CODE_SIZE_OVERRIDES.get(product_name)
+    rows = []
+    if overrides is None:
+        flags.append((None, product_name,
+                      f"no _NUBE_CODE_SIZE_OVERRIDES entry for this product -- "
+                      f"{len(blocks)} price block(s) found in text but code/size "
+                      f"were never hand-transcribed from the page image"))
+        return rows, flags
+    if len(blocks) != len(overrides):
+        flags.append((None, product_name,
+                      f"block count mismatch: text layer has {len(blocks)} price "
+                      f"block(s), _NUBE_CODE_SIZE_OVERRIDES has {len(overrides)} -- "
+                      f"not safe to zip by position, re-verify against the page "
+                      f"image before trusting either count"))
+        return rows, flags
+    for (code, size), block in zip(overrides, blocks):
+        annotation = block["annotation"]
+        page = block["page"]
+        if not block["rows"]:
+            flags.append((page, product_name, f"code {code!r} ({size}) has no recognized tier row"))
+            continue
+        for label, price, surcharge in block["rows"]:
+            model_variant = annotation if annotation else None
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": model_variant, "variant_context": None,
+                "size": size, "fabric_tier": label,
+                "tier_label": "Materiale",
+                "code": code, "price_eur": _nube_normalize_price(price),
+                "source_pdf_page": page, "ambiguous": False,
+            })
+            if surcharge and surcharge != "0,00":
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": f"Rivestimento supplementare ({label})" if not model_variant
+                                     else f"Rivestimento supplementare ({label}, {model_variant})",
+                    "variant_context": None,
+                    "size": size, "fabric_tier": None,
+                    "tier_label": None,
+                    "code": code, "price_eur": f"+{_nube_normalize_price(surcharge)}",
+                    "source_pdf_page": page, "ambiguous": False,
+                })
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -13045,7 +13395,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -13407,6 +13757,9 @@ def main():
             elif args.format == "tacchini":
                 heading_text = p.get("index_heading", p["product_name"])
                 rows, flags = parse_file_tacchini(str(text_path), p["product_name"], p["brand"], all_headings, heading_text)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "nube":
+                rows, flags = parse_file_nube(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

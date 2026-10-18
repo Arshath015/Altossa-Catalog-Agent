@@ -189,6 +189,16 @@ const CASES: Case[] = [
       { product: 'Trono', tier: 'B', price: '980', excludePrices: ['1.390'] },
     ],
   },
+  {
+    id: 'nube-bold-lando-cat-a-isolation',
+    brand: 'Nube Italia',
+    query: "Bold 90x103 Cat. A and Lando' 200x95 Cat. A",
+    note: 'Nube Italia cross-product isolation, added during batch 1 onboarding. Both products share the SAME tier letter (Cat. A) at very different prices (3.320 vs 5.390), so a leak between them would be an obvious, unambiguous mismatch. Also the first Nube Italia case in this file: codes/sizes are hand-transcribed from page images (vector graphics), but tiers/prices come from the real text layer, so this proves the matching path correctly isolates by product even with that split data source.',
+    required: [
+      { product: 'Bold', tier: 'Cat. A', price: '3.320', excludePrices: ['5.390'] },
+      { product: "Lando'", tier: 'Cat. A', price: '5.390', excludePrices: ['3.320'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

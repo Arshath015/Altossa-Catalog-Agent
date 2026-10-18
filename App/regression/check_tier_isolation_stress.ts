@@ -320,6 +320,21 @@ addCase('2prod', 'baobab b and trono 25 round b', ['Baobab', 'Trono'], [
   { product: 'Trono', tier: 'B', price: '980' },
 ], undefined, 'Tacchini');
 
+// ===== Nube Italia cross-product isolation (1) =====
+// Both products share the SAME fixed 8-tier vocabulary (Tessuto cliente/
+// Cat. A-E/Pelle/Pelle Plus) at very different prices -- same "obvious,
+// unambiguous mismatch if leaked" design as the Tacchini case above.
+// Size is included in each half of the query since Nube Italia's own
+// code/size come from a hand-transcribed override (not extractable text,
+// see App/parse_prices.py's own module comment) and each product has
+// multiple real sizes, each with its own Cat. A price -- verified live
+// against the running server before adding (brand #8's first
+// cross-product isolation case).
+addCase('2prod', "Bold 90x103 Cat. A and Lando' 200x95 Cat. A", ['Bold', "Lando'"], [
+  { product: 'Bold', tier: 'Cat. A', price: '3.320' },
+  { product: "Lando'", tier: 'Cat. A', price: '5.390' },
+], undefined, 'Nube Italia');
+
 console.log(`Built ${CASES.length} cases.\n`);
 
 // ---- Mode helpers ----

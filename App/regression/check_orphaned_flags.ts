@@ -47,6 +47,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Ditre Italia': 'ditre',
   'Pianca': 'pianca',
   'Tacchini': 'tacchini',
+  'Nube Italia': 'nube',
 };
 
 interface Flag {

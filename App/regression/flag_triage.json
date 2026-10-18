@@ -5044,5 +5044,87 @@
       "status": "known_gap",
       "note": "Found 2026-10-04 via check_orphaned_flags.ts (newly wired in for Tacchini this session). Confirmed via direct source-text inspection: this product's flagged code(s) have a 2-or-3-numeric-column row (e.g. 'B   5.040   5.140' or 'B   2.680   3.270   4.360') -- the SAME '_CATALOG_WIDE: Shape D (2-axis Rivestimento x secondary-column grid) not yet parsed' pattern already documented in this brand's triage section. Parser correctly declines rather than guessing which column is the real price -- zero additional rows for these specific codes, not a price-correctness issue (this product's OTHER codes/rows are unaffected and already captured correctly elsewhere). This entry exists only so check_orphaned_flags.ts recognizes this exact product_name as already investigated, not to duplicate the Shape D writeup."
     }
+  },
+  "Nube Italia": {
+    "_CATALOG_WIDE: codes/dimensions are vector graphics, not text": {
+      "status": "catalog_wide_known_issue",
+      "note": "Confirmed 2026-10 via direct text search (zero occurrences of 'COD.' or any dimension number anywhere in the 73-page document, with BOTH -layout and raw pdftotext extraction) and via pdffonts -- this is an Excel-exported working price list (Creator: Microsoft Excel 2016), not an InDesign catalog, and the product code + dimension diagram (and, for RAFFLES only, the color-combo label) are embedded as a vector graphic with no ToUnicode-mapped text, unlike every price/tier/material/surcharge value, which IS real extractable text. Per explicit instruction: every code and size is hand-transcribed from the page image into _NUBE_CODE_SIZE_OVERRIDES (App/parse_prices.py), verified against the real page, never guessed -- while every price/tier/surcharge is parsed fresh from the text layer by parse_file_nube. Products not yet in that override table return 0 rows and a flag (see their own ledger entries below) rather than a fabricated code."
+    },
+    "Landina": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Fency (Armchair)": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Glove": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Rest": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Sir": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Sunday": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Squash": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Carol": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Fency (Chair)": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Stream": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Tender (Bed)": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Yard": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Disk": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Ottavio": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Raffles": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Rise": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Turn": {
+      "status": "known_gap",
+      "note": "Batch 1 (Divano group) of Nube Italia's own onboarding is live; this product belongs to a LATER batch (2026-10, in progress, same session). Its real price block count is already confirmed from the text layer -- the only missing piece is the hand-transcribed code+size from its own page image (_NUBE_CODE_SIZE_OVERRIDES in App/parse_prices.py), per this brand's own documented limitation: codes/dimensions are rendered as vector graphics, not text (see _CATALOG_WIDE entry below). NOT a data-correctness concern -- 0 rows is the safe state until transcribed, never a guess. Status will move to 'real_gap'/resolved once this product's own batch lands."
+    },
+    "Pacific Coast": {
+      "status": "known_gap",
+      "note": "Code N134006 DX (p27, 280x119/50 h.38/73cm) genuinely has NO real price in the source PDF -- confirmed via direct page-image inspection: every single tier cell (Tessuto cliente through Pelle Plus) shows a literal 0,00 euro, unlike N134006 SX (its own paired left-hand code) which has real prices throughout. Not a parsing failure: parse_file_nube deliberately treats a 0,00 main-tier price as 'no real value' (same discipline confirmed needed on RAFFLES' own 'Vetro retroverniciato | 0,00' placeholder header rows, see App/parse_prices.py's own module comment) rather than emitting a fabricated €0 row. This is the PDF's own real content, not a hand-transcription error -- flag correctly fires with 0 rows found for this one code, the rest of Pacific Coast (6 other codes, 48 rows) is fully priced."
+    },
+    "Sophie": {
+      "status": "known_gap",
+      "note": "Code N171006 (p35, 100x100 h.43cm, Pouf) genuinely has NO real price in the source PDF -- confirmed via direct page-image inspection: every tier cell shows a literal 0,00 euro, unlike every other Sophie code which has real prices throughout. Same pattern and same discipline as Pacific Coast's own N134006 DX gap above (see that entry). Not a hand-transcription error -- the rest of Sophie (5 other codes, 40 rows) is fully priced."
+    }
   }
 }

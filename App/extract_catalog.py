@@ -1551,6 +1551,82 @@ def _pianca_card_grid_pagenum_row(row: list[tuple[float, float, str]]) -> list[t
     return pairs if pairs else None
 
 
+def parse_index_nube(pdf_path: str, total_pages: int) -> list[tuple[str, int]]:
+    """Nube Italia has no photographic index at all (confirmed via direct
+    text search: no "index"/"indice"/"sommario" anywhere in the whole
+    73-page document) and no printed page numbers either (confirmed: no
+    "p.N" or bare page-number footer like every other brand has) -- this
+    is an Excel-exported working price list, not an InDesign catalog.
+
+    Ground truth instead: EVERY page carries a running footer naming the
+    product + category (e.g. "AVENUE | Divano"), confirmed present on all
+    73 pages. This scans every real page's own footer directly (no
+    separate index-page range to point at, unlike every other --style)
+    and returns one entry per CONSECUTIVE RUN of pages sharing the same
+    NAME (not the full footer) -- confirmed real need on GLOVE/REST: each
+    prints 2 ADJACENT pages under the SAME code (N246001/N181001) with a
+    different red "Material" base-type annotation per page (e.g. "BASE
+    MDF VERN" vs "BASE MASSELLO"), which changes the footer's own trailing
+    category text ("GLOVE | Poltrona (2)" vs "GLOVE | Poltrona massello")
+    even though it's genuinely ONE product with 2 base-material options,
+    not two -- grouping on the full footer string split these into 2
+    same-named catalog entries (confirmed real via a first attempt at this
+    function, caught before shipping). Grouping on NAME alone correctly
+    merges GLOVE/REST into one entry each, while still correctly keeping
+    FENCY/TENDER's own 2 occurrences separate: those are NOT adjacent --
+    confirmed via direct page-image inspection, several unrelated products
+    (SIR, SUNDAY, etc.) sit between FENCY's own Poltrona (p.45-46) and
+    Sedia (p.56) sections, so the name run genuinely breaks and restarts.
+    NUBE_WITHIN_FILE_DISAMBIGUATION (see main()) renames FENCY/TENDER's 2
+    occurrences each to customer-meaningful qualified names afterward.
+
+    Footer format is NOT consistent: most pages use "NAME | Category"
+    (pipe-delimited), but REST's own 2 pages use "NAME Category" with no
+    pipe at all (confirmed via direct inspection) -- when no "|" is
+    found, only the FIRST whitespace-separated token is treated as the
+    name (every other no-pipe case checked is single-word; a multi-word
+    name always uses the pipe format in this document)."""
+    entries: list[tuple[str, int]] = []
+    prev_name = None
+    for p in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, p)
+        lines = [l for l in text.split("\n") if l.strip()]
+        if not lines:
+            continue
+        footer = lines[-1].strip()
+        if "|" in footer:
+            name = footer.split("|", 1)[0].strip()
+        else:
+            name = footer.split()[0].strip() if footer.split() else footer
+        if not name:
+            continue
+        if name != prev_name:
+            # Footer prints the raw name ALL-CAPS ("AVENUE") -- every other
+            # brand's own catalog_index.json stores Title Case ("Ada
+            # (Sofa)", "Agea"), confirmed by direct inspection. .title()
+            # on "LANDO'" correctly gives "Lando'" (apostrophe isn't a
+            # letter, nothing after it to miscapitalize) and is a no-op on
+            # the already-qualified disambiguation strings below.
+            qualified = NUBE_WITHIN_FILE_DISAMBIGUATION.get((name, p), name).title()
+            entries.append((qualified, p))
+            prev_name = name
+    return entries
+
+
+# Nube Italia (2026-10): 4 product names legitimately repeat as two
+# unrelated, non-adjacent sections each (see parse_index_nube's own
+# docstring) -- confirmed via direct page-image inspection, not assumed.
+# Keyed by (raw_name, pdf_page_start) since the SAME raw name needs a
+# DIFFERENT qualifier per occurrence, same convention as Ditre Italia's
+# own DITRE_WITHIN_FILE_DISAMBIGUATION.
+NUBE_WITHIN_FILE_DISAMBIGUATION: dict[tuple[str, int], str] = {
+    ("FENCY", 45): "Fency (Armchair)",
+    ("FENCY", 56): "Fency (Chair)",
+    ("TENDER", 39): "Tender (Sofa)",
+    ("TENDER", 58): "Tender (Bed)",
+}
+
+
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Pianca's INDICE page(s) via -tsv coordinates. Two mutually
     exclusive per-PAGE formats are supported (confirmed real, distinct
@@ -3474,7 +3550,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -3550,9 +3626,9 @@ def main():
         return
 
     if (not args.index_pages and not args.single_product and not args.manual_entries_file
-            and args.style not in ("varaschini", "tacchini")):
+            and args.style not in ("varaschini", "tacchini", "nube")):
         print("ERROR: --index-pages is required for --style "
-              f"{args.style!r} (only 'varaschini', 'tacchini', "
+              f"{args.style!r} (only 'varaschini', 'tacchini', 'nube', "
               "--single-product, and --manual-entries-file can omit it).")
         sys.exit(1)
 
@@ -3564,6 +3640,11 @@ def main():
               "(no fixed index-page range -- see parse_index_tacchini's own "
               "module comment)...")
         entries, tacchini_last_printed_page = parse_index_tacchini(pdf_path, total_pages)
+    elif args.style == "nube":
+        print(f"[1/5] Scanning all {total_pages} pages' own running footers "
+              "(no photographic index, no printed page numbers at all -- "
+              "see parse_index_nube's own module comment)...")
+        entries = parse_index_nube(pdf_path, total_pages)
     elif args.single_product:
         if args.style != "pianca":
             print("ERROR: --single-product is only supported for --style pianca.")
@@ -3629,6 +3710,13 @@ def main():
         # Falling back to identity for the rare unreadable-footer page is
         # safer than a formula neither confirmed nor even hypothesized for
         # this brand.
+        page_fallback = lambda p: p
+    elif args.style == "nube":
+        # Nube Italia has no printed page numbers at all (see
+        # parse_index_nube's own docstring) -- "printed page" and "PDF
+        # page" are the SAME number by construction, identity map/fallback
+        # throughout, same as Bonaldo/Ditre's own confirmed-1:1 case.
+        page_map = {p: p for p in range(1, total_pages + 1)}
         page_fallback = lambda p: p
     elif args.style == "pianca":
         page_map = build_pianca_page_map(pdf_path, total_pages)
