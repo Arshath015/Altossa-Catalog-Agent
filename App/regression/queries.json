@@ -1075,5 +1075,22 @@
     "expect_product": [
       "Five to Nine"
     ]
+  },
+  {
+    "id": 108,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for Butter P2 pouf tavolino",
+    "note": "RESOLVED 2026-10-18: code 0BTTTB01 (p13) is Shape A (NOT Shape D -- no Rivestimento header), but each of its 12 tier cells holds 3 genuine prices (MR1/MR2/MR3 marble-top modules) instead of 1. New _tacchini_triple_value_fallback recovers 11 of 12 tiers (33 rows); C.O. Leather's own 'Price upon request' wraps across 2 lines and is a disclosed, not-recovered residual. Verified against page 13's own image (B tier: 2.680/3.270/4.360).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 33,
+    "expect_prices_subset": [
+      "2.680",
+      "3.270",
+      "4.360"
+    ],
+    "expect_product": [
+      "Butter"
+    ]
   }
 ]

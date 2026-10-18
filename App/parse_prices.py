@@ -11797,6 +11797,11 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
                     block, block_page_of_line, i, j, tier_col_start, code, desc_it,
                     product_name, brand, rows
                 )
+            if tier_rows_found == 0 and product_name in _TACCHINI_MR_PRODUCTS:
+                tier_rows_found += _tacchini_triple_value_fallback(
+                    block, block_page_of_line, i, j, tier_col_start, code, desc_it,
+                    product_name, brand, rows
+                )
             if tier_rows_found == 0:
                 flags.append((page, product_name, f"code {code!r} found but no recognized tier row followed it"))
             i = j
@@ -11817,6 +11822,114 @@ def _tacchini_parse_shape_a(block, block_page_of_line, header_line, product_name
 # _tacchini_parse_shape_d1's own continuation-line lookahead, never by
 # this regex alone.
 _TACCHINI_D_VALUE = r'(?:\+?[\d.,]+|Price upon request|Price upon)'
+
+# Butter (2026-10-18): codes 0BTTTB01/0BTTTB02 (p13, "P2/P4 pouf tavolino")
+# print 3 genuine prices per Rivestimento tier instead of 1 -- confirmed
+# via direct page-image inspection, column names "MR1"/"MR2"/"MR3" (marble
+# top module options), named ONLY on the English header line ("Price MR1
+# MR2 MR3"); the Italian line just says "Prezzo" once, so unlike every
+# other named-column shape in this file, the column names here are read
+# from the English line -- a deliberate, narrow exception since the
+# Italian line genuinely carries no column-name information to read
+# instead. Scoped to Butter only: this exact 3-price-per-tier shape is
+# ALSO used by this product's own BT14/BT15 composition-bundle codes on
+# the separate "Butter, compositions" bonus page, which
+# _tacchini_find_composition_rows already declines on by design (see that
+# function's own docstring) -- untouched here, a different code path,
+# not silently affected by this fallback.
+_TACCHINI_MR_PRODUCTS = {'Butter'}
+_TACCHINI_MR_COLUMN_NAMES = ('MR1', 'MR2', 'MR3')
+# Anchored 3-value cell match (label + 3 real price-shaped values,
+# 2+-space-separated) -- NOT a blind "find every price-shaped token in
+# the cell" scan: confirmed real need on L1/L2/L3's own trailing digit
+# (e.g. "L1   3.300   3.890   4.970") -- a token-scan approach also
+# matches the bare "1" inside the label itself, miscounting 4 tokens
+# instead of 3 and silently skipping these 3 real rows. This regex's own
+# label group only stops growing once 2+ real whitespace immediately
+# follows, which "L1" (no space between L and 1) can never satisfy until
+# the label is complete, so the digit inside the label is never mistaken
+# for a value.
+#
+# Deliberately uses a NARROWER value pattern than _TACCHINI_D_VALUE --
+# excludes its own bare "Price upon" alternative (kept on
+# _TACCHINI_D_VALUE only for D1's own 2-line "Price upon" + "request"
+# lookahead, which this single-line fallback doesn't have). Confirmed
+# real need: 0BTTTB01/02's own C.O.Leather row prints "Price upon
+# Price upon   Price upon" on one line and a bare "request" x3 on the
+# NEXT -- without this exclusion, the bare "Price upon" alternative
+# still matches as a (wrong, truncated) value instead of declining.
+_TACCHINI_MR_VALUE = r'(?:\+?[\d.,]+|Price upon request)'
+_TACCHINI_MR_CELL_RE = re.compile(
+    r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(' + _TACCHINI_MR_VALUE + r')\s{2,}(' +
+    _TACCHINI_MR_VALUE + r')\s{2,}(' + _TACCHINI_MR_VALUE + r')\s*$',
+    re.IGNORECASE
+)
+
+
+def _tacchini_triple_value_fallback(block, block_page_of_line, i, j, tier_col_start, code,
+                                     desc_it, product_name, brand, rows):
+    """Recovers a Shape A code whose own Rivestimento cell holds 3
+    genuine prices per tier (MR1/MR2/MR3) instead of 1 -- mirrors
+    _tacchini_single_value_fallback's own design (scan the SAME (i, j)
+    row range, require an exact 3-value cell shape so a row that doesn't
+    cleanly fit is left alone rather than guessed at). The label must
+    still be a real TACCHINI_TIER_LABELS entry (not free text) -- this
+    shape's own rows use the standard tier vocabulary, confirmed via the
+    page image, unlike D2's free-text material names.
+
+    Tries the SAME small per-table left-drift tolerance as
+    _tacchini_d1_match_row (offsets 0, -1, -2 from tier_col_start) --
+    confirmed real need here too: 0BTTTB01/0BTTTB02's own table drifts
+    exactly -2 chars (the header's own "Rivestimento" word sits 2 chars
+    right of where this table's own data column actually starts,
+    confirmed via direct character-position inspection), which at offset
+    0 truncates every short tier label (B/D/E/L/V/Z) before the label
+    even starts, leaving nothing for the TACCHINI_TIER_LABELS check to
+    recognize.
+
+    C.O. Leather's own 3-value row is NOT recovered by this fallback: its
+    own "Price upon request" phrase wraps across 2 physical lines here
+    (confirmed on both 0BTTTB01/0BTTTB02 -- "Price upon" x3 on one line,
+    a bare "request" x3 on the next), which this single-line scan doesn't
+    reach -- same category of disclosed residual as every other
+    C.O.Leather line-wrap gap in this file, not silently guessed at."""
+    added = 0
+    for k in range(i, j):
+        raw = block[k]
+        if _TACCHINI_SURCHARGE_INTRO_RE.search(raw):
+            continue
+        m = None
+        for delta in (0, -1, -2):
+            start = tier_col_start + delta
+            if start < 0:
+                continue
+            cell = (raw[start:] if len(raw) > start else '').strip()
+            if not cell:
+                continue
+            cand = _TACCHINI_MR_CELL_RE.match(cell)
+            if cand and cand.group(1).strip().lower() in TACCHINI_TIER_LABELS:
+                m = cand
+                break
+        if not m:
+            continue
+        label = m.group(1).strip()
+        prices = [m.group(2), m.group(3), m.group(4)]
+        for col_idx, price in enumerate(prices):
+            col_name = _TACCHINI_MR_COLUMN_NAMES[col_idx]
+            price = price.strip()
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                "variant_context": None,
+                "size": None, "fabric_tier": label.upper() if len(label) <= 3 else label,
+                "tier_label": "Rivestimento",
+                "code": code,
+                "price_eur": TACCHINI_PRICE_UPON_REQUEST if price.lower() == TACCHINI_PRICE_UPON_REQUEST.lower() else price,
+                "source_pdf_page": block_page_of_line[k], "ambiguous": False,
+            })
+        added += 1
+    return added
+
 
 _TACCHINI_D1_CELL_RE = re.compile(
     r'^([A-Za-z0-9.\'/ ]{1,20}?)\s{2,}(' + _TACCHINI_D_VALUE + r')\s{2,}(' + _TACCHINI_D_VALUE + r')\s*$',
