@@ -1199,8 +1199,8 @@
     "cat": "tricky_structure",
     "brand": "Nube Italia",
     "query": "give me all prices for Tender Bed",
-    "note": "Confirms Tender (Bed)'s own confirmed known_gap (both its code/size, the only 'Letto | Bed' category product along with Yard whose Dimensioni column is genuinely blank in the source PDF -- no code or size printed anywhere, verified via text layer and a fresh 200dpi re-render) returns status no_price_data honestly, never a fabricated row -- even though its real prices/tiers (including a genuine 6.165,00 surcharge on Cat. E) exist in the text layer and are simply unattributable to any code.",
-    "expect_status": "no_price_data",
+    "note": "CORRECTED 2026-10-19 (was wrongly expect_status=no_price_data 2026-10-18): Tender (Bed)'s own Dimensioni column IS genuinely blank in the source PDF (no code or size printed anywhere, verified via text layer and a fresh 200dpi re-render) -- but that only means there's no code/size to key on, not that the real prices/tiers should be discarded. Its 3 distinct price tables (5 physical blocks in the source, 2 pairs duplicated verbatim, collapsed to 3) are now hand-transcribed into manual_additions.json, size=null, distinguished by a neutral 'Version 1'/'Version 2'/'Version 3' model_variant label -- including the real 6.165,00 surcharge on Version 2's Cat. E row. Confirms this now returns a full, correct full_price_grid, never a fabricated row.",
+    "expect_status": "full_price_grid",
     "expect_product": [
       "Tender (Bed)"
     ]

@@ -13244,10 +13244,27 @@ _NUBE_CODE_SIZE_OVERRIDES: dict[str, list[tuple[str, str]]] = {
     # unlike every other product) and a fresh 200dpi re-render straight
     # from the source PDF (not an extraction/crop artifact): their own
     # Dimensioni column is genuinely blank in the source PDF itself, no
-    # code or size printed anywhere. This is a stronger case than this
-    # brand's usual "vector graphic, unreadable as text" gap -- there is
-    # nothing to read at all. Logged as known_gap (flag_triage.json),
-    # never guessed.
+    # code or size printed anywhere -- there is nothing to transcribe here.
+    #
+    # CORRECTED 2026-10-19: the earlier conclusion that this meant "0 rows
+    # is the only safe output" was WRONG -- the blank Dimensioni column
+    # only means there's no code/size to read, not that the REAL, non-zero
+    # prices on the page should be discarded too. Both products' real
+    # per-tier prices (confirmed against the page images, including
+    # Tender's own genuine Cat. E "Rivestimento supplementare" surcharge
+    # of 6.165,00) are now hand-transcribed into
+    # data/Nube Italia/manual_additions.json with size=null, distinguished
+    # only by a neutral model_variant label ("Version 1"/"Version 2"/
+    # "Version 3", in page order) since there's no code/size to key on.
+    # Each product's source PDF actually repeats its 3 distinct price
+    # tables as 5 physical blocks (2 pages each) -- 2 of the 3 tables are
+    # each printed twice, verbatim; the duplicates were collapsed rather
+    # than stored twice, since they carry no extra information. See
+    # flag_triage.json (status now "real_gap", not "known_gap") and
+    # nube_italia_brand_state.md for the full writeup. This product still
+    # returns 0 rows from THIS parser -- the real rows are injected by
+    # merge_manual_additions.py, same mechanism as every other brand's
+    # hand-transcribed gap.
     "Carol": [
         ("N253001", "55x55 h.46/82cm"),
     ],
