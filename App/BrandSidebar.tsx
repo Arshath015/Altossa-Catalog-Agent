@@ -28,7 +28,7 @@ const BRANDS: Brand[] = [
   { name: 'Midji', status: 'soon', productCount: 0 },
   { name: 'Miniforms', status: 'soon', productCount: 0 },
   { name: 'Mogg', status: 'soon', productCount: 0 },
-  { name: 'Monography', status: 'soon', productCount: 0 },
+  { name: 'Monography', status: 'ready', productCount: 68 },
   { name: 'Nicoline Salotti', status: 'soon', productCount: 0 },
   { name: 'Pedrali', status: 'soon', productCount: 0 },
   { name: 'Riflessi', status: 'soon', productCount: 0 },
