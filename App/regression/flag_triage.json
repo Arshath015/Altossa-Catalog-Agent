@@ -5075,5 +5075,18 @@
       "note": "Code N171006 (p35, 100x100 h.43cm, Pouf) genuinely has NO real price in the source PDF -- confirmed via direct page-image inspection: every tier cell shows a literal 0,00 euro, unlike every other Sophie code which has real prices throughout. Same pattern and same discipline as Pacific Coast's own N134006 DX gap above (see that entry). Not a hand-transcription error -- the rest of Sophie (5 other codes, 40 rows) is fully priced."
     }
   },
-  "Monography": {}
+  "Monography": {
+    "Decorative Pillows": {
+      "status": "real_gap",
+      "note": "CONFIRMED resolved via manual_additions.json, not a real gap in the extraction sense -- this is a shared, catalog-wide reference table (Decorative Pillows/Fabric/Leather, printed once on PDF page 5/printed page 9) that has no Pop/C.O.M. structure for the generic parser to find at all (by design, not an extraction failure), so parse_file_monography correctly flags it rather than guessing. 6/4/2 rows respectively hand-transcribed and verified against a 200dpi render of the real page, per the user's own explicit design decision to extract these as their own queryable pseudo-products. 2026-10-19."
+    },
+    "Fabric": {
+      "status": "real_gap",
+      "note": "CONFIRMED resolved via manual_additions.json, not a real gap in the extraction sense -- this is a shared, catalog-wide reference table (Decorative Pillows/Fabric/Leather, printed once on PDF page 5/printed page 9) that has no Pop/C.O.M. structure for the generic parser to find at all (by design, not an extraction failure), so parse_file_monography correctly flags it rather than guessing. 6/4/2 rows respectively hand-transcribed and verified against a 200dpi render of the real page, per the user's own explicit design decision to extract these as their own queryable pseudo-products. 2026-10-19."
+    },
+    "Leather": {
+      "status": "real_gap",
+      "note": "CONFIRMED resolved via manual_additions.json, not a real gap in the extraction sense -- this is a shared, catalog-wide reference table (Decorative Pillows/Fabric/Leather, printed once on PDF page 5/printed page 9) that has no Pop/C.O.M. structure for the generic parser to find at all (by design, not an extraction failure), so parse_file_monography correctly flags it rather than guessing. 6/4/2 rows respectively hand-transcribed and verified against a 200dpi render of the real page, per the user's own explicit design decision to extract these as their own queryable pseudo-products. 2026-10-19."
+    }
+  }
 }

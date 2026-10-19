@@ -362,6 +362,14 @@ addCase('2prod', 'Alaya consolle Pop and Montreal consolle Pop', ['Alaya (Consol
   { product: 'Alaya (Consolle)', tier: 'Pop', price: '2.520' },
   { product: 'Montreal (Consolle)', tier: 'Pop', price: '3.380' },
 ], undefined, 'Monography');
+addCase('2prod', 'Tambour Pop and Gala Pop', ['Tambour', 'Gala'], [
+  { product: 'Tambour', tier: 'Pop', price: '6.750' },
+  { product: 'Gala', tier: 'Pop', price: '3.500' },
+], undefined, 'Monography');
+addCase('2prod', 'Fabric Pop and Leather Swing', ['Fabric', 'Leather'], [
+  { product: 'Fabric', tier: 'Pop', price: '115' },
+  { product: 'Leather', tier: 'Swing', price: '190' },
+], undefined, 'Monography');
 
 console.log(`Built ${CASES.length} cases.\n`);
 

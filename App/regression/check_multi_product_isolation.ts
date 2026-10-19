@@ -269,6 +269,26 @@ const CASES: Case[] = [
       { product: 'Montreal (Consolle)', tier: 'Pop', price: '3.380', excludePrices: ['2.520'] },
     ],
   },
+  {
+    id: 'monography-tambour-gala-pop-isolation',
+    brand: 'Monography',
+    query: 'Tambour Pop and Gala Pop',
+    note: 'Monography final batch (Decorations + Rugs) cross-product isolation, across 2 completely different sections (Rugs vs Occasionals & Desks) -- same "Pop" tier name, different prices (6.750 vs 3.500).',
+    required: [
+      { product: 'Tambour', tier: 'Pop', price: '6.750', excludePrices: ['3.500'] },
+      { product: 'Gala', tier: 'Pop', price: '3.500', excludePrices: ['6.750'] },
+    ],
+  },
+  {
+    id: 'monography-fabric-leather-isolation',
+    brand: 'Monography',
+    query: 'Fabric Pop and Leather Swing',
+    note: 'Isolation between the 2 shared reference-only entries themselves (not real furniture products) -- Fabric and Leather share the exact same source page/image as each other and as Decorative Pillows, confirming no cross-contamination despite that.',
+    required: [
+      { product: 'Fabric', tier: 'Pop', price: '115', excludePrices: ['190'] },
+      { product: 'Leather', tier: 'Swing', price: '190', excludePrices: ['115'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

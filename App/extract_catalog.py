@@ -1805,6 +1805,62 @@ def compute_ranges_monography(entries: list[tuple[str, int]], last_printed_page:
     return ranges
 
 
+def _monography_add_reference_entries(pdf_path: str, brand: str, out_root: Path, catalog: list[dict]) -> None:
+    """Appends 3 reference-only catalog entries -- "Decorative Pillows",
+    "Fabric", "Leather" -- for the shared, catalog-wide addon price lists
+    printed once on PDF page 5 (right half = printed page 9), which every
+    real product's own "Pillow: See page 9 of pricelist." note points to
+    (per the user's own explicit design decision: extract these as their
+    own queryable pseudo-products rather than leaving them as a dead-end
+    note). Their own PRICE rows are hand-transcribed into
+    manual_additions.json (small, fixed, visually unambiguous 2-column
+    tables -- verified directly against a 200dpi render of this exact
+    page, not guessed) and merged in via merge_manual_additions.py, same
+    pattern as every other brand's own manual_additions.json; this
+    function only builds the catalog_index.json/image/text SCAFFOLDING
+    those rows attach to, so a future from-scratch rebuild keeps them."""
+    page = 5
+    slug_prefix = "monography_ref"
+    reader = PdfReader(pdf_path)
+    image_prefix = out_root / "images" / f"{slug_prefix}_p{page}"
+    subprocess.run(
+        [PDFTOPPM, "-jpeg", "-r", "150", "-f", str(page), "-l", str(page), pdf_path, str(image_prefix)],
+        capture_output=True,
+    )
+    matches = list((out_root / "images").glob(f"{slug_prefix}_p{page}*.jpg"))
+    image_file = matches[0].name if matches else None
+
+    right_text = _monography_half_text(pdf_path, page, "R")
+    text_content = f"<<<PDFPAGE:{page}>>>\n{right_text}"
+
+    for name in ("Decorative Pillows", "Fabric", "Leather"):
+        slug = slugify(name)
+        text_path = out_root / "text" / f"{slug}.txt"
+        text_path.write_text(text_content, encoding="utf-8", newline="")
+
+        writer = PdfWriter()
+        writer.add_page(reader.pages[page - 1])
+        mini_pdf_path = out_root / "pages" / f"{slug}.pdf"
+        with open(mini_pdf_path, "wb") as f:
+            writer.write(f)
+
+        entry = {
+            "brand": brand,
+            "product_name": name,
+            "slug": slug,
+            "source_file": Path(pdf_path).name,
+            "printed_page_start": 9,
+            "printed_page_end": 9,
+            "pdf_page_start": page,
+            "pdf_page_end": page,
+            "mini_pdf": str(mini_pdf_path.relative_to(out_root.parent)),
+            "images": [image_file] if image_file else [],
+            "page_images": {str(page): image_file} if image_file else {},
+            "text_file": str(text_path.relative_to(out_root.parent)),
+        }
+        catalog.append(entry)
+
+
 def _monography_rewrite_texts(pdf_path: str, out_root: Path, catalog: list[dict]) -> None:
     """Post-processing step, run AFTER the generic asset-writing loop
     (mini_pdf/images/naive whole-page text) has already populated `catalog`
@@ -4262,6 +4318,10 @@ def main():
               "per-half (2-up spread) extraction (see "
               "_monography_rewrite_texts's own module comment)...")
         _monography_rewrite_texts(pdf_path, out_root, catalog)
+        print("[4/5] Adding the 3 shared reference entries (Decorative "
+              "Pillows/Fabric/Leather, page 9) -- see "
+              "_monography_add_reference_entries's own module comment...")
+        _monography_add_reference_entries(pdf_path, args.brand, out_root, catalog)
 
     catalog_path = out_root / "catalog_index.json"
     if args.merge and catalog_path.exists():

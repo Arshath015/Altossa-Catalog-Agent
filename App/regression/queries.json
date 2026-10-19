@@ -1360,5 +1360,41 @@
     "expect_product": [
       "Pharell (Consolle)"
     ]
+  },
+  {
+    "id": 131,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Carrè",
+    "note": "Monography batch 5 (final batch: Decorations + Rugs). Closes out all 65 real products -- 2 size variants, flat Pop-only pricing (no OPTIONS table at all, like every rug in this brand). Verified against the page image (p47).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 2,
+    "expect_product": [
+      "Carrè"
+    ]
+  },
+  {
+    "id": 132,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Decorative Pillows",
+    "note": "First of 3 shared, catalog-wide reference-only entries (Decorative Pillows/Fabric/Leather, printed once on page 9 -- not tied to any single product, every real product's own 'Pillow: See page 9 of pricelist.' note points here instead). Hand-transcribed into manual_additions.json per the user's own explicit design decision (own queryable pseudo-products, not a dead-end note) -- the only Monography rows with no printed Pop/C.O.M. structure at all, just a flat Option/Unit Price table. 6 rows, verified against a 200dpi render of the real page.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 6,
+    "expect_product": [
+      "Decorative Pillows"
+    ]
+  },
+  {
+    "id": 133,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "Fabric Pop and Leather Swing",
+    "note": "Isolation between the 2 remaining reference tables themselves (not a real product pair) -- confirms they resolve independently with no cross-contamination despite sharing the exact same source page/image as each other and as Decorative Pillows.",
+    "expect_status": "multi_product",
+    "expect_product": [
+      "Fabric",
+      "Leather"
+    ]
   }
 ]
