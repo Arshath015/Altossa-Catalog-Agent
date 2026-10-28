@@ -9,10 +9,16 @@ import react from '@vitejs/plugin-react';
 const backendPort = process.env.BACKEND_PORT || '3000';
 const backendOrigin = `http://localhost:${backendPort}`;
 
+// Fixed, project-specific frontend port (not Vite's shared default 5173,
+// which collides with other local projects) -- overridable via FRONTEND_PORT.
+const frontendPort = Number(process.env.FRONTEND_PORT || '7070');
+
 export default defineConfig({
   plugins: [react()],
   root: 'App',
   server: {
+    port: frontendPort,
+    strictPort: true,
     proxy: {
       '/api': backendOrigin,
       '/data': backendOrigin,
