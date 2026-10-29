@@ -112,3 +112,55 @@ Verified: 2 live HTTP tests (Pilar full grid, Tessuti single lookup) match expec
 Verified: 3 live HTTP tests (Jimmy base price, Jimmy surcharge lookup, Night&Day DX/SX isolation) match page images exactly. From-scratch rebuild reproduces live prices.json byte-identical (9997/9997 rows). `regression:full`: 21/21 gates pass. `check-orphaned-flags`: EXIT 0, 18 current flags triaged (both Jimmy/Night&Day now `real_gap`, resolved).
 
 Status: Step 1 complete. Step 2 Batches 1-4 complete, committed, verified. 108/111 products now have real data. Remaining 3 whole zero-row products, each a confirmed PARSER-coverage gap with a specific, understood, non-trivial reason (not a source gap, not guessed): **Bao (Tavolino)** (sub-label porting across a repeated code + a 1-token-short row), **Cubetto** (genuinely combinatorial top+base pricing), **Sound (Tavolino)** (non-standard marble subset + shared-price-row code pairs). Go-live NOT yet reached (3 whole products still 0 rows) -- sidebar stays on "soon".
+
+## Step 2 — Batch 5 (2026-10-29): final 3 products, a systemic silent-data-loss bug, 7 self-caught regressions of the same class, 2 newly-discovered whole-product gaps, and go-live
+
+**Bao (Tavolino), Cubetto, Sound (Tavolino)** -- the 3 remaining zero-row products -- fully hand-transcribed via `manual_additions.json` and verified against their page images (Bao: 4 size/top-material tables, 20 rows; Cubetto: 3-size combinatorial Piano+Base Cubica pricing, 63 rows, verified against the page's own worked example; Sound: 11 size-groups each with its own real 9-column finish set, confirmed Silver Rock replaces Dover White on this product specifically, 162 rows).
+
+**MAJOR finding: systemic bare-code-on-own-line silent data loss.** While closing out the last few small flagged rows, found that when one product "group" has multiple price-tiered variants sharing one group name, only the FIRST variant's code prints on a "name CODE" line -- every subsequent code in that group prints bare, alone, on its own line with no name text. `_BODEMA_VARIANT_CODE_RE` can never match a bare line, so these rows were silently (unflagged) missing. A brand-wide regex scan found 103 such occurrences across ~25 products (Dallas (Letto), Aurore, Bedford, Joao, Lulu, Maestro, Magnum, New Alicante, Prince, Regal, Richard, Shanghai, Sophie x3, Swing, Tiffany, Valentino, and more) -- meaning some of the "76 fully clean" products claimed in the batch-1 report were never actually fully clean; this had been running live undetected since batch 1. Fixed by adding `_BODEMA_BARE_CODE_RE` with a `last_variant`-inheriting fallback. Also fixed a 2-line-wrapped sub-label collision this surfaced (Dallas (Letto)'s DALT010/DALT020 collapsing to the identical label "Contenitore" because the original sub-label detection only read 1 continuation line).
+
+**7 self-caught regressions of the same class.** `merge_manual_additions.py` replaces ALL rows for a given product_name -- a lesson already learned once with Jimmy in batch 4, but it recurred 7 more times this batch because each small residual-gap fix (Shanghai, Barclay, Cuscinetti e Accessori, Milano Pillow, Pop.Up, Regal, Swing) was first written as *only* the newly-fixed code's rows, which would have silently wiped every other already-correctly-parsed row for that product on the next merge. Caught via a systematic audit (comparing every manual_additions.json product's code set against a fresh generic-only parse) rather than individually -- not assumed safe. Worst case: **Pop.Up** would have lost 620 real rows down to 2. Fixed by combining the generic parser's own rows with each manual fix into one self-contained entry per product, for all 7 at once, then re-verified with 0 remaining collateral-loss risk across all 18 (later 22) manual_additions.json products.
+
+**2 newly-discovered whole-product gaps, found during the final brand-wide sweep (not previously flagged at all):** both **Valentino** and most of **Cuscinetti e Accessori** use PURELY NUMERIC codes (e.g. `34001`, `990050`) with no leading letters -- invisible to both `_BODEMA_VARIANT_CODE_RE` and `_BODEMA_BARE_CODE_RE`, which both require 2-8 leading uppercase letters. Valentino was silently 100% empty of its own sofa prices (only the unrelated KIT001 accessory was ever parsed) and had been wrongly counted among the batch-1 "76 fully clean" products. Cuscinetti e Accessori was missing 12 of its 14 real products (only ALR000 and BLA500 -- the 2 letter-leading codes -- were ever parsed; the original flag_triage note mischaracterizing "10 rows parsed correctly" was 10 PRICE-TIER rows for 1 code, not 10 products). Both fully hand-transcribed (Valentino: 77 rows / 8 codes; Cuscinetti e Accessori: 140 rows / 14 codes) and verified against their page images -- every value matches exactly.
+
+**5 "ambiguous" rows resolved -- confirmed genuine source code reuse, not a parsing defect.** The shared global ambiguous-row safety net (keys on product+code+fabric_tier, not size) flagged 100 rows across 5 products: Blake (Divano)/BLA049, Carol/CRL001, Dallas (Divano)/DALS25, Sophie test. c/bottoni/SOPH107, Regal/RGL009. Checked each against its page image: in every case the Bodema catalog itself genuinely prints the SAME code twice on the same page for 2 different variants (e.g. Blake's "Angolare 267 / 1 bracciolo 30cm" and "Angolare 267 + 1 mobiletto basso" both print as BLA049), each with its own correct, different price -- already fully and correctly resolved by `size` in the parsed data, verified exact against the image both times, in all 5 cases. Not a shared-logic change (per the no-shared-logic-changes rule): locked in via manual_additions.json, `ambiguous` explicitly set to `false` on just the affected rows, full product carried through to avoid the collateral-loss pattern above.
+
+**1 more newly-found gap during this check:** Regal's EASY MOVE accessory (code `EasyMove`, flat EUR139, p132) uses a non-standard all-letter code with no digits at all, invisible to either regex. Added as a 1-row flat-price entry.
+
+**Cubetto addon-auto-combine fix (data-level, not shared-logic):** live-tested the surcharge/add-on case and found the existing isAddonVariant/combineAddon auto-sum feature couldn't find Cubetto's Piano rows as the "main" structure because they had `model_variant: null` -- the shared matching code skips null-model_variant rows when building its variant map. Fixed by naming them `model_variant: "Piano"` (a real per-product data change, not shared logic). Known residual limitation, logged in flag_triage.json: a single free-text query naming both a top finish AND a base finish in one sentence still doesn't auto-sum (Cubetto's 2 axes don't fit the single-axis shape the auto-combine logic expects) -- both prices are individually correct and retrievable, confirmed live.
+
+### Final verification (all against the real, live system)
+
+- **Product count vs index:** 111/111 -- every product in `BODEMA_TOC_ENTRIES` has rows.
+- **Zero-row count:** 0.
+- **Ambiguous count:** 0 (100 -> 0, all 5 cases confirmed genuine source code reuse, not data errors).
+- **Duplicate (product, model_variant, size, fabric_tier, code) keys:** 0, across all 11,517 rows.
+- **Brand-wide bare-code scan** (letter-leading AND purely-numeric): 0 remaining unaccounted codes anywhere in the corpus.
+- **Collateral-loss audit** (every manual_additions.json product's codes vs a fresh generic-only parse): 0 products at risk, across all 22 manual_additions.json entries.
+- **5 live HTTP tests via the real `/api/catalog/chat` route**, literal phrasing, each checked against its page image:
+  1. "give me the price for Gitani" -> finish-grid shape, GIT000=1.540 / GIT0001-3=1.583 -- exact match (p180).
+  2. "what is the price of Cubetto tavolino 60 with Calacatta Oro top and Nero Marquinia base" -> top price CUB001/Calacatta Oro=1.717 returned correctly; base addon individually confirmed via "give me all prices for Cubetto" (full_price_grid, 63/63 rows, all 9 base-finish addon rows correctly +-prefixed) -- exact match (p177).
+  3. "how much is the Cuscinetto a saponetta tipo A 40x40" -> 990050, EUR65-198 range -- exact match (p154), confirms the numeric-code fix live.
+  4. "Valentino divano 192 letto 145 with materasso price" -> VA006, EUR2.772-5.148 range -- exact match (p154), confirms the numeric-code + surcharge fix live.
+  5. "Blake Divano Angolare 267 + 1 mobiletto basso cliente price" -> both BLA049 rows returned correctly distinguished by size (3.972 / 4.481), both `ambiguous: false` -- exact match (p24), confirms the ambiguous-code-reuse fix live.
+- **Rebuild-reproduces-live:** fresh extract -> parse -> merge into a clean temp location, diffed key-for-key (sorted JSON) against the live `data/Bodema/prices.json` -- **11,517/11,517 rows byte-identical, exact match.**
+- **`regression:full`:** every gate reports `Failures: 0` / `Total failures: 0`, read from the actual log file content (not the background-task notification). The only non-zero numbers were 15 pre-existing soft-expectation failures in the main `queries.json` run, none of them Bodema (all 9 Bodema query ids 134-142 pass `ok`) -- consistent with the documented Groq-quota soft-flake pattern already on file for this project, not a new regression.
+- **Cross-brand diff:** MD5 hash of all 9 other brands' `data/<Brand>/prices.json` files, taken before and after this entire session, identical -- no other brand's data changed.
+
+### Known gaps (all logged in `flag_triage.json`, 24 Bodema entries)
+
+- **real_gap** (whole product, generic parser alone can't reach it, fully resolved via manual_additions.json): Bao (Tavolino), Bipede, Cubetto, Jimmy, Materassi per letti, Materassi per trasformabili, Night&Day, Sound (Tavolino), Tappeti, Tessuti.
+- **known_gap** (a handful of rows within an otherwise-generically-clean product, or a confirmed source code-reuse now correctly resolved): Barclay, Blake (Divano), Carol, Complementi, Cuscinetti e Accessori, Dallas (Divano), Milano Pillow, Pop.Up, Regal, Shanghai, Sophie test. c/bottoni, Swing, Valentino.
+- **false_alarm**: Kit Coprimeccanismo (a product-availability list where "ROCK1" coincidentally matched the code pattern; 7 real rows, correctly parsed).
+
+### Go-live: all 7 conditions met
+
+1. Every index product priced or logged with a reason -- MET (111/111).
+2. Zero-row products are 0 -- MET.
+3. Ambiguous count is 0 -- MET (resolved this batch; confirmed genuine source duplication, not guessed).
+4. Live HTTP tests pass for >=5 products across sections incl. one with a surcharge/add-on -- MET (5/5, listed above).
+5. From-scratch rebuild reproduces live prices.json exactly -- MET (11,517/11,517).
+6. `regression:full` passes all gates from the log -- MET (0 hard failures; only pre-existing, documented, non-Bodema Groq soft-flakes).
+7. No other brand's data changed -- MET (hash-confirmed).
+
+**Sidebar flipped to "ready" (`App/BrandSidebar.tsx`), productCount 111.** Bodema is brand #10, fully complete.

@@ -13905,6 +13905,19 @@ _BODEMA_PRICE_ROW_TESSUTO_ONLY_RE = re.compile(
     r"^\s*(?:(?:\d{1,3}(?:\.\d{3})*|/)\s+){6}(?:\d{1,3}(?:\.\d{3})*|/)\s*$"
 )
 _BODEMA_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+# A code with NO variant name on the same line -- confirmed real and
+# widespread (103 occurrences across ~25 products, e.g. Dallas (Letto)'s
+# own Contenitore/Contenitore doppio rialzo rows, Richard's/Shanghai's
+# continuation codes): when one "group" (e.g. "Letto L175 P232") has
+# several real priced variants (Fisso/Contenitore/...), only the FIRST
+# repeats the group name on its own "<name>  <CODE>" line -- every
+# following code in the same group is printed bare on its own line, with
+# its own distinguishing sub-label appearing after ITS price row exactly
+# like the already-handled sub-label shapes. Silently skipped (no row, no
+# flag) before this was found, since _BODEMA_VARIANT_CODE_RE legitimately
+# never matches a line with no variant text on it at all -- found via a
+# brand-wide scan for bare "^CODE$" lines, not by accident.
+_BODEMA_BARE_CODE_RE = re.compile(r"^\s*([A-Z]{2,8}\d{1,6}[A-Z]{0,2})\s*$")
 
 
 def parse_file_bodema(path, product_name, brand, flags):
@@ -13930,6 +13943,7 @@ def parse_file_bodema(path, product_name, brand, flags):
     lines = text.split("\n")
     i = 0
     any_variant_seen = False
+    last_variant = None
     while i < len(lines):
         line = lines[i]
         pm = _BODEMA_PDFPAGE_RE.match(line.strip())
@@ -13938,13 +13952,19 @@ def parse_file_bodema(path, product_name, brand, flags):
             i += 1
             continue
         vm = _BODEMA_VARIANT_CODE_RE.match(line)
-        if vm:
-            variant = vm.group("variant").strip()
-            code = vm.group("code").strip()
+        bm = None if vm else _BODEMA_BARE_CODE_RE.match(line)
+        if vm or (bm and last_variant):
+            if vm:
+                variant = vm.group("variant").strip()
+                code = vm.group("code").strip()
+            else:
+                variant = last_variant
+                code = bm.group(1).strip()
             if prefix and not variant.lower().startswith(prefix.lower()):
                 i += 1
                 continue
             any_variant_seen = True
+            last_variant = variant
             # look ahead (skipping blank lines) for the price row
             j = i + 1
             while j < len(lines) and not lines[j].strip():
@@ -14002,6 +14022,25 @@ def parse_file_bodema(path, product_name, brand, flags):
                             and not _BODEMA_PRICE_ROW_RE.match(nxt)
                             and not _BODEMA_PRICE_ROW_TESSUTO_ONLY_RE.match(nxt)):
                         sub_label = first_clause.title() if first_clause.isupper() else first_clause
+                        # The sub-label itself sometimes wraps onto a SECOND
+                        # line before the METRAGGIO note (confirmed on
+                        # Dallas (Letto) p.202: "Contenitore" / "doppio
+                        # rialzo" -- without this, DALT010 "Contenitore" and
+                        # DALT020 "Contenitore doppio rialzo" collide under
+                        # the identical label "Contenitore", silently hiding
+                        # that they're 2 real, differently-priced products).
+                        # Same gating as the first line, checked one line
+                        # further.
+                        if j + 2 < len(lines):
+                            nxt2 = lines[j + 2]
+                            clause2 = re.split(r"\s{2,}", nxt2.strip(), maxsplit=1)[0] if nxt2.strip() else ""
+                            is_metraggio2 = bool(re.match(r"^(tessuto|costo|metraggio)\b", clause2, re.IGNORECASE))
+                            if (clause2 and len(clause2) <= 55 and not is_metraggio2
+                                    and not _BODEMA_VARIANT_CODE_RE.match(nxt2)
+                                    and not _BODEMA_BARE_CODE_RE.match(nxt2)
+                                    and not _BODEMA_PRICE_ROW_RE.match(nxt2)
+                                    and not _BODEMA_PRICE_ROW_TESSUTO_ONLY_RE.match(nxt2)):
+                                sub_label = f"{sub_label} {clause2}"
                 size = f"{variant} ({sub_label})" if sub_label else variant
                 found_price = False
                 for (tier, tier_label), value in zip(tier_columns, values):
