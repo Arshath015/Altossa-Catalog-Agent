@@ -14052,6 +14052,215 @@ BODEMA_SHARED_PAGE_VARIANT_PREFIXES: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Bodema "FINITURE PIANO"/"FINITURA PIANALE E CASSETTO"/"FINITURE RIPIANI"
+# finish-grid shape -- a SECOND real price-table shape in this brand (tables
+# with a marble/wood/glass top-finish choice instead of a Tessuto/Pelle
+# fabric tier), confirmed on ~20 products across Tavolini/Tavoli da Pranzo/
+# Mobili e Librerie/Sedie e Comodini. Column COUNT and NAMES vary per
+# product/table (1 to 10 columns, confirmed), so -- unlike the brand's
+# dominant 10-column shape -- there is no safe fixed column order to assume
+# generically. Rather than risk silently misattributing a price to the
+# wrong finish (confirmed real risk: reconstructing the 2-4 PHYSICALLY
+# WRAPPED header lines per column back into exact names is genuinely
+# ambiguous from -layout text alone), each product's exact column list is
+# hand-transcribed here, verified against its own real page image --
+# same discipline as Nube Italia's _NUBE_CODE_SIZE_OVERRIDES.
+#
+# The one piece confirmed safe to treat as a catalog-wide constant: when a
+# MARMO (marble) group is present, its column SET and ORDER is the exact
+# same across every product checked (Bao, Ci x2, Cinquanta, Lazy Susan,
+# Profile (Tavolino), Blunt, Fly, Man-go, Otto) -- only WHICH SUBSET of
+# these 7 is present varies (e.g. Blunt has no Dover White; Fly has no
+# Marron Damasco; Otto has no Saint Laurent), confirmed by checking each
+# product's own real column headers against this fixed sequence.
+BODEMA_MARBLE_FINISHES = [
+    "Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust",
+    "Sahara Noir", "Saint Laurent", "Dover White",
+]
+
+# (product_name, code) -> full ordered column-name list, hand-verified
+# against the real page image. `code=None` is used for the rare product
+# with no printed code at all (Nara). Only covers single-table (or
+# single-column-list-per-code, like Bao's BAOT100 repeating identically
+# across its 3 occurrences) products confirmed via direct image check --
+# Cubetto, Pilar, Profile (Mobile), and Sound (Tavolino) have multiple
+# DIFFERENT column lists per page that still need individual verification,
+# deliberately left out rather than guessed (see flag_triage.json).
+_BODEMA_FINISH_GRID_OVERRIDES: dict[tuple[str, str | None], list[str]] = {
+    ("Gitani", "GIT000"): ["MDF Laccato Opaco Goffrato"],
+    ("Gitani", "GIT0001"): ["MDF Laccato Opaco Goffrato"],
+    ("Gitani", "GIT0002"): ["MDF Laccato Opaco Goffrato"],
+    ("Gitani", "GIT0003"): ["MDF Laccato Opaco Goffrato"],
+    ("Blunt", "BLU000"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent"],
+    ("Blunt", "BLU001"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent"],
+    ("Blunt", "BLU002"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent"],
+    ("Box", "BOX001"): ["Struttura Lucidata Manganese"],
+    ("Box", "BOX002"): ["Struttura Lucidata Manganese"],
+    ("Box", "BOX003"): ["Struttura Lucidata Manganese"],
+    ("Box", "BOX004"): ["Laccato Opaco Goffrato"],
+    ("Ci (Tavolino)", "CI000"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolino)", "CI001"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolino)", "CI002"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolino)", "CI003"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolino)", "CI004"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolo da Pranzo)", "CI006"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolo da Pranzo)", "CI007"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Ci (Tavolo da Pranzo)", "CI008"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Cinquanta", "CINQ00"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Cinquanta", "CINQ01"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Cinquanta", "CINQ02"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Cinquanta", "CINQ03"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Cinquanta", "CINQ04"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Clessidra", "CLE001"): ["Laccato Opaco", "Frassino Tinta Anilina"],
+    ("Clessidra", "CLE002"): ["Laccato Opaco", "Frassino Tinta Anilina"],
+    ("Clessidra", "CLE003"): ["Laccato Opaco", "Frassino Tinta Anilina"],
+    ("Fly (Tavolino)", "FLYT10"): ["Brown Emperador", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent", "Dover White"],
+    ("Fly (Tavolino)", "FLYT12"): ["Brown Emperador", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent", "Dover White"],
+    ("Geometric", "GEO000"): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Ziricote", "MDF Impiallacciato Noce Canaletto"],
+    ("Geometric", "GEO001"): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Ziricote", "MDF Impiallacciato Noce Canaletto"],
+    ("Geometric", "GEO002"): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Ziricote", "MDF Impiallacciato Noce Canaletto"],
+    ("Geometric", "GEO003"): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Ziricote", "MDF Impiallacciato Noce Canaletto"],
+    ("Geometric", "GEO004"): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Ziricote", "MDF Impiallacciato Noce Canaletto"],
+    ("Lazy Susan", "LAZY01"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Lazy Susan", "LAZY02"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Lazy Susan", "LAZY03"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Lazy Susan", "LAZY04"): ["Laccato Opaco Goffrato", "Laccato Lucido"] + BODEMA_MARBLE_FINISHES,
+    ("Man-go (Tavolino)", "MNG200"): ["Laccato Opaco Goffrato", "Vetro Retro Laccato", "Brown Emperador", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent", "Dover White"],
+    ("Man-go (Tavolino)", "MNG201"): ["Laccato Opaco Goffrato", "Vetro Retro Laccato", "Brown Emperador", "Calacatta Oro", "Sturdust", "Sahara Noir", "Saint Laurent", "Dover White"],
+    ("Nara", None): ["MDF Laccato Opaco Goffrato", "MDF Impiallacciato Noce Canaletto"],
+    ("Otto", "OTT800"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Dover White"],
+    ("Otto", "OTT801"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Dover White"],
+    ("Otto", "OTT802"): ["Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust", "Sahara Noir", "Dover White"],
+    ("Profile (Tavolino)", "PFOF033"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
+    ("Profile (Tavolino)", "PFOF034"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
+    ("Profile (Tavolino)", "PFOF031"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
+    ("Profile (Tavolino)", "PFOF032"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
+    ("Tower", "TOW002"): ["Noce Canaletto", "Opachi Goffrati", "Lucidi"],
+    # Bao (Tavolino) deliberately NOT included -- its 4-table page (1 single-
+    # column LEGNO/MDF table + BAOT100 repeated 3x across 3 DIFFERENT
+    # top-material tables sharing the SAME code) needs sub-label
+    # disambiguation (same mechanism parse_file_bodema's tier-grid path
+    # already has, not yet ported here) to avoid collapsing 3 real,
+    # differently-priced variants into one ambiguous "Tavolino quadrato
+    # 100x100" label, plus one row (BAOT040) confirmed to extract one fewer
+    # token than its 10-column template (a genuine text-layout edge case,
+    # not yet root-caused). Deferred rather than shipped half-correct --
+    # see flag_triage.json.
+}
+
+# Dash "-" cells in this shape mean "not applicable for this row's own top
+# material choice" (confirmed on Bao: BAOT100's own 3 rows each have real
+# values in only ONE of their 3 leading MDF/VETRO columns, "-" everywhere
+# else, including the whole marble block) -- same semantics as the Tessuto/
+# Pelle shape's "/" cells, skip entirely, never a 0.
+_BODEMA_FINISH_ROW_RE = re.compile(r"^\s*((?:[\d.]+|-)\s+)*(?:[\d.]+|-)\s*$")
+# Some finish-grid products (confirmed: Tower) print "<variant>  <CODE>
+# <value1> <value2> ..." all on ONE physical line (no separate price-row
+# line below) rather than this brand's usual 2-line variant+price shape --
+# a looser secondary match used only as a fallback when the standard
+# _BODEMA_VARIANT_CODE_RE (which requires end-of-line right after the code)
+# doesn't match.
+_BODEMA_VARIANT_CODE_INLINE_PRICE_RE = re.compile(
+    r"^\s*(?P<variant>.+?)\s{2,}(?P<code>[A-Z]{2,8}\d{1,6}[A-Z]{0,2})\s+"
+    r"(?P<rest>(?:[\d.]+|-)(?:\s+(?:[\d.]+|-))*)\s*$"
+)
+
+
+def parse_file_bodema_finish_grid(path, product_name, brand, flags):
+    """Handles ONLY the products with a confirmed _BODEMA_FINISH_GRID_OVERRIDES
+    entry -- every other product (including the ones on this same brand's
+    finish-grid pages that aren't yet in the override table) is left to
+    return 0 rows/get flagged, never guessed. See this section's own module
+    comment for the full shape writeup."""
+    text = Path(path).read_text(encoding="utf-8")
+    lines = text.split("\n")
+    rows = []
+    page = None
+    any_variant_seen = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        pm = _BODEMA_PDFPAGE_RE.match(line.strip())
+        if pm:
+            page = int(pm.group(1))
+            i += 1
+            continue
+        vm = _BODEMA_VARIANT_CODE_RE.match(line)
+        code = None
+        variant = None
+        inline_values = None
+        if vm:
+            variant, code = vm.group("variant").strip(), vm.group("code").strip()
+        else:
+            vim = _BODEMA_VARIANT_CODE_INLINE_PRICE_RE.match(line)
+            if vim:
+                variant, code = vim.group("variant").strip(), vim.group("code").strip()
+                inline_values = vim.group("rest").split()
+            elif product_name == "Nara":
+                # Nara has no printed code at all -- its one real variant line
+                # is matched generically instead (confirmed only one such line
+                # exists in this product's whole text).
+                stripped = line.strip()
+                if stripped.lower().startswith("comodino") and "h" in stripped.lower():
+                    variant = stripped
+        if variant is None:
+            i += 1
+            continue
+        columns = _BODEMA_FINISH_GRID_OVERRIDES.get((product_name, code))
+        if columns is None:
+            i += 1
+            continue
+        any_variant_seen = True
+        if inline_values is not None:
+            values, j = inline_values, i
+        else:
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            values = lines[j].split() if j < len(lines) and _BODEMA_FINISH_ROW_RE.match(lines[j]) else None
+        if values is not None:
+            if len(values) != len(columns):
+                flags.append((page, product_name,
+                              f"variant {variant!r} (code {code}) finish-grid row has "
+                              f"{len(values)} values but the verified override has "
+                              f"{len(columns)} columns -- re-verify against the image "
+                              f"before trusting either"))
+                i = j + 1
+                continue
+            found_price = False
+            for finish, value in zip(columns, values):
+                if value == "-":
+                    continue
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": None, "variant_context": None,
+                    "size": variant, "fabric_tier": finish,
+                    "tier_label": "Finitura",
+                    "code": code, "price_eur": value,
+                    "source_pdf_page": page, "ambiguous": False,
+                })
+                found_price = True
+            if not found_price:
+                flags.append((page, product_name,
+                              f"variant {variant!r} (code {code}) has every finish "
+                              f"column as '-' (not-applicable) -- 0 rows, confirm "
+                              f"against the page image"))
+            i = j + 1
+            continue
+        else:
+            flags.append((page, product_name,
+                          f"variant {variant!r} (code {code}) has no recognized "
+                          f"finish-grid price row on the next content line"))
+        i += 1
+
+    if not any_variant_seen:
+        flags.append((None, product_name,
+                      "no recognized finish-grid variant found anywhere in this "
+                      "product's own text -- 0 rows"))
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -14438,6 +14647,9 @@ def main():
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             elif args.format == "bodema":
                 rows, flags = parse_file_bodema(str(text_path), p["product_name"], p["brand"], [])
+                has_finish_grid_entry = any(pn == p["product_name"] for pn, _ in _BODEMA_FINISH_GRID_OVERRIDES)
+                if not rows and has_finish_grid_entry:
+                    rows, flags = parse_file_bodema_finish_grid(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

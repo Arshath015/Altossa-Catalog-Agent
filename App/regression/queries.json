@@ -1447,5 +1447,23 @@
       "Blake (Divano)",
       "Blake (Tavolino)"
     ]
+  },
+  {
+    "id": 139,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "Blunt Tavolino 45x45 H40 Sahara Noir price",
+    "note": "Batch 2 (finish-grid shape) -- confirms the SECOND Bodema price-table shape (variable-column marble/wood top-finish grid, 'FINITURE PIANO', distinct from the brand's dominant 10-column Tessuto/Pelle fabric tier grid) resolves correctly for a marble-only (6-column) product.",
+    "expect_status": "ok",
+    "expect_price": "1.532"
+  },
+  {
+    "id": 140,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Tower",
+    "note": "Batch 2 (finish-grid shape) -- Tower's own price row prints all on ONE physical line (variant+code+values), a layout variant within the finish-grid shape distinct from every other finish-grid product's 2-line layout. Confirms the inline-price fallback match.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 3
   }
 ]
