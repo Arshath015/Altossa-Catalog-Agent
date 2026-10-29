@@ -14136,7 +14136,23 @@ _BODEMA_FINISH_GRID_OVERRIDES: dict[tuple[str, str | None], list[str]] = {
     ("Profile (Tavolino)", "PFOF034"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
     ("Profile (Tavolino)", "PFOF031"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
     ("Profile (Tavolino)", "PFOF032"): ["Noce Canaletto"] + BODEMA_MARBLE_FINISHES,
+    **{
+        ("Profile (Mobile)", code): [
+            "MDF Laccato Opaco Goffrato", "MDF Laccato Lucido Poliestere",
+            "MDF Noce Canaletto Impiallacciato",
+        ]
+        for code in ["PFOF000", "PFOF001", "PFOF002", "PFOF003", "PFOF004",
+                     "PFOF005", "PFOF006", "PFOF007", "PFOF008", "PFOF009", "PFOF010"]
+    },
     ("Tower", "TOW002"): ["Noce Canaletto", "Opachi Goffrati", "Lucidi"],
+    **{
+        ("Pilar", code): [
+            "Rovere Naturale", "MDF Laccato Opaco Goffrato", "MDF Lucido",
+            "Brown Emperador", "Marron Damasco", "Calacatta Oro", "Sturdust",
+            "Saint Laurent", "Dover White",
+        ]
+        for code in ["PIL000", "PIL001", "PIL002", "PIL003", "PIL004", "PIL005", "PIL006", "PIL007", "PIL008"]
+    },
     # Bao (Tavolino) deliberately NOT included -- its 4-table page (1 single-
     # column LEGNO/MDF table + BAOT100 repeated 3x across 3 DIFFERENT
     # top-material tables sharing the SAME code) needs sub-label

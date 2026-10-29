@@ -1465,5 +1465,23 @@
     "note": "Batch 2 (finish-grid shape) -- Tower's own price row prints all on ONE physical line (variant+code+values), a layout variant within the finish-grid shape distinct from every other finish-grid product's 2-line layout. Confirms the inline-price fallback match.",
     "expect_status": "full_price_grid",
     "expect_row_count": 3
+  },
+  {
+    "id": 141,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Pilar",
+    "note": "Batch 3 -- Pilar has 9 distinct codes (3 round + 3 oval + 3 rectangular sizes) all sharing one 9-column finish-grid header, no repeated codes, no marble-subset surprises. 9 codes x 9 columns = 81 rows.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 81
+  },
+  {
+    "id": 142,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me the price for Tessuti B",
+    "note": "Batch 3 -- Tessuti's own manual_additions.json reference row (resolved via the same mechanism as Monography's Fabric/Leather reference entries).",
+    "expect_status": "ok",
+    "expect_price": "56"
   }
 ]
