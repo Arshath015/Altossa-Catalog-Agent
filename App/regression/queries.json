@@ -1396,5 +1396,56 @@
       "Fabric",
       "Leather"
     ]
+  },
+  {
+    "id": 134,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Monica",
+    "note": "Batch 1 (Poltrone/Sedie/Pouff section) stress case -- 2 codes (MON000/MON001) sharing one bare printed label (\"Monica 53\"), distinguished only by an ALL-CAPS sub-label bled onto the line after the price row (BASAMENTO RIVESTITO/LUCIDATO). Confirms the sub-label recovery fix keeps both variants distinguishable (20 rows total).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 20
+  },
+  {
+    "id": 135,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Richard",
+    "note": "Batch 1 stress case -- Richard is a large multi-page modular sofa system (chaise longue DX/SX, angolo, pouff, + base sofa sizes) spanning printed pages 133-135. Confirms the full page-range extraction holds for a dense multi-page product (157 rows).",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 157
+  },
+  {
+    "id": 136,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Giulia poltrona",
+    "note": "Batch 1 stress case -- Giulia is explicitly NOT available in eco-leather or leather (\"Prodotto non realizzabile in eco-pelle e pelle\", printed on its own page), so its price table has only the 7 TESSUTO columns, no PELLE section at all. Confirms the 7-column Tessuto-only fallback shape (built for embedded KIT COPRIMECCANISMO rows) also correctly handles a whole PRODUCT missing Pelle, not just an accessory row.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 14
+  },
+  {
+    "id": 137,
+    "cat": "tricky_structure",
+    "brand": "Bodema",
+    "query": "Clara and Clarissa price",
+    "note": "Batch 1 stress case -- Clara, Claretta and Clarissa are 3 distinct catalog entries (armchair/small armchair/chair) sharing ONE physical page (p.31, combined title \"Clara Claretta Clarissa\"). Confirms BODEMA_SHARED_PAGE_VARIANT_PREFIXES correctly attributes each product its own rows from the shared text/page, with no cross-contamination.",
+    "expect_status": "multi_product",
+    "expect_product": [
+      "Clara",
+      "Clarissa"
+    ]
+  },
+  {
+    "id": 138,
+    "cat": "tricky_structure",
+    "brand": "Bodema",
+    "query": "Blake Divano and Blake Tavolino price",
+    "note": "Batch 1 stress case -- BLAKE is used by 3 different Bodema categories (Divano p.17, Tavolino p.166, Tavolo da Pranzo p.169), auto-qualified via parse_index_bodema's generic collision rule. Confirms the 2 qualified entries resolve and isolate correctly as 2 distinct products, never conflated.",
+    "expect_status": "multi_product",
+    "expect_product": [
+      "Blake (Divano)",
+      "Blake (Tavolino)"
+    ]
   }
 ]

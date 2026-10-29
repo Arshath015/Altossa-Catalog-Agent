@@ -284,6 +284,15 @@ const CASES: Case[] = [
     expectedHeader: 'OPTION',
     note: 'First Monography (brand #9) regression case in this file. This brand has no single printed column header the way Nube prints "Materiale" -- its own 2-level Option-category/Option-value structure (Pop/C.O.M. under the generic "Option" label; Fabric/Leather/Finishing as their own real printed category words) means the FIRST row\'s own tier_label ("Option", from the Pop row) wins here, not a mislabeled fallback.',
   },
+  {
+    id: 'bodema-ascot-tessuto-tier',
+    category: 'armchair (Bodema)',
+    brand: 'Bodema',
+    query: 'give me all prices for Ascot',
+    productName: 'Ascot',
+    expectedHeader: 'TESSUTO',
+    note: 'First Bodema (brand #10) regression case in this file. Bodema prints 2 real group headers (TESSUTO covering Cliente/B/C/Extra/Top/Extra Top/Extra Lusso, PELLE covering Pelle 1/Pelle/Pelle Lusso) -- parse_file_bodema uses the real printed group word per column (not a single generic label), so the FIRST row (Cliente, under TESSUTO) wins here.',
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

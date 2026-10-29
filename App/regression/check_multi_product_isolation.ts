@@ -289,6 +289,26 @@ const CASES: Case[] = [
       { product: 'Leather', tier: 'Swing', price: '190', excludePrices: ['115'] },
     ],
   },
+  {
+    id: 'bodema-clara-clarissa-isolation',
+    brand: 'Bodema',
+    query: 'Clara Cliente and Clarissa Cliente price',
+    note: 'Clara and Clarissa are 2 of 3 distinct catalog entries sharing ONE physical page (p.31, combined title "Clara Claretta Clarissa") -- confirms BODEMA_SHARED_PAGE_VARIANT_PREFIXES correctly isolates each product\'s own rows despite the shared source page/image.',
+    required: [
+      { product: 'Clara', tier: 'Cliente', price: '1.917', excludePrices: ['1.017'] },
+      { product: 'Clarissa', tier: 'Cliente', price: '1.017', excludePrices: ['1.917'] },
+    ],
+  },
+  {
+    id: 'bodema-ascot-monica-isolation',
+    brand: 'Bodema',
+    query: 'Ascot Cliente and Monica Cliente price',
+    note: 'Ascot (Poltrone) and Monica (Sedie) -- basic cross-category isolation case for the brand\'s dominant 10-column Tessuto/Pelle tier-grid shape.',
+    required: [
+      { product: 'Ascot', tier: 'Cliente', price: '1.674', excludePrices: ['1.103'] },
+      { product: 'Monica', tier: 'Cliente', price: '1.103', excludePrices: ['1.674'] },
+    ],
+  },
 ];
 
 async function postChat(brand: string, message: string): Promise<ChatResponse> {

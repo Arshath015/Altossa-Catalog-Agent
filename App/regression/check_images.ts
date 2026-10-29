@@ -37,7 +37,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 const ROOT = path.join(__dirname, '..', '..');
-const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca', 'Tacchini', 'Nube Italia', 'Monography'];
+const BRANDS = ['Cattelan Italia', 'Bolzan', 'Bonaldo', 'Varaschini', 'Ditre Italia', 'Pianca', 'Tacchini', 'Nube Italia', 'Monography', 'Bodema'];
 
 interface CatalogEntry {
   product_name: string;

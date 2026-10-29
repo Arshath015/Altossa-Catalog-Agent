@@ -49,6 +49,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Tacchini': 'tacchini',
   'Nube Italia': 'nube',
   'Monography': 'monography',
+  'Bodema': 'bodema',
 };
 
 interface Flag {

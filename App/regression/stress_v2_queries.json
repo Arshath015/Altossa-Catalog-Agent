@@ -1,94 +1,668 @@
 [
-  {"id": 1, "cat": "typo", "brand": "Cattelan Italia", "query": "hystrx price 240 120 75 cristallo trasparente", "note": "HYSTRIX typo, re-verify LLM typo recovery"},
-  {"id": 2, "cat": "typo", "brand": "Cattelan Italia", "query": "give me pascl all prices", "note": "PASCAL typo, multi-page product (image scoping stress)"},
-  {"id": 3, "cat": "typo", "brand": "Bolzan", "query": "awse all prices", "note": "Awase typo"},
-  {"id": 4, "cat": "typo", "brand": "Cattelan Italia", "query": "richrd bed price", "note": "RICHARD typo, THE product that had the image bug"},
-  {"id": 5, "cat": "multi_product", "brand": "Cattelan Italia", "query": "richard and botero wood round prices", "note": "the exact 2 products from the RICHARD image collision family"},
-  {"id": 6, "cat": "multi_product", "brand": "Cattelan Italia", "query": "wilma and pascal prices", "note": "2 previously-fixed-bug products together"},
-  {"id": 7, "cat": "multi_product", "brand": "Bolzan", "query": "jack and marty prices", "note": "2 Bolzan wantsFullList-fixed products together"},
-  {"id": 8, "cat": "multi_product", "brand": "Cattelan Italia", "query": "skorpio and hystrix prices", "note": "fresh multi-page + single-page combo"},
-  {"id": 9, "cat": "multi_product", "brand": "Bolzan", "query": "give me all prices for bend-e fabric and noah extra large", "note": "2 of THIS session's extractTiers-fix products, explicit full-list"},
-  {"id": 10, "cat": "multi_product", "brand": "Cattelan Italia", "query": "katana and katana magnum prices", "note": "near-identical name pair, size-signal-fix products"},
-  {"id": 11, "cat": "ambiguous_prefix", "brand": "Cattelan Italia", "query": "give me flag price", "note": "no Cattelan Flag -- should be no_product_match or Bolzan-only, cross-check"},
-  {"id": 12, "cat": "ambiguous_prefix", "brand": "Bolzan", "query": "give me flag price", "note": "Flag vs Flag c/pediera vs Poltrona/Scrittoio e accessori Flag -- real ambiguity"},
-  {"id": 13, "cat": "ambiguous_prefix", "brand": "Cattelan Italia", "query": "eliot price", "note": "ELIOT vs ELIOT Keramik vs ELIOT Keramik Drive containment-tie"},
-  {"id": 14, "cat": "ambiguous_prefix", "brand": "Bolzan", "query": "noah price", "note": "Noah vs Noah Extra large vs Noah Deluxe Extra Large"},
-  {"id": 15, "cat": "ambiguous_prefix", "brand": "Bolzan", "query": "jack price", "note": "Jack vs Jack-e Fabric vs Jack-e intreccio vs Jack-e cuoio"},
-  {"id": 16, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "wilma pelle glove", "note": "re-verify WILMA tier bug fix"},
-  {"id": 17, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "give me all prices for arena", "note": "re-verify ARENA own-name size-token collision fix"},
-  {"id": 18, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "give me all prices for pascal", "note": "re-verify PASCAL 'me' size-token collision fix"},
-  {"id": 19, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "give me all prices for katana", "note": "re-verify KATANA 'up' size-token collision fix"},
-  {"id": 20, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "give me all prices for spinnaker", "note": "re-verify SPINNAKER 'so' size-token collision fix"},
-  {"id": 21, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for bend-e fabric", "note": "THIS session's fixed product, expect 36 rows"},
-  {"id": 22, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for flag c/pediera", "note": "THIS session's fixed product, expect 82 rows"},
-  {"id": 23, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for noah extra large", "note": "THIS session's fixed product, expect 340 rows"},
-  {"id": 24, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for noah deluxe extra large", "note": "THIS session's fixed product, expect 332 rows"},
-  {"id": 25, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for poltrona e accessori flag", "note": "THIS session's fixed product, expect 7 rows"},
-  {"id": 26, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for jack-e fabric", "note": "THIS session's fixed product, expect 72 rows"},
-  {"id": 27, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for scrittoio e accessori flag", "note": "THIS session's fixed product, expect 30 rows"},
-  {"id": 28, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for jack", "note": "Round 5's original bug (117 rows), re-verify still fixed"},
-  {"id": 29, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for awase", "note": "Round 5's original bug list, re-verify still fixed"},
-  {"id": 30, "cat": "full_catalog", "brand": "Cattelan Italia", "query": "give me all prices for skorpio", "note": "fresh multi-page product, full-list image scoping"},
-  {"id": 31, "cat": "full_catalog", "brand": "Cattelan Italia", "query": "give me all prices for richard", "note": "the RICHARD image-bug product, full grid + image check"},
-  {"id": 32, "cat": "full_catalog", "brand": "Bolzan", "query": "give me all prices for face", "note": "large multi-variant multi-page product, addon/main narrowing + image scoping"},
-  {"id": 33, "cat": "tricky_structure", "brand": "Bolzan", "query": "face h.27 basamento regolabile price", "note": "specific addon variant by height code"},
-  {"id": 34, "cat": "tricky_structure", "brand": "Bolzan", "query": "face struttura h.27", "note": "height-tied family narrowing"},
-  {"id": 35, "cat": "tricky_structure", "brand": "Cattelan Italia", "query": "botero wood round price", "note": "RICHARD image-collision family member #2"},
-  {"id": 36, "cat": "tricky_structure", "brand": "Cattelan Italia", "query": "boulevard keramik price", "note": "RICHARD image-collision family member #3"},
-  {"id": 37, "cat": "tricky_structure", "brand": "Bolzan", "query": "jack wood frame price", "note": "Jack wood vs iron frame variant disambiguation"},
-  {"id": 38, "cat": "tricky_structure", "brand": "Cattelan Italia", "query": "peyote b pelle", "note": "PEYOTE vs CRISTAL spurious-extra known gap, re-verify unchanged"},
-  {"id": 39, "cat": "tricky_structure", "brand": "Cattelan Italia", "query": "magda ml sgabello price", "note": "MAGDA family 12-way overlap, exact name this time (no typo)"},
-  {"id": 40, "cat": "tricky_structure", "brand": "Bolzan", "query": "marty struttura legno massello fsc price", "note": "Marty variant, previously-fixed product"},
-  {"id": 41, "cat": "tricky_structure", "brand": "Cattelan Italia", "query": "give me all prices for wilma", "note": "full list, re-verify tier containment-dedup fix at scale"},
-  {"id": 42, "cat": "nonexistent", "brand": "Cattelan Italia", "query": "give me the price of the zephyr moonchair", "note": "fabricated product name, must not match anything"},
-  {"id": 43, "cat": "nonexistent", "brand": "Bolzan", "query": "how much is the quantum recliner", "note": "fabricated product name"},
-  {"id": 44, "cat": "nonexistent", "brand": "Cattelan Italia", "query": "xyzzy123 price", "note": "gibberish, no match expected"},
-  {"id": 45, "cat": "cross_brand", "brand": "Cattelan Italia", "query": "jack price", "note": "Jack is a real Bolzan product, must not leak into Cattelan results"},
-  {"id": 46, "cat": "cross_brand", "brand": "Bolzan", "query": "wilma price", "note": "WILMA is a real Cattelan product, must not leak into Bolzan results"},
-  {"id": 47, "cat": "cross_brand", "brand": "Bolzan", "query": "richard price", "note": "RICHARD is a real Cattelan product, must not leak into Bolzan results"},
-  {"id": 48, "cat": "pdf_overlap", "brand": "Cattelan Italia", "query": "richard a 245x234x102 pelle glove", "note": "RICHARD specific size+tier, must return the SUPPLEMENT PDF page image, not the main catalog's page 27"},
-  {"id": 49, "cat": "pdf_overlap", "brand": "Cattelan Italia", "query": "botero wood round nc rb price", "note": "checksum-neighbor of RICHARD pre-fix, must have its OWN correct main-catalog image"},
-  {"id": 50, "cat": "pdf_overlap", "brand": "Cattelan Italia", "query": "boulevard keramik price", "note": "checksum-neighbor of RICHARD pre-fix, must have its OWN correct main-catalog image"},
-  {"id": 51, "cat": "pdf_overlap", "brand": "Cattelan Italia", "query": "pascal a 215x252x114 pelle", "note": "PASCAL is multi-page like RICHARD was, cross-check page-to-image mapping"},
-  {"id": 52, "cat": "shortlist_stress", "brand": "Cattelan Italia", "query": "compare wilma and pascal and hystrix", "note": "3-way multi-product, all 3 image sets must be correct and non-overlapping"},
-  {"id": 53, "cat": "shortlist_stress", "brand": "Bolzan", "query": "compare jack and noah extra large and bend-e fabric", "note": "3-way multi-product across 3 of this session's fixed products"},
-  {"id": 54, "cat": "size_or_fabric_only", "brand": "Cattelan Italia", "query": "spinnaker x fissaggio a muro", "note": "SPINNAKER punctuation-mismatch known gap, re-verify unchanged"},
-  {"id": 55, "cat": "tricky_structure", "brand": "Bolzan", "query": "eden basamento h.6 price", "note": "fresh multi-page product, addon variant by height code"},
-  {"id": 56, "cat": "tricky_structure", "brand": "Bonaldo", "query": "give me all prices for cuff hi open", "note": "sub-model variant matching regression guard, image scoping stress for the Cuff hi open variant specifically"},
-  {"id": 57, "cat": "full_catalog", "brand": "Bonaldo", "query": "give me all prices for casablanca", "note": "CASABLANCA rug/colore shape, 3 sizes x 4 colors, image scoping across all 3 size pages"},
-  {"id": 58, "cat": "nonexistent", "brand": "Bonaldo", "query": "zorblatt chair price", "note": "generic-category-word no-match regression guard, must not surface unrelated real chairs"},
-  {"id": 59, "cat": "cross_brand", "brand": "Cattelan Italia", "query": "cuff price", "note": "CUFF is a real Bonaldo product, must not leak into Cattelan Italia results"},
-  {"id": 60, "cat": "multi_product", "brand": "Bonaldo", "query": "give me cuff hi plus and casablanca 300 x 400 essential taupe", "note": "2-product combo, both must independently narrow to their own variant/color image set with no cross-contamination"},
-  {"id": 61, "cat": "ambiguous_prefix", "brand": "Bonaldo", "query": "chair", "note": "genuine ambiguity, 5 unrelated real chairs share only the generic word \"chair\""},
-  {"id": 62, "cat": "tricky_structure", "brand": "Bonaldo", "query": "innesti", "note": "maximal tie-break token-set fix regression guard, must auto-resolve to Innesti coffee table"},
-  {"id": 63, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sommier", "note": "Night-catalog page-range off-by-one fix regression guard: must show its OWN 156-row price grid and page images, not bleed into the next product (Freedom 2.0 sofa-bed armrests S)"},
-  {"id": 64, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for freedom 2.0 sofa-bed armrests s", "note": "checksum-neighbor of Sommier pre-fix (was carrying 36 of Sommier's own SKU rows), must have its OWN correct page images and price data now"},
-  {"id": 65, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for lulu' 2.0 sofa bed", "note": "Night-catalog page-range fix, other half of the Sanders sofa bed pair"},
-  {"id": 66, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sanders sofa bed", "note": "checksum-neighbor of Lulu' 2.0 sofa bed pre-fix (was carrying 21 of its rows), must have its OWN correct page images and price data now"},
-  {"id": 67, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for skin mix", "note": "Night-catalog page-range fix, other half of the Sound pair"},
-  {"id": 68, "cat": "pdf_overlap", "brand": "Ditre Italia", "query": "give me all prices for sound", "note": "checksum-neighbor of Skin mix pre-fix, must have its OWN correct page images and price data now"},
-  {"id": 69, "cat": "full_catalog", "brand": "Pianca", "query": "give me all prices for Peonia (Divani)", "note": "Pianca's first implementation slice (Progetti di Design 08, Shape A tier grid only) -- Peonia (Divani) is its largest single product (360 rows across cuscinetti/pouf/poltrone/divano/divano con penisola sub-sections), a reasonable stress case for the full-list path"},
-  {"id": 70, "cat": "pdf_overlap", "brand": "Tacchini", "query": "give me all prices for T-Table", "note": "T-Table (Main, plain hyphen) and T-Table (News, literally printed with an en-dash on its own page) were two separate catalog entries for the same physical product until merged 2026-10-04 -- verifies the merged entry's image routing is correct (Main page 69 + News page 28, which T-Table shares with Core) after check_images.ts's dash-normalization fix"},
-  {"id": 71, "cat": "pdf_overlap", "brand": "Tacchini", "query": "give me all prices for Core", "note": "Shares its News source page (28) with T-Table -- checksum-neighbor image-routing check, must show Core's own correct page image, not T-Table's"},
-  {"id": 72, "cat": "tricky_structure", "brand": "Tacchini", "query": "give me all prices for A.D.A.", "note": "Shape C box-count-as-price bug fix (commit 13cc5a4) -- image-routing check for the fixed multi-tier rows"},
-  {"id": 73, "cat": "full_catalog", "brand": "Tacchini", "query": "give me all prices for Gian & Pan", "note": "Gian & Pan multi-tier fix (same commit as id 72) -- image-routing check for both codes' tiers + anti-stain surcharge rows"},
-  {"id": 74, "cat": "typo", "brand": "Tacchini", "query": "baoba all prices", "note": "Baobab typo -- Shape A 12-tier grid + Price upon request combo"},
-  {"id": 75, "cat": "full_catalog", "brand": "Tacchini", "query": "give me all prices for Le Mura XL", "note": "Main/News overlap, 285 rows (270 Main + 15 genuinely new from News) -- largest Tacchini stress case for the full-list + image-routing path"},
-  {"id": 76, "cat": "full_catalog", "brand": "Nube Italia", "query": "give me all prices for Dolmen", "note": "Nube Italia (brand #8) batch 1, largest even-sized Divano-group product (13 codes x 8 tiers = 104 rows) -- stress case for the hand-transcribed code/size override path (codes/dimensions are vector graphics in the source PDF, not text) combined with several SX/DX end-element/corner/dormeuse sub-types sharing one footer section"},
-  {"id": 77, "cat": "tricky_structure", "brand": "Nube Italia", "query": "give me all prices for Sailor", "note": "Largest Divano-group product (16 codes, 121 rows) -- includes N245016 (wooden corner), the ONLY Tessuto-cliente-priced tier with every other tier genuinely 0,00 in the source, confirming the 0,00-filter correctly keeps a real single-tier row rather than either fabricating the other 7 or dropping the real one"},
-  {"id": 78, "cat": "tricky_structure", "brand": "Nube Italia", "query": "give me all prices for Landina", "note": "Batch 2 (Panca group) stress case. Also one of only 2 real non-zero 'Rivestimento supplementare' surcharges in the whole brand (Pelle, +2.460) -- found via an exhaustive regex scan across every Nube Italia text file (the other is Tender (Bed)'s own Cat. E row, +6.165, now hand-transcribed into manual_additions.json as of 2026-10-19 -- see id 117 in queries.json). The surcharge line is column-bled with the Informazioni panel's wrapped label text, which an earlier whole-line-anchored regex silently missed; fixed to a column-gap-anchored search() (same discipline as every other Nube column-boundary regex in this file)."},
-  {"id": 79, "cat": "full_catalog", "brand": "Nube Italia", "query": "give me all prices for Glove", "note": "Batch 2 (Poltrona group) stress case -- one code (N246001) printed TWICE with a real Material-header distinction (BASE MDF VERN vs BASE MASSELLO), same shared size, both fully priced (16 rows total). Confirms the header_annotation-derived model_variant correctly keeps both blocks distinguishable rather than merging/colliding them."},
-  {"id": 80, "cat": "tricky_structure", "brand": "Nube Italia", "query": "give me all prices for Carol", "note": "Batch 3 (Sedia group) stress case -- single code (N253001), 8 rows."},
-  {"id": 81, "cat": "full_catalog", "brand": "Nube Italia", "query": "give me all prices for Fency chair", "note": "Batch 3 (Sedia group) stress case -- single code (N193002), 8 rows. Also exercises the FENCY in-brand name collision (vs Fency (Armchair)) under the bare 'fency chair' phrasing. (Historical note: Yard/Tender (Bed) used to be deliberately excluded from this file's own stress cases because they returned no_price_data, and stress_v2.ts's own expectedImageUrls() -- which derives expected images purely from matched price rows -- would false-flag a 0-row response as UNEXPECTED-IMAGE. As of 2026-10-19 both products are fully priced via manual_additions.json, so that concern no longer applies to them; see id 117 in queries.json for their own coverage.)"},
-  {"id": 82, "cat": "tricky_structure", "brand": "Nube Italia", "query": "give me all prices for Raffles", "note": "Batch 4 (Tavolino group, final batch) stress case -- RAFFLES' per-colorway catalog shape, 6 priced codes + 6 confirmed known_gap colorway duplicates (literal 0,00 in source), 12 real rows."},
-  {"id": 83, "cat": "full_catalog", "brand": "Nube Italia", "query": "give me all prices for Turn", "note": "Closes out Nube Italia -- all 28 products now accounted for (28 priced as of 2026-10-19: the 26 code/size-based products plus Tender (Bed)/Yard, the brand's 2 'Letto' products whose Dimensioni column is genuinely blank in the source PDF but whose real prices are now hand-transcribed into manual_additions.json, size=null, distinguished by a neutral Version 1/2/3 label)."},
-  {"id": 84, "cat": "full_catalog", "brand": "Monography", "query": "give me all prices for Atrium (Modular Sofa)", "note": "Monography (brand #9) batch 1 stress case -- the largest/densest product in the whole catalog (77 rows), multiple side-element variants distinguished only by a sub-descriptor line under the variant heading (Double cushion / Single cushion marble top / Single cushion pouf), which a first version of the parser silently collapsed into 3 ambiguous same-key rows before being fixed (see monography_brand_state.md)."},
-  {"id": 85, "cat": "tricky_structure", "brand": "Monography", "query": "give me all prices for Cesar", "note": "Modular Sofa with the most sub-variant TYPES in one product (side/central/wide element, dormeuse, pouf), 40 rows -- stress case for the multi-half (2-up spread) text-isolation extraction, since this product's variant list spans several PDF pages."},
-  {"id": 86, "cat": "tricky_structure", "brand": "Monography", "query": "give me all prices for Sol", "note": "Monography batch 2 (Sofa Tables) stress case -- 3 size variants, 2 of them share the SAME Finishing/Marble option set (Bright/Special/Rock/Lounge) at DIFFERENT prices, the 3rd (side table) has only Finishing Bright -- 12 rows, verified against the page image (p21)."},
-  {"id": 87, "cat": "full_catalog", "brand": "Monography", "query": "give me all prices for Mikado", "note": "Table Top using the Marble category (Lounge only, no Rock) instead of Finishing -- 3 size variants x 2 rows = 6 rows, verified against the page image (p25)."},
-  {"id": 88, "cat": "tricky_structure", "brand": "Monography", "query": "give me all prices for Twilly dining chair", "note": "Monography batch 3 (Chairs) stress case -- exercises the FULL set of within-brand name collisions for 'Twilly' (Armchair vs Dining Chair, 2 different real product types) alongside a 2-variant product (chair / chair with arms), 12 rows."},
-  {"id": 89, "cat": "full_catalog", "brand": "Monography", "query": "give me all prices for Hyde Park bed", "note": "Bed, exercises the 'Hyde Park' within-brand name collision (Bed vs Wall Decoration). 2 size variants x 6 rows = 12 rows, verified against the page image (p32)."},
-  {"id": 90, "cat": "tricky_structure", "brand": "Monography", "query": "give me all prices for Nuage tv cabinet", "note": "Monography batch 4 stress case -- the first product exercising ALL THREE of this brand's distinct price-row shapes at once: Pop base, a real Leather/Marble OPTIONS table, and the text-value on-request row ('Intreccio leather, same as pop price'). 5 rows, verified against the page image (p37)."},
-  {"id": 91, "cat": "full_catalog", "brand": "Monography", "query": "give me all prices for Nomad", "note": "Monography final batch (Decorations + Rugs, closes out all 65 real products) stress case -- Nomad's own 2nd variant heading literally prints a trailing comma in the source ('NOMAD rug rectangular,'), reproduced verbatim rather than silently cleaned up. 2 rows, verified against the page image (p47)."},
-  {"id": 92, "cat": "tricky_structure", "brand": "Monography", "query": "give me all prices for Leather", "note": "2nd of the 3 shared reference-only entries (Decorative Pillows/Fabric/Leather) -- smallest of the 3, 2 rows, no Pop/C.O.M. structure at all. Verified against a 200dpi render of page 9."}
+  {
+    "id": 1,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "hystrx price 240 120 75 cristallo trasparente",
+    "note": "HYSTRIX typo, re-verify LLM typo recovery"
+  },
+  {
+    "id": 2,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "give me pascl all prices",
+    "note": "PASCAL typo, multi-page product (image scoping stress)"
+  },
+  {
+    "id": 3,
+    "cat": "typo",
+    "brand": "Bolzan",
+    "query": "awse all prices",
+    "note": "Awase typo"
+  },
+  {
+    "id": 4,
+    "cat": "typo",
+    "brand": "Cattelan Italia",
+    "query": "richrd bed price",
+    "note": "RICHARD typo, THE product that had the image bug"
+  },
+  {
+    "id": 5,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "richard and botero wood round prices",
+    "note": "the exact 2 products from the RICHARD image collision family"
+  },
+  {
+    "id": 6,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "wilma and pascal prices",
+    "note": "2 previously-fixed-bug products together"
+  },
+  {
+    "id": 7,
+    "cat": "multi_product",
+    "brand": "Bolzan",
+    "query": "jack and marty prices",
+    "note": "2 Bolzan wantsFullList-fixed products together"
+  },
+  {
+    "id": 8,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "skorpio and hystrix prices",
+    "note": "fresh multi-page + single-page combo"
+  },
+  {
+    "id": 9,
+    "cat": "multi_product",
+    "brand": "Bolzan",
+    "query": "give me all prices for bend-e fabric and noah extra large",
+    "note": "2 of THIS session's extractTiers-fix products, explicit full-list"
+  },
+  {
+    "id": 10,
+    "cat": "multi_product",
+    "brand": "Cattelan Italia",
+    "query": "katana and katana magnum prices",
+    "note": "near-identical name pair, size-signal-fix products"
+  },
+  {
+    "id": 11,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "give me flag price",
+    "note": "no Cattelan Flag -- should be no_product_match or Bolzan-only, cross-check"
+  },
+  {
+    "id": 12,
+    "cat": "ambiguous_prefix",
+    "brand": "Bolzan",
+    "query": "give me flag price",
+    "note": "Flag vs Flag c/pediera vs Poltrona/Scrittoio e accessori Flag -- real ambiguity"
+  },
+  {
+    "id": 13,
+    "cat": "ambiguous_prefix",
+    "brand": "Cattelan Italia",
+    "query": "eliot price",
+    "note": "ELIOT vs ELIOT Keramik vs ELIOT Keramik Drive containment-tie"
+  },
+  {
+    "id": 14,
+    "cat": "ambiguous_prefix",
+    "brand": "Bolzan",
+    "query": "noah price",
+    "note": "Noah vs Noah Extra large vs Noah Deluxe Extra Large"
+  },
+  {
+    "id": 15,
+    "cat": "ambiguous_prefix",
+    "brand": "Bolzan",
+    "query": "jack price",
+    "note": "Jack vs Jack-e Fabric vs Jack-e intreccio vs Jack-e cuoio"
+  },
+  {
+    "id": 16,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "wilma pelle glove",
+    "note": "re-verify WILMA tier bug fix"
+  },
+  {
+    "id": 17,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for arena",
+    "note": "re-verify ARENA own-name size-token collision fix"
+  },
+  {
+    "id": 18,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for pascal",
+    "note": "re-verify PASCAL 'me' size-token collision fix"
+  },
+  {
+    "id": 19,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for katana",
+    "note": "re-verify KATANA 'up' size-token collision fix"
+  },
+  {
+    "id": 20,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for spinnaker",
+    "note": "re-verify SPINNAKER 'so' size-token collision fix"
+  },
+  {
+    "id": 21,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for bend-e fabric",
+    "note": "THIS session's fixed product, expect 36 rows"
+  },
+  {
+    "id": 22,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for flag c/pediera",
+    "note": "THIS session's fixed product, expect 82 rows"
+  },
+  {
+    "id": 23,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for noah extra large",
+    "note": "THIS session's fixed product, expect 340 rows"
+  },
+  {
+    "id": 24,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for noah deluxe extra large",
+    "note": "THIS session's fixed product, expect 332 rows"
+  },
+  {
+    "id": 25,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for poltrona e accessori flag",
+    "note": "THIS session's fixed product, expect 7 rows"
+  },
+  {
+    "id": 26,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for jack-e fabric",
+    "note": "THIS session's fixed product, expect 72 rows"
+  },
+  {
+    "id": 27,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for scrittoio e accessori flag",
+    "note": "THIS session's fixed product, expect 30 rows"
+  },
+  {
+    "id": 28,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for jack",
+    "note": "Round 5's original bug (117 rows), re-verify still fixed"
+  },
+  {
+    "id": 29,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for awase",
+    "note": "Round 5's original bug list, re-verify still fixed"
+  },
+  {
+    "id": 30,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for skorpio",
+    "note": "fresh multi-page product, full-list image scoping"
+  },
+  {
+    "id": 31,
+    "cat": "full_catalog",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for richard",
+    "note": "the RICHARD image-bug product, full grid + image check"
+  },
+  {
+    "id": 32,
+    "cat": "full_catalog",
+    "brand": "Bolzan",
+    "query": "give me all prices for face",
+    "note": "large multi-variant multi-page product, addon/main narrowing + image scoping"
+  },
+  {
+    "id": 33,
+    "cat": "tricky_structure",
+    "brand": "Bolzan",
+    "query": "face h.27 basamento regolabile price",
+    "note": "specific addon variant by height code"
+  },
+  {
+    "id": 34,
+    "cat": "tricky_structure",
+    "brand": "Bolzan",
+    "query": "face struttura h.27",
+    "note": "height-tied family narrowing"
+  },
+  {
+    "id": 35,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "botero wood round price",
+    "note": "RICHARD image-collision family member #2"
+  },
+  {
+    "id": 36,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "boulevard keramik price",
+    "note": "RICHARD image-collision family member #3"
+  },
+  {
+    "id": 37,
+    "cat": "tricky_structure",
+    "brand": "Bolzan",
+    "query": "jack wood frame price",
+    "note": "Jack wood vs iron frame variant disambiguation"
+  },
+  {
+    "id": 38,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "peyote b pelle",
+    "note": "PEYOTE vs CRISTAL spurious-extra known gap, re-verify unchanged"
+  },
+  {
+    "id": 39,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "magda ml sgabello price",
+    "note": "MAGDA family 12-way overlap, exact name this time (no typo)"
+  },
+  {
+    "id": 40,
+    "cat": "tricky_structure",
+    "brand": "Bolzan",
+    "query": "marty struttura legno massello fsc price",
+    "note": "Marty variant, previously-fixed product"
+  },
+  {
+    "id": 41,
+    "cat": "tricky_structure",
+    "brand": "Cattelan Italia",
+    "query": "give me all prices for wilma",
+    "note": "full list, re-verify tier containment-dedup fix at scale"
+  },
+  {
+    "id": 42,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "give me the price of the zephyr moonchair",
+    "note": "fabricated product name, must not match anything"
+  },
+  {
+    "id": 43,
+    "cat": "nonexistent",
+    "brand": "Bolzan",
+    "query": "how much is the quantum recliner",
+    "note": "fabricated product name"
+  },
+  {
+    "id": 44,
+    "cat": "nonexistent",
+    "brand": "Cattelan Italia",
+    "query": "xyzzy123 price",
+    "note": "gibberish, no match expected"
+  },
+  {
+    "id": 45,
+    "cat": "cross_brand",
+    "brand": "Cattelan Italia",
+    "query": "jack price",
+    "note": "Jack is a real Bolzan product, must not leak into Cattelan results"
+  },
+  {
+    "id": 46,
+    "cat": "cross_brand",
+    "brand": "Bolzan",
+    "query": "wilma price",
+    "note": "WILMA is a real Cattelan product, must not leak into Bolzan results"
+  },
+  {
+    "id": 47,
+    "cat": "cross_brand",
+    "brand": "Bolzan",
+    "query": "richard price",
+    "note": "RICHARD is a real Cattelan product, must not leak into Bolzan results"
+  },
+  {
+    "id": 48,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "richard a 245x234x102 pelle glove",
+    "note": "RICHARD specific size+tier, must return the SUPPLEMENT PDF page image, not the main catalog's page 27"
+  },
+  {
+    "id": 49,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "botero wood round nc rb price",
+    "note": "checksum-neighbor of RICHARD pre-fix, must have its OWN correct main-catalog image"
+  },
+  {
+    "id": 50,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "boulevard keramik price",
+    "note": "checksum-neighbor of RICHARD pre-fix, must have its OWN correct main-catalog image"
+  },
+  {
+    "id": 51,
+    "cat": "pdf_overlap",
+    "brand": "Cattelan Italia",
+    "query": "pascal a 215x252x114 pelle",
+    "note": "PASCAL is multi-page like RICHARD was, cross-check page-to-image mapping"
+  },
+  {
+    "id": 52,
+    "cat": "shortlist_stress",
+    "brand": "Cattelan Italia",
+    "query": "compare wilma and pascal and hystrix",
+    "note": "3-way multi-product, all 3 image sets must be correct and non-overlapping"
+  },
+  {
+    "id": 53,
+    "cat": "shortlist_stress",
+    "brand": "Bolzan",
+    "query": "compare jack and noah extra large and bend-e fabric",
+    "note": "3-way multi-product across 3 of this session's fixed products"
+  },
+  {
+    "id": 54,
+    "cat": "size_or_fabric_only",
+    "brand": "Cattelan Italia",
+    "query": "spinnaker x fissaggio a muro",
+    "note": "SPINNAKER punctuation-mismatch known gap, re-verify unchanged"
+  },
+  {
+    "id": 55,
+    "cat": "tricky_structure",
+    "brand": "Bolzan",
+    "query": "eden basamento h.6 price",
+    "note": "fresh multi-page product, addon variant by height code"
+  },
+  {
+    "id": 56,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "give me all prices for cuff hi open",
+    "note": "sub-model variant matching regression guard, image scoping stress for the Cuff hi open variant specifically"
+  },
+  {
+    "id": 57,
+    "cat": "full_catalog",
+    "brand": "Bonaldo",
+    "query": "give me all prices for casablanca",
+    "note": "CASABLANCA rug/colore shape, 3 sizes x 4 colors, image scoping across all 3 size pages"
+  },
+  {
+    "id": 58,
+    "cat": "nonexistent",
+    "brand": "Bonaldo",
+    "query": "zorblatt chair price",
+    "note": "generic-category-word no-match regression guard, must not surface unrelated real chairs"
+  },
+  {
+    "id": 59,
+    "cat": "cross_brand",
+    "brand": "Cattelan Italia",
+    "query": "cuff price",
+    "note": "CUFF is a real Bonaldo product, must not leak into Cattelan Italia results"
+  },
+  {
+    "id": 60,
+    "cat": "multi_product",
+    "brand": "Bonaldo",
+    "query": "give me cuff hi plus and casablanca 300 x 400 essential taupe",
+    "note": "2-product combo, both must independently narrow to their own variant/color image set with no cross-contamination"
+  },
+  {
+    "id": 61,
+    "cat": "ambiguous_prefix",
+    "brand": "Bonaldo",
+    "query": "chair",
+    "note": "genuine ambiguity, 5 unrelated real chairs share only the generic word \"chair\""
+  },
+  {
+    "id": 62,
+    "cat": "tricky_structure",
+    "brand": "Bonaldo",
+    "query": "innesti",
+    "note": "maximal tie-break token-set fix regression guard, must auto-resolve to Innesti coffee table"
+  },
+  {
+    "id": 63,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for sommier",
+    "note": "Night-catalog page-range off-by-one fix regression guard: must show its OWN 156-row price grid and page images, not bleed into the next product (Freedom 2.0 sofa-bed armrests S)"
+  },
+  {
+    "id": 64,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for freedom 2.0 sofa-bed armrests s",
+    "note": "checksum-neighbor of Sommier pre-fix (was carrying 36 of Sommier's own SKU rows), must have its OWN correct page images and price data now"
+  },
+  {
+    "id": 65,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for lulu' 2.0 sofa bed",
+    "note": "Night-catalog page-range fix, other half of the Sanders sofa bed pair"
+  },
+  {
+    "id": 66,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for sanders sofa bed",
+    "note": "checksum-neighbor of Lulu' 2.0 sofa bed pre-fix (was carrying 21 of its rows), must have its OWN correct page images and price data now"
+  },
+  {
+    "id": 67,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for skin mix",
+    "note": "Night-catalog page-range fix, other half of the Sound pair"
+  },
+  {
+    "id": 68,
+    "cat": "pdf_overlap",
+    "brand": "Ditre Italia",
+    "query": "give me all prices for sound",
+    "note": "checksum-neighbor of Skin mix pre-fix, must have its OWN correct page images and price data now"
+  },
+  {
+    "id": 69,
+    "cat": "full_catalog",
+    "brand": "Pianca",
+    "query": "give me all prices for Peonia (Divani)",
+    "note": "Pianca's first implementation slice (Progetti di Design 08, Shape A tier grid only) -- Peonia (Divani) is its largest single product (360 rows across cuscinetti/pouf/poltrone/divano/divano con penisola sub-sections), a reasonable stress case for the full-list path"
+  },
+  {
+    "id": 70,
+    "cat": "pdf_overlap",
+    "brand": "Tacchini",
+    "query": "give me all prices for T-Table",
+    "note": "T-Table (Main, plain hyphen) and T-Table (News, literally printed with an en-dash on its own page) were two separate catalog entries for the same physical product until merged 2026-10-04 -- verifies the merged entry's image routing is correct (Main page 69 + News page 28, which T-Table shares with Core) after check_images.ts's dash-normalization fix"
+  },
+  {
+    "id": 71,
+    "cat": "pdf_overlap",
+    "brand": "Tacchini",
+    "query": "give me all prices for Core",
+    "note": "Shares its News source page (28) with T-Table -- checksum-neighbor image-routing check, must show Core's own correct page image, not T-Table's"
+  },
+  {
+    "id": 72,
+    "cat": "tricky_structure",
+    "brand": "Tacchini",
+    "query": "give me all prices for A.D.A.",
+    "note": "Shape C box-count-as-price bug fix (commit 13cc5a4) -- image-routing check for the fixed multi-tier rows"
+  },
+  {
+    "id": 73,
+    "cat": "full_catalog",
+    "brand": "Tacchini",
+    "query": "give me all prices for Gian & Pan",
+    "note": "Gian & Pan multi-tier fix (same commit as id 72) -- image-routing check for both codes' tiers + anti-stain surcharge rows"
+  },
+  {
+    "id": 74,
+    "cat": "typo",
+    "brand": "Tacchini",
+    "query": "baoba all prices",
+    "note": "Baobab typo -- Shape A 12-tier grid + Price upon request combo"
+  },
+  {
+    "id": 75,
+    "cat": "full_catalog",
+    "brand": "Tacchini",
+    "query": "give me all prices for Le Mura XL",
+    "note": "Main/News overlap, 285 rows (270 Main + 15 genuinely new from News) -- largest Tacchini stress case for the full-list + image-routing path"
+  },
+  {
+    "id": 76,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Dolmen",
+    "note": "Nube Italia (brand #8) batch 1, largest even-sized Divano-group product (13 codes x 8 tiers = 104 rows) -- stress case for the hand-transcribed code/size override path (codes/dimensions are vector graphics in the source PDF, not text) combined with several SX/DX end-element/corner/dormeuse sub-types sharing one footer section"
+  },
+  {
+    "id": 77,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Sailor",
+    "note": "Largest Divano-group product (16 codes, 121 rows) -- includes N245016 (wooden corner), the ONLY Tessuto-cliente-priced tier with every other tier genuinely 0,00 in the source, confirming the 0,00-filter correctly keeps a real single-tier row rather than either fabricating the other 7 or dropping the real one"
+  },
+  {
+    "id": 78,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Landina",
+    "note": "Batch 2 (Panca group) stress case. Also one of only 2 real non-zero 'Rivestimento supplementare' surcharges in the whole brand (Pelle, +2.460) -- found via an exhaustive regex scan across every Nube Italia text file (the other is Tender (Bed)'s own Cat. E row, +6.165, now hand-transcribed into manual_additions.json as of 2026-10-19 -- see id 117 in queries.json). The surcharge line is column-bled with the Informazioni panel's wrapped label text, which an earlier whole-line-anchored regex silently missed; fixed to a column-gap-anchored search() (same discipline as every other Nube column-boundary regex in this file)."
+  },
+  {
+    "id": 79,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Glove",
+    "note": "Batch 2 (Poltrona group) stress case -- one code (N246001) printed TWICE with a real Material-header distinction (BASE MDF VERN vs BASE MASSELLO), same shared size, both fully priced (16 rows total). Confirms the header_annotation-derived model_variant correctly keeps both blocks distinguishable rather than merging/colliding them."
+  },
+  {
+    "id": 80,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Carol",
+    "note": "Batch 3 (Sedia group) stress case -- single code (N253001), 8 rows."
+  },
+  {
+    "id": 81,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Fency chair",
+    "note": "Batch 3 (Sedia group) stress case -- single code (N193002), 8 rows. Also exercises the FENCY in-brand name collision (vs Fency (Armchair)) under the bare 'fency chair' phrasing. (Historical note: Yard/Tender (Bed) used to be deliberately excluded from this file's own stress cases because they returned no_price_data, and stress_v2.ts's own expectedImageUrls() -- which derives expected images purely from matched price rows -- would false-flag a 0-row response as UNEXPECTED-IMAGE. As of 2026-10-19 both products are fully priced via manual_additions.json, so that concern no longer applies to them; see id 117 in queries.json for their own coverage.)"
+  },
+  {
+    "id": 82,
+    "cat": "tricky_structure",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Raffles",
+    "note": "Batch 4 (Tavolino group, final batch) stress case -- RAFFLES' per-colorway catalog shape, 6 priced codes + 6 confirmed known_gap colorway duplicates (literal 0,00 in source), 12 real rows."
+  },
+  {
+    "id": 83,
+    "cat": "full_catalog",
+    "brand": "Nube Italia",
+    "query": "give me all prices for Turn",
+    "note": "Closes out Nube Italia -- all 28 products now accounted for (28 priced as of 2026-10-19: the 26 code/size-based products plus Tender (Bed)/Yard, the brand's 2 'Letto' products whose Dimensioni column is genuinely blank in the source PDF but whose real prices are now hand-transcribed into manual_additions.json, size=null, distinguished by a neutral Version 1/2/3 label)."
+  },
+  {
+    "id": 84,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Atrium (Modular Sofa)",
+    "note": "Monography (brand #9) batch 1 stress case -- the largest/densest product in the whole catalog (77 rows), multiple side-element variants distinguished only by a sub-descriptor line under the variant heading (Double cushion / Single cushion marble top / Single cushion pouf), which a first version of the parser silently collapsed into 3 ambiguous same-key rows before being fixed (see monography_brand_state.md)."
+  },
+  {
+    "id": 85,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Cesar",
+    "note": "Modular Sofa with the most sub-variant TYPES in one product (side/central/wide element, dormeuse, pouf), 40 rows -- stress case for the multi-half (2-up spread) text-isolation extraction, since this product's variant list spans several PDF pages."
+  },
+  {
+    "id": 86,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Sol",
+    "note": "Monography batch 2 (Sofa Tables) stress case -- 3 size variants, 2 of them share the SAME Finishing/Marble option set (Bright/Special/Rock/Lounge) at DIFFERENT prices, the 3rd (side table) has only Finishing Bright -- 12 rows, verified against the page image (p21)."
+  },
+  {
+    "id": 87,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Mikado",
+    "note": "Table Top using the Marble category (Lounge only, no Rock) instead of Finishing -- 3 size variants x 2 rows = 6 rows, verified against the page image (p25)."
+  },
+  {
+    "id": 88,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Twilly dining chair",
+    "note": "Monography batch 3 (Chairs) stress case -- exercises the FULL set of within-brand name collisions for 'Twilly' (Armchair vs Dining Chair, 2 different real product types) alongside a 2-variant product (chair / chair with arms), 12 rows."
+  },
+  {
+    "id": 89,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Hyde Park bed",
+    "note": "Bed, exercises the 'Hyde Park' within-brand name collision (Bed vs Wall Decoration). 2 size variants x 6 rows = 12 rows, verified against the page image (p32)."
+  },
+  {
+    "id": 90,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Nuage tv cabinet",
+    "note": "Monography batch 4 stress case -- the first product exercising ALL THREE of this brand's distinct price-row shapes at once: Pop base, a real Leather/Marble OPTIONS table, and the text-value on-request row ('Intreccio leather, same as pop price'). 5 rows, verified against the page image (p37)."
+  },
+  {
+    "id": 91,
+    "cat": "full_catalog",
+    "brand": "Monography",
+    "query": "give me all prices for Nomad",
+    "note": "Monography final batch (Decorations + Rugs, closes out all 65 real products) stress case -- Nomad's own 2nd variant heading literally prints a trailing comma in the source ('NOMAD rug rectangular,'), reproduced verbatim rather than silently cleaned up. 2 rows, verified against the page image (p47)."
+  },
+  {
+    "id": 92,
+    "cat": "tricky_structure",
+    "brand": "Monography",
+    "query": "give me all prices for Leather",
+    "note": "2nd of the 3 shared reference-only entries (Decorative Pillows/Fabric/Leather) -- smallest of the 3, 2 rows, no Pop/C.O.M. structure at all. Verified against a 200dpi render of page 9."
+  },
+  {
+    "id": 93,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Button",
+    "note": "Batch 1 (Pouff group) stress case -- 5 variants (4 pouff sizes + 1 panca), single code per variant, standard 10-column shape."
+  },
+  {
+    "id": 94,
+    "cat": "ok",
+    "brand": "Bodema",
+    "query": "give me all prices for Dallas Letto",
+    "note": "Batch 1 (Letti group) stress case -- also exercises the DALLAS in-brand collision (Divano p.33 vs Letto p.202) under the qualified name. 3 bed widths x 3 variants (Fisso/Contenitore/Contenitore doppio rialzo) x 10 tiers = 90 rows.",
+    "expect_row_count_hint": 90
+  },
+  {
+    "id": 95,
+    "cat": "tricky_structure",
+    "brand": "Bodema",
+    "query": "give me all prices for Apollo",
+    "note": "Batch 1 (Trasformabili group) stress case -- Apollo's own page also has an embedded 'KIT COPRIMECCANISMO' accessory row (code KIT001) mixed into its own price table, a TESSUTO-only (7-column, no Pelle) sub-shape confirmed on several Divani/Trasformabili pages. Confirms Apollo's own 3 real sizes parse correctly even with that extra row present."
+  }
 ]

@@ -1940,6 +1940,247 @@ def _monography_rewrite_texts(pdf_path: str, out_root: Path, catalog: list[dict]
         text_path.write_text("\n\n".join(chunks), encoding="utf-8", newline="")
 
 
+# ---------------------------------------------------------------------------
+# Bodema (Bodema_Listino_Italia_2024.pdf) -- brand #10. Single-page InDesign
+# spreads (595.276 x 779.528pt, confirmed via pdfinfo -- NOT a 2-up spread
+# like Monography/Tacchini/Bolzan). Real embedded text, -layout verified
+# against rendered images on 8 representative pages across every section.
+#
+# The TOC (PDF pages 2-3, "Indice", 2 columns per page, underscore-fill
+# leaders: "NAME_____ pag..N") was hand-transcribed into BODEMA_TOC_ENTRIES
+# below rather than parsed programmatically -- a full-document scan for each
+# product's own repeating "NAME\ncategory_word" heading (the same technique
+# Tacchini uses for its "Design:" signature) was tried FIRST and rejected:
+# confirmed false positives where a "Pouff"/"Letto"/etc. row label INSIDE an
+# unrelated product's own price table (e.g. Richard's own "Pouff 80x80 H45"
+# variant row) got misread as a new product's heading, and confirmed false
+# negatives where a product's own page heading doesn't repeat the TOC's
+# distinguishing word at all (Joao Elettrico's own page just says "Joao",
+# category "trasformabile" -- identical to plain Joao's heading; only the
+# TOC itself distinguishes them). The hand-transcribed TOC, cross-checked
+# programmatically against each entry's real resolved page (see
+# parse_index_bodema below), is the more reliable ground truth here.
+#
+# Two confirmed TOC cross-reference duplicates (same name/pair of names
+# pointing at the SAME physical page, listed twice across sections purely
+# for browsability, not two separate price tables): RING (Divani p.136 AND
+# Poltrone p.136 -- confirmed via direct page check, the page's own heading
+# says "Ring / divano"; kept as ONE entry, qualified by its own page's real
+# category). TINO/TINETTO (Pouff p.150 for both -- confirmed the page's own
+# title is the combined "Tino Tinetto" with a single "pouff" category line;
+# kept as ONE entry named "Tino Tinetto" unless/until per-product
+# verification finds 2 separately-coded row groups worth splitting).
+BODEMA_TOC_ENTRIES: list[tuple[str, int, str]] = [
+    # DIVANI
+    ("Barclay", 9, "Divani"), ("Bao", 14, "Divani"), ("Blake", 17, "Divani"),
+    ("Burano", 27, "Divani"), ("Dallas", 33, "Divani"), ("Douglas", 41, "Divani"),
+    ("e'Time", 44, "Divani"), ("Fly", 48, "Divani"), ("Man-go", 75, "Divani"),
+    ("Milano", 87, "Divani"), ("Milano Pillow", 90, "Divani"), ("Mr Floyd", 94, "Divani"),
+    ("Mr Floyd 100", 97, "Divani"), ("Mr President", 100, "Divani"), ("Murano", 109, "Divani"),
+    ("Murphy", 111, "Divani"), ("Pop.Up", 121, "Divani"), ("Ring", 136, "Divani"),
+    ("Shanghai", 139, "Divani"), ("Sound", 144, "Divani"), ("Tokyo", 151, "Divani"),
+    ("Night&Day Sofabed", 116, "Divani"), ("Olivier", 117, "Divani"), ("Prince", 119, "Divani"),
+    ("Regal", 130, "Divani"), ("Richard", 133, "Divani"), ("Rock 1", 137, "Divani"),
+    ("Rock 2", 138, "Divani"), ("Swing", 148, "Divani"), ("Valentino", 153, "Divani"),
+    # TRASFORMABILI
+    ("Apollo", 7, "Trasformabili"), ("Bedford", 16, "Trasformabili"), ("Dilbar", 38, "Trasformabili"),
+    ("Dolcenuvola", 39, "Trasformabili"), ("George", 54, "Trasformabili"), ("Jimmy", 60, "Trasformabili"),
+    ("Joao", 63, "Trasformabili"), ("Joao Elettrico", 66, "Trasformabili"), ("Maestro", 69, "Trasformabili"),
+    ("Magnum", 73, "Trasformabili"), ("Night&Day", 114, "Trasformabili"),
+    # POLTRONE
+    ("Ascot", 8, "Poltrone"), ("Boma45", 26, "Poltrone"), ("Clara", 30, "Poltrone"),
+    ("Claretta", 30, "Poltrone"), ("Carol", 31, "Poltrone"), ("Chris", 32, "Poltrone"),
+    ("Giulia", 55, "Poltrone"), ("Giulia Girevole", 56, "Poltrone"), ("Hailey", 57, "Poltrone"),
+    ("Ingrid", 58, "Poltrone"), ("Ilary", 59, "Poltrone"), ("Lotus", 67, "Poltrone"),
+    ("Luna", 68, "Poltrone"), ("Margot", 85, "Poltrone"), ("Marilyn", 86, "Poltrone"),
+    ("Regina", 132, "Poltrone"), ("Ring", 136, "Poltrone"),
+    # POUFF
+    ("Button", 29, "Pouff"), ("Sumo", 147, "Pouff"), ("Tino", 150, "Pouff"), ("Tinetto", 150, "Pouff"),
+    # SEDIE
+    ("Clarissa", 30, "Sedie"), ("Monica", 93, "Sedie"), ("Peggy", 118, "Sedie"),
+    # TAVOLINI E COMODINI
+    ("Bao", 164, "Tavolini e Comodini"), ("Bipede", 165, "Tavolini e Comodini"), ("Blake", 166, "Tavolini e Comodini"),
+    ("Blunt", 170, "Tavolini e Comodini"), ("Ci", 171, "Tavolini e Comodini"), ("Cinquanta", 173, "Tavolini e Comodini"),
+    ("Clessidra", 174, "Tavolini e Comodini"), ("Cubetto", 175, "Tavolini e Comodini"), ("Fly", 177, "Tavolini e Comodini"),
+    ("Geometric", 178, "Tavolini e Comodini"), ("Gitani", 179, "Tavolini e Comodini"), ("Lazy Susan", 180, "Tavolini e Comodini"),
+    ("Man-go", 181, "Tavolini e Comodini"), ("Mr President", 182, "Tavolini e Comodini"), ("Nara", 195, "Tavolini e Comodini"),
+    ("Profile", 187, "Tavolini e Comodini"), ("Sound", 188, "Tavolini e Comodini"),
+    # LETTI
+    ("Aurore", 200, "Letti"), ("Aurore c/piedini", 201, "Letti"), ("Dallas", 202, "Letti"),
+    ("Harry test. alta", 203, "Letti"), ("Harry test. bassa", 204, "Letti"), ("Lulu'", 205, "Letti"),
+    ("Megan test. liscia", 207, "Letti"), ("Megan test. cordonata", 208, "Letti"), ("Milano", 209, "Letti"),
+    ("Nara test. c/lacci cuoio", 210, "Letti"), ("Nara test. cuscini applicati", 211, "Letti"),
+    ("Nara test. imbottita", 212, "Letti"), ("New Alicante", 213, "Letti"), ("Sophie test. c/bottoni", 215, "Letti"),
+    ("Sophie test. liscia", 216, "Letti"), ("Sophie test. con taglio", 217, "Letti"), ("Tiffany", 218, "Letti"),
+    # TAVOLI DA PRANZO
+    ("Blake", 169, "Tavoli da Pranzo"), ("Ci", 172, "Tavoli da Pranzo"), ("Otto", 184, "Tavoli da Pranzo"),
+    ("Pilar", 185, "Tavoli da Pranzo"),
+    # MOBILI E LIBRERIE
+    ("Box", 194, "Mobili e Librerie"), ("Profile", 196, "Mobili e Librerie"), ("Tower", 199, "Mobili e Librerie"),
+    # ACCESSORI (reference/multi-row pages, own extraction mechanism)
+    ("Cuscinetti e Accessori", 154, "Accessori"), ("Complementi", 156, "Accessori"),
+    ("Kit Coprimeccanismo", 162, "Accessori"), ("Tessuti", 163, "Accessori"), ("Tappeti", 192, "Accessori"),
+    # MATERASSI (flat per-size list, own parser shape)
+    ("Materassi per trasformabili", 191, "Materassi"), ("Materassi per letti", 219, "Materassi"),
+]
+
+# Known real category words/phrases printed directly under a Bodema product's
+# own title (confirmed via direct page checks across every section) -- used
+# only to pull the REAL category for qualifying within-brand name collisions
+# (e.g. "Blake (Divano)" vs "Blake (Tavolino)" vs "Blake (Tavolo da pranzo)"),
+# never to discover products (BODEMA_TOC_ENTRIES already lists every one).
+BODEMA_CATEGORY_WORDS = {
+    "divano", "trasformabile", "poltrona", "poltrona girevole", "poltrona relax",
+    "pouff", "sedia", "tavolino", "tavolini", "tavolino/sgabello", "comodino",
+    "tavoli da pranzo", "tavolo da pranzo", "tavolo", "libreria", "letto",
+    "mobile", "accessorio", "poltrona - poltroncina - sedia",
+}
+
+
+def build_bodema_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Bodema's footer is a single bare page number (no brand name, no
+    dashes -- confirmed via direct page checks: PDF page 9's last line is
+    just "8"). Reads every page's last non-blank line; if it's purely
+    digits, maps printed -> pdf page. Confirmed 1:1 offset of pdf = printed
+    + 1 throughout (1 cover page) on every sample checked, but this still
+    reads the real footer rather than assuming the formula, same rationale
+    as every other brand's page-map builder here."""
+    page_map: dict[int, int] = {}
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+        if not lines:
+            continue
+        last = lines[-1]
+        if re.fullmatch(r"\d{1,4}", last):
+            page_map[int(last)] = pg
+    return page_map
+
+
+def _bodema_page_heading(pdf_path: str, pdf_page: int) -> tuple[str, str] | None:
+    """Returns (name_line, category_line) if this PDF page's first two
+    non-blank content lines (after the running "listino prezzi 2024"
+    header) look like a real Bodema product heading -- category_line must
+    be a known BODEMA_CATEGORY_WORDS entry. Returns None otherwise (e.g.
+    the Accessori/Materassi pages, which have no category subtitle)."""
+    text = pdftotext_page(pdf_path, pdf_page)
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    lines = [ln for ln in lines if ln.lower() != "listino prezzi 2024"]
+    if len(lines) < 2:
+        return None
+    name, cat_line = lines[0], lines[1].lower()
+    # Prefix match, longest word first: the category line sometimes has
+    # OTHER column's text merged onto the same -layout line (e.g. Box's own
+    # "libreria                    2x Colonna Tris Cubotto" -- the
+    # "Esempio di composizione" side-panel bleeding in), so an exact
+    # equality check misses real matches. Longest-first avoids "tavolo"
+    # shadowing the more specific "tavolo da pranzo"/"tavolino/sgabello".
+    for cat in sorted(BODEMA_CATEGORY_WORDS, key=len, reverse=True):
+        if cat_line.startswith(cat):
+            return (name, cat)
+    return None
+
+
+_BODEMA_CATEGORY_DISPLAY = {
+    "divano": "Divano", "trasformabile": "Trasformabile", "poltrona": "Poltrona",
+    "poltrona girevole": "Poltrona Girevole", "poltrona relax": "Poltrona Relax",
+    "pouff": "Pouff", "sedia": "Sedia", "tavolino": "Tavolino", "tavolini": "Tavolino",
+    "tavolino/sgabello": "Tavolino", "comodino": "Comodino",
+    "tavoli da pranzo": "Tavolo da Pranzo", "tavolo da pranzo": "Tavolo da Pranzo",
+    "tavolo": "Tavolo", "libreria": "Libreria", "letto": "Letto", "mobile": "Mobile",
+    "accessorio": "Accessorio", "poltrona - poltroncina - sedia": "Poltrona",
+}
+
+
+def parse_index_bodema(pdf_path: str, total_pages: int) -> tuple[list[tuple[str, int]], int]:
+    """Resolves BODEMA_TOC_ENTRIES against the real PDF, verified via
+    build_bodema_page_map (the hand-transcribed TOC printed-page number is
+    looked up in the real footer-verified map, not assumed via a fixed
+    offset). Collapses the 2 confirmed cross-reference duplicates (Ring,
+    Tino/Tinetto -- see this section's own module comment). Qualifies a
+    bare name with its own page's real category word, in parens, whenever
+    that bare name is used by 2+ distinct pages (the generic auto-qualify
+    rule already established for Monography's 16 collisions) -- using the
+    page's own ground-truth category, not the TOC's section header, since
+    the TOC and the real page category don't always agree (Ring's TOC
+    section is Poltrone for one of its 2 listings, but the page itself says
+    "divano").
+    Returns (entries, last_printed_page) -- same shape as
+    parse_index_tacchini, consumed by compute_ranges_bodema."""
+    page_map = build_bodema_page_map(pdf_path, total_pages)
+
+    resolved: dict[tuple[str, int], dict] = {}  # (name, printed_page) -> {pdf_page, category}
+    for name, printed_page, section in BODEMA_TOC_ENTRIES:
+        pdf_page = page_map.get(printed_page, printed_page + 1)
+        heading = _bodema_page_heading(pdf_path, pdf_page)
+        category = heading[1] if heading else None
+        key = (name, printed_page)
+        if key not in resolved:
+            resolved[key] = {"pdf_page": pdf_page, "category": category, "section": section}
+
+    # Collapse the 2 known cross-reference duplicates.
+    ring_keys = [k for k in resolved if k[0] == "Ring"]
+    if len(ring_keys) > 1:
+        # keep whichever resolved pdf_page actually has a real heading
+        keep = next((k for k in ring_keys if resolved[k]["category"]), ring_keys[0])
+        for k in ring_keys:
+            if k != keep:
+                del resolved[k]
+    tino_key, tinetto_key = ("Tino", 150), ("Tinetto", 150)
+    if tino_key in resolved and tinetto_key in resolved:
+        del resolved[tinetto_key]
+        resolved[tino_key] = {**resolved[tino_key]}
+        # rename in place to the real combined page title
+        new_key = ("Tino Tinetto", 150)
+        resolved[new_key] = resolved.pop(tino_key)
+
+    # Auto-qualify bare names used by 2+ distinct pdf pages, using each
+    # entry's own real page category (falling back to its TOC section name
+    # if the page had no recognizable category line, e.g. a resolution
+    # miss -- logged, not silently dropped).
+    by_bare_name: dict[str, list[tuple[str, int]]] = {}
+    for (name, printed_page), info in resolved.items():
+        by_bare_name.setdefault(name, []).append((name, printed_page))
+
+    final_entries: list[tuple[str, int]] = []
+    unresolved: list[tuple[str, int, str]] = []
+    for (name, printed_page), info in sorted(resolved.items(), key=lambda kv: kv[0][1]):
+        display = name
+        if len(by_bare_name[name]) > 1:
+            cat_word = info["category"] or info["section"].lower()
+            cat_display = _BODEMA_CATEGORY_DISPLAY.get(cat_word, info["section"])
+            display = f"{name} ({cat_display})"
+        final_entries.append((display, printed_page))
+        if not info["category"]:
+            unresolved.append((name, printed_page, info["pdf_page"]))
+
+    if unresolved:
+        print(f"      -> WARNING: {len(unresolved)} TOC entries had no "
+              f"recognizable category heading on their resolved PDF page "
+              f"(name, toc_page, resolved_pdf_page): {unresolved}")
+
+    last_printed_page = max(p for _, p in final_entries)
+    return final_entries, last_printed_page
+
+
+def compute_ranges_bodema(entries: list[tuple[str, int]], last_printed_page: int) -> list[dict]:
+    """Same tie-aware grouping as compute_ranges_tacchini (see its own
+    docstring for the exact rationale) -- ties occur here whenever 2+
+    distinct products share one printed start page by design, not parser
+    imprecision (e.g. future per-row Complementi entries)."""
+    distinct = sorted(set(start for _, start in entries))
+    next_distinct_start = {
+        pg: (distinct[i + 1] if i + 1 < len(distinct) else None)
+        for i, pg in enumerate(distinct)
+    }
+    ranges = []
+    for name, start in entries:
+        nxt = next_distinct_start[start]
+        end = (nxt - 1) if nxt is not None else last_printed_page
+        ranges.append({"name": name, "printed_start": start, "printed_end": max(start, end)})
+    return ranges
+
+
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Pianca's INDICE page(s) via -tsv coordinates. Two mutually
     exclusive per-PAGE formats are supported (confirmed real, distinct
@@ -3863,7 +4104,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -3939,11 +4180,11 @@ def main():
         return
 
     if (not args.index_pages and not args.single_product and not args.manual_entries_file
-            and args.style not in ("varaschini", "tacchini", "nube", "monography")):
+            and args.style not in ("varaschini", "tacchini", "nube", "monography", "bodema")):
         print("ERROR: --index-pages is required for --style "
               f"{args.style!r} (only 'varaschini', 'tacchini', 'nube', "
-              "'monography', --single-product, and --manual-entries-file "
-              "can omit it).")
+              "'monography', 'bodema', --single-product, and "
+              "--manual-entries-file can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
@@ -3954,6 +4195,11 @@ def main():
               "(no fixed index-page range -- see parse_index_tacchini's own "
               "module comment)...")
         entries, tacchini_last_printed_page = parse_index_tacchini(pdf_path, total_pages)
+    elif args.style == "bodema":
+        print("[1/5] Resolving the hand-transcribed TOC against the real "
+              "PDF (BODEMA_TOC_ENTRIES -- see parse_index_bodema's own "
+              "module comment)...")
+        entries, bodema_last_printed_page = parse_index_bodema(pdf_path, total_pages)
     elif args.style == "monography":
         print("[1/5] Scanning PDF pages 6-49's own per-half (2-up spread) "
               "text for product NAME+CATEGORY headers (no reliable TOC page "
@@ -4014,6 +4260,13 @@ def main():
     if args.style == "tacchini":
         page_map = build_tacchini_page_map(pdf_path, total_pages)
         page_fallback = tacchini_printed_to_pdf_fallback
+    elif args.style == "bodema":
+        page_map = build_bodema_page_map(pdf_path, total_pages)
+        # Confirmed 1:1 offset of pdf = printed + 1 throughout (see
+        # build_bodema_page_map's own docstring) -- use that as the
+        # fallback formula for the rare unreadable-footer page, rather
+        # than bare identity.
+        page_fallback = lambda p: p + 1
     elif args.style == "cattelan":
         page_map = build_offset_page_map(pdf_path, total_pages)
         page_fallback = build_offset_fallback(page_map)
@@ -4067,6 +4320,8 @@ def main():
     print("[3/5] Computing per-product page ranges...")
     if args.style == "tacchini":
         ranges = compute_ranges_tacchini(entries, tacchini_last_printed_page)
+    elif args.style == "bodema":
+        ranges = compute_ranges_bodema(entries, bodema_last_printed_page)
     elif args.style == "monography":
         last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1]
         ranges = compute_ranges_monography(entries, last_printed_page_guess)

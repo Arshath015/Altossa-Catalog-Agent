@@ -13856,6 +13856,202 @@ def parse_file_monography(path, product_name, brand, flags):
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Bodema (brand #10) -- single-page InDesign spreads, real extractable text.
+# Dominant shape (confirmed uniform across Divani/Trasformabili/Poltrone/
+# Pouff/Sedie/Tavolini/Tavoli da pranzo/Mobili/Cuscinetti/Complementi/
+# Tessuti): "PRODOTTO | METRAGGIO | TESSUTO (Cliente/B/C/EXTRA/TOP/EXTRA
+# TOP/EXTRA LUSSO) | PELLE (PELLE 1/PELLE/PELLE LUSSO)" -- a fixed 10-column
+# tier grid, same column order and vocabulary on every page checked. Each
+# row is "<variant name>  <CODE>" followed (next real content line) by
+# exactly 10 space-separated values in that fixed order -- either a price
+# (Italian dot-thousands, no decimals, e.g. "1.674") or a literal "/"
+# meaning the tier doesn't apply to this item (confirmed on Tessuti's own
+# per-meter reference row: Cliente and all 3 Pelle columns are "/", since
+# "your own fabric at a per-meter fabric rate" and "leather" both don't
+# apply there) -- "/" rows are skipped entirely (no row emitted), never
+# treated as a 0,00 gap. A genuinely blank/0,00 price cell (not "/") IS a
+# real gap, logged via the normal "no recognized price row" flag path, same
+# as every other brand.
+#
+# METRAGGIO notes ("Tessuto unico\nml 3,50") are descriptive fabric-yardage
+# info, not a price -- confirmed NOT stored anywhere by any existing brand
+# with a similar meterage note (Nube Italia's own "Tessuto (h. 1,40 m): X"
+# line), so not stored here either; left in the product's own text file,
+# never silently dropped.
+_BODEMA_TIER_COLUMNS = [
+    ("Cliente", "Tessuto"), ("B", "Tessuto"), ("C", "Tessuto"),
+    ("Extra", "Tessuto"), ("Top", "Tessuto"), ("Extra Top", "Tessuto"),
+    ("Extra Lusso", "Tessuto"),
+    ("Pelle 1", "Pelle"), ("Pelle", "Pelle"), ("Pelle Lusso", "Pelle"),
+]
+
+_BODEMA_VARIANT_CODE_RE = re.compile(
+    r"^\s*(?P<variant>[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9°'./×øØ,+() \-]*?)\s{2,}"
+    r"(?P<code>[A-Z]{2,8}\d{1,6}[A-Z]{0,2})\s*$"
+)
+# Exactly 10 whitespace-separated tokens (the full Tessuto+Pelle grid), each
+# either an Italian-formatted number (dot-thousands, no decimals -- confirmed
+# no cents anywhere in this brand) or a literal "/".
+_BODEMA_PRICE_ROW_RE = re.compile(
+    r"^\s*(?:(?:\d{1,3}(?:\.\d{3})*|/)\s+){9}(?:\d{1,3}(?:\.\d{3})*|/)\s*$"
+)
+# Exactly 7 tokens -- the TESSUTO-only sub-shape, confirmed on embedded
+# "KIT COPRIMECCANISMO" (mechanism-cover kit) accessory rows that appear
+# inline on several Divani/Trasformabili product pages: a kit has no
+# leather option at all, so only the 7 Tessuto columns are printed (e.g.
+# Apollo p.8: "163  199  238  252  287  318  381").
+_BODEMA_PRICE_ROW_TESSUTO_ONLY_RE = re.compile(
+    r"^\s*(?:(?:\d{1,3}(?:\.\d{3})*|/)\s+){6}(?:\d{1,3}(?:\.\d{3})*|/)\s*$"
+)
+_BODEMA_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+
+
+def parse_file_bodema(path, product_name, brand, flags):
+    """See this section's own module comment above for the full shape
+    writeup. Scans every page-block in this product's own text file for
+    "<variant>  <CODE>" lines immediately followed by a 10-column price
+    row; every other line (description text, METRAGGIO notes, dimension
+    diagrams, construction-detail legends) is simply never matched, so no
+    special-case skipping logic is needed for them.
+
+    Multi-product shared pages (e.g. "Clara Claretta Clarissa", a single
+    page serving 3 separate catalog entries -- see parse_index_bodema's own
+    module comment) are handled by BODEMA_SHARED_PAGE_VARIANT_PREFIXES: if
+    product_name has an entry there, only variant rows whose own text
+    starts with that prefix are attributed to this product_name; every
+    other brand's single-product pages are unaffected (prefix defaults to
+    "", matching everything)."""
+    text = Path(path).read_text(encoding="utf-8")
+    prefix = BODEMA_SHARED_PAGE_VARIANT_PREFIXES.get(product_name, "")
+
+    rows = []
+    page = None
+    lines = text.split("\n")
+    i = 0
+    any_variant_seen = False
+    while i < len(lines):
+        line = lines[i]
+        pm = _BODEMA_PDFPAGE_RE.match(line.strip())
+        if pm:
+            page = int(pm.group(1))
+            i += 1
+            continue
+        vm = _BODEMA_VARIANT_CODE_RE.match(line)
+        if vm:
+            variant = vm.group("variant").strip()
+            code = vm.group("code").strip()
+            if prefix and not variant.lower().startswith(prefix.lower()):
+                i += 1
+                continue
+            any_variant_seen = True
+            # look ahead (skipping blank lines) for the price row
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            # The METRAGGIO column's own "Tessuto unico" header text
+            # sometimes column-bleeds onto the FRONT of the price row
+            # itself (confirmed on Blake (Divano) p.17: "Tessuto unico
+            # 4.003  4.358 ... 8.229") rather than its usual own separate
+            # line below -- strip it before matching, same literal phrase
+            # already excluded as a false sub-label match above.
+            price_line = lines[j] if j < len(lines) else ""
+            price_line = re.sub(r"^\s*Tessuto unico\s+", "", price_line)
+            is_full = j < len(lines) and _BODEMA_PRICE_ROW_RE.match(price_line)
+            is_tessuto_only = (not is_full and j < len(lines)
+                                and _BODEMA_PRICE_ROW_TESSUTO_ONLY_RE.match(price_line))
+            if is_full or is_tessuto_only:
+                values = price_line.split()
+                tier_columns = _BODEMA_TIER_COLUMNS if is_full else _BODEMA_TIER_COLUMNS[:7]
+                # A short sub-label sometimes sits on the line right after
+                # the price row, column-bled with the next METRAGGIO note --
+                # confirmed in 3 different real text shapes: an ALL-CAPS
+                # descriptor (Monica p.94: "BASAMENTO RIVESTITO" vs
+                # "BASAMENTO LUCIDATO"), a bare dimension pair (e'Time p.44:
+                # 3 codes all printed as "Angolo con piano in simil cuoio",
+                # 103x235/103x255/103x275 the ONLY distinguishing text), and
+                # lowercase descriptive prose (Man-go Divano p.76: "con
+                # bracciolo da 30cm" vs "con bracciolo da 20cm"; Mr
+                # President Divano p.100: "con braccioli da 20 + Tavolino
+                # Server 20x45" vs "...da 30 + ..."). Given 3 independently-
+                # confirmed shapes already, this is generalized to accept
+                # any short (<=55 char) non-blank first clause rather than
+                # an ever-growing format allowlist -- it only ever enriches
+                # the `size` label text, never touches a price value, so a
+                # rare false-positive capture here is low-risk (unlike
+                # guessing at a PRICE, which this never does). Still gated
+                # on not itself being a new variant+code or price row, so
+                # the next real product's own heading is never swallowed.
+                sub_label = None
+                if j + 1 < len(lines):
+                    nxt = lines[j + 1]
+                    first_clause = re.split(r"\s{2,}", nxt.strip(), maxsplit=1)[0] if nxt.strip() else ""
+                    # The METRAGGIO column's own header phrase ("Tessuto
+                    # unico", "Costo al metro lineare") sits at this exact
+                    # position when there's no REAL sub-label to bleed with
+                    # it -- confirmed on Mr President/e'Time's own "Angolo
+                    # ... con pouff" rows, which have no sub-label at all,
+                    # so the next line is directly the METRAGGIO note
+                    # itself, not a bled sub-label+METRAGGIO pair. Must be
+                    # excluded or it gets wrongly captured as if it were a
+                    # real distinguishing label.
+                    is_metraggio_header = bool(re.match(
+                        r"^(tessuto|costo|metraggio)\b", first_clause, re.IGNORECASE))
+                    if (first_clause and len(first_clause) <= 55 and not is_metraggio_header
+                            and not _BODEMA_VARIANT_CODE_RE.match(nxt)
+                            and not _BODEMA_PRICE_ROW_RE.match(nxt)
+                            and not _BODEMA_PRICE_ROW_TESSUTO_ONLY_RE.match(nxt)):
+                        sub_label = first_clause.title() if first_clause.isupper() else first_clause
+                size = f"{variant} ({sub_label})" if sub_label else variant
+                found_price = False
+                for (tier, tier_label), value in zip(tier_columns, values):
+                    if value == "/":
+                        continue
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": None, "variant_context": None,
+                        "size": size, "fabric_tier": tier,
+                        "tier_label": tier_label,
+                        "code": code, "price_eur": value,
+                        "source_pdf_page": page, "ambiguous": False,
+                    })
+                    found_price = True
+                if not found_price:
+                    flags.append((page, product_name,
+                                  f"variant {variant!r} (code {code}) has every tier "
+                                  f"column as '/' (not-applicable) -- 0 rows, confirm "
+                                  f"against the page image"))
+                i = j + 1
+                continue
+            else:
+                flags.append((page, product_name,
+                              f"variant {variant!r} (code {code}) has no recognized "
+                              f"10-column price row on the next content line"))
+        i += 1
+
+    if not any_variant_seen:
+        flags.append((None, product_name,
+                      "no recognized '<variant>  <CODE>' heading found anywhere in "
+                      "this product's own text -- 0 rows"))
+    return rows, flags
+
+
+# Shared-page sub-product attribution: product_name -> the variant-row text
+# prefix that belongs to it on a page it shares with other catalog entries.
+# Confirmed via direct page image check (p.31): "Clara Claretta Clarissa" is
+# ONE physical page/price table serving all 3 TOC entries (Clara/poltrona
+# CLARA0, Claretta/poltroncina CLARE0, Clarissa/sedia CLARI0), each a
+# single clean row whose own variant text IS exactly its bare product name
+# ("Clara", "Claretta", "Clarissa" -- confirmed via the real text file,
+# ci_tavolino.txt-style prefix collision ruled out: "Claretta" does not
+# start with "Clara").
+BODEMA_SHARED_PAGE_VARIANT_PREFIXES: dict[str, str] = {
+    "Clara": "Clara",
+    "Claretta": "Claretta",
+    "Clarissa": "Clarissa",
+}
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -13871,7 +14067,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -14239,6 +14435,9 @@ def main():
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             elif args.format == "monography":
                 rows, flags = parse_file_monography(str(text_path), p["product_name"], p["brand"], [])
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "bodema":
+                rows, flags = parse_file_bodema(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

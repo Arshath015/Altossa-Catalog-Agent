@@ -370,6 +370,14 @@ addCase('2prod', 'Fabric Pop and Leather Swing', ['Fabric', 'Leather'], [
   { product: 'Fabric', tier: 'Pop', price: '115' },
   { product: 'Leather', tier: 'Swing', price: '190' },
 ], undefined, 'Monography');
+addCase('2prod', 'Ascot Cliente and Monica Cliente price', ['Ascot', 'Monica'], [
+  { product: 'Ascot', tier: 'Cliente', price: '1.674' },
+  { product: 'Monica', tier: 'Cliente', price: '1.103' },
+], undefined, 'Bodema');
+addCase('2prod', 'Clara Cliente and Clarissa Cliente price', ['Clara', 'Clarissa'], [
+  { product: 'Clara', tier: 'Cliente', price: '1.917' },
+  { product: 'Clarissa', tier: 'Cliente', price: '1.017' },
+], undefined, 'Bodema');
 
 console.log(`Built ${CASES.length} cases.\n`);
 
