@@ -12058,7 +12058,23 @@ def _tacchini_d2_match_row(raw, tier_col_start):
 # the "con tavolino in metallo" sub-variant's own block bled into the
 # unrelated "standard padding" sub-variant's wool-padding column) --
 # left on the ORIGINAL single-code-per-block behavior instead.
-_TACCHINI_D1_TWO_CODE_PRODUCTS = {'Reversível', 'Polar', 'Labanca', 'Le Mura'}
+#
+# Costela/Lina (2026-10-31, closing the Tacchini polish list): confirmed
+# via direct page-image inspection to be the EXACT same standard/wool
+# padding pattern as Reversível above -- Costela's own 0CSTPL01 (standard
+# padding)/0CSTWLPL01 (wool padding) armchair pair + 0CSTPF01/0CSTWLPF01
+# pouf pair, Lina's own 0LNAPL078 (standard padding)/0LNAWLPL078 (wool
+# padding). Both had been silently parsed WRONG (not merely zero rows)
+# before this fix: with product_name outside this allowlist, the second
+# code's own mid-block appearance triggered the unconditional break above,
+# so tier B ended up with BOTH columns attributed to the FIRST code only
+# (one column right, one column belonging to the second code entirely
+# misattributed), and every tier from the second code's own first row
+# onward got BOTH columns attributed to the SECOND code only -- the first
+# code's own real data for those tiers was silently missing and the
+# second code showed the first code's own prices mixed in under its own
+# name. Confirmed via exact page-image price comparison, not inferred.
+_TACCHINI_D1_TWO_CODE_PRODUCTS = {'Reversível', 'Polar', 'Labanca', 'Le Mura', 'Costela', 'Lina'}
 
 # Five to Nine (2026-10): codes 0FTNDB20001/0FTNWLDB20001 each print 3
 # times on page 18 (confirmed via direct page-image + raw-text inspection,
