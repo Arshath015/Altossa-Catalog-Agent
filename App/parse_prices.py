@@ -11535,6 +11535,57 @@ def _tacchini_find_surcharge_rows(block, block_page_of_line, product_name, brand
     return rows
 
 
+# Butter's own 2 MR-column codes (0BTTTB01/0BTTTB02, p13) print their
+# anti-stain surcharge in the OPPOSITE order _tacchini_find_surcharge_rows
+# expects: the Italian label AND all 3 MR1/MR2/MR3 prices are already on
+# ONE line ("Supplemento per trattamento antimacchia   370   370   370"),
+# while the matching English phrase that function keys off ("Extra charge
+# for anti-stain treatment on marble top") carries no price of its own and
+# is itself split across the FOLLOWING 2 lines ("...marmo/Extra charge" /
+# "for anti-stain treatment on marble top") -- confirmed via direct
+# page-image + raw-text inspection (butter.txt lines 362-364 for
+# 0BTTTB01, 384-386 for 0BTTTB02). Neither _TACCHINI_SURCHARGE_RE nor
+# _TACCHINI_SURCHARGE_INTRO_RE can ever match this shape (the English
+# keyword phrase itself is never contiguous on one line here), so the
+# shared function correctly, silently declines on every line -- not
+# extended here, to avoid any risk to the other 118 Tacchini products'
+# already-working surcharge detection. A separate, narrowly Butter-scoped
+# function instead, called only for _TACCHINI_MR_PRODUCTS.
+_TACCHINI_MR_SURCHARGE_RE = re.compile(
+    r'Supplemento per trattamento antimacchia\s{2,}(\d[\d.,]*)\s{2,}(\d[\d.,]*)\s{2,}(\d[\d.,]*)\s*$')
+
+
+def _tacchini_find_butter_mr_surcharge_rows(block, block_page_of_line, product_name, brand):
+    """Butter-only counterpart to _tacchini_find_surcharge_rows for the
+    reversed-order, price-already-on-the-Italian-line shape described
+    above. One ADD-ON row per MR column (same '+'-prefixed convention as
+    every other Tacchini surcharge row), attributed to the nearest code
+    line seen so far -- same code-tracking technique as the shared
+    function, just a different line-matching regex."""
+    rows = []
+    current_code = None
+    for idx, raw in enumerate(block):
+        code_m = _tacchini_match_code_line(raw)
+        if code_m:
+            current_code = code_m[0]
+            continue
+        m = _TACCHINI_MR_SURCHARGE_RE.search(raw)
+        if not m or not current_code:
+            continue
+        for col_idx, price in enumerate(m.groups()):
+            col_name = _TACCHINI_MR_COLUMN_NAMES[col_idx]
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": f"Extra charge for anti-stain treatment on marble top — {col_name}",
+                "variant_context": "Extra charge for anti-stain treatment on marble top",
+                "size": None, "fabric_tier": None, "tier_label": None,
+                "code": current_code, "price_eur": f"+{price.strip()}",
+                "source_pdf_page": block_page_of_line[idx] if idx < len(block_page_of_line) else None,
+                "ambiguous": False,
+            })
+    return rows
+
+
 def _tacchini_tier_cell(cell):
     """Match 'TierLabel   value' within an already column-sliced cell
     (the Rivestimento/Prezzo portion of a row, isolated by char position --
@@ -11865,6 +11916,26 @@ _TACCHINI_MR_CELL_RE = re.compile(
     re.IGNORECASE
 )
 
+# Butter's own C.O. Leather row (2026-11-01): "Price upon request" wraps
+# across 2 physical lines in this 3-column table -- "C.O. Leather   Price
+# upon   Price upon   Price upon" on one line, a bare "request   request
+# request" on the next (confirmed on both 0BTTTB01/0BTTTB02 via direct
+# page-image inspection, butter_p13-013.jpg). _TACCHINI_MR_CELL_RE's own
+# value alternative deliberately excludes bare "Price upon" (see its own
+# docstring), so this row -- correctly -- never matches the main scan.
+# Searched with re.search rather than anchored at tier_col_start+delta
+# like every other row here: "C.O. Leather" is a distinctive-enough label
+# that position-anchoring isn't needed to avoid a false match, and this
+# sidesteps re-deriving which delta this specific wrapped line drifts at.
+_TACCHINI_MR_CO_LEATHER_WRAP_RE = re.compile(
+    r'C\.O\.\s*Leather\s{2,}Price upon\s{2,}Price upon\s{2,}Price upon\s*$', re.IGNORECASE)
+# search, not match -- the continuation line's own left side isn't blank:
+# it carries the SAME row's "Mq pelle/Sq. m leather" measurement value
+# (e.g. "5,50"), confirmed via direct inspection, so anchoring at the
+# very start of the line would never match.
+_TACCHINI_MR_REQUEST_CONT_RE = re.compile(
+    r'request\s{2,}request\s{2,}request\s*$', re.IGNORECASE)
+
 
 def _tacchini_triple_value_fallback(block, block_page_of_line, i, j, tier_col_start, code,
                                      desc_it, product_name, brand, rows):
@@ -11897,6 +11968,22 @@ def _tacchini_triple_value_fallback(block, block_page_of_line, i, j, tier_col_st
     for k in range(i, j):
         raw = block[k]
         if _TACCHINI_SURCHARGE_INTRO_RE.search(raw):
+            continue
+        if _TACCHINI_MR_CO_LEATHER_WRAP_RE.search(raw) and k + 1 < j and \
+                _TACCHINI_MR_REQUEST_CONT_RE.search(block[k + 1]):
+            for col_idx in range(3):
+                col_name = _TACCHINI_MR_COLUMN_NAMES[col_idx]
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": f"{desc_it} — {col_name}" if desc_it else col_name,
+                    "variant_context": None,
+                    "size": None, "fabric_tier": "C.O. Leather",
+                    "tier_label": "Rivestimento",
+                    "code": code,
+                    "price_eur": TACCHINI_PRICE_UPON_REQUEST,
+                    "source_pdf_page": block_page_of_line[k], "ambiguous": False,
+                })
+            added += 1
             continue
         m = None
         for delta in (0, -1, -2):
@@ -13038,6 +13125,8 @@ def parse_file_tacchini(path, product_name, brand, all_headings=None, heading_te
             # this whole shape gap).
             if chunk_shape != 'E':
                 rows.extend(_tacchini_find_surcharge_rows(chunk_block, block_page_of_line, product_name, brand))
+                if product_name in _TACCHINI_MR_PRODUCTS:
+                    rows.extend(_tacchini_find_butter_mr_surcharge_rows(chunk_block, block_page_of_line, product_name, brand))
         i = j
 
     if not rows and not flags:
