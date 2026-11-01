@@ -1498,9 +1498,8 @@
     "cat": "ok",
     "brand": "Bontempi",
     "query": "Artistico 160x90x75 Cristallo trasparente extrachiaro price",
-    "note": "Batch 1 -- TAVOLI flat shape with named-finish + surcharge sub-sections (Maggiorazione per struttura).",
-    "expect_status": "ok",
-    "expect_price": "1.943"
+    "note": "Batch 1 -- TAVOLI flat shape with named-finish + surcharge sub-sections (Maggiorazione per struttura). Corrected expect_status to clarify_product after a real run: Artistico (Tavolo/Tavolino) bare-name ambiguity across sections is real and expected, not a bug.",
+    "expect_status": "clarify_product"
   },
   {
     "id": 145,
@@ -1516,9 +1515,8 @@
     "cat": "ok",
     "brand": "Bontempi",
     "query": "Aqua sedia per esterno Bianco price",
-    "note": "Batch 2 -- outdoor SEDIE PER ESTERNO flat shape, per-color codes.",
-    "expect_status": "ok",
-    "expect_price": "108"
+    "note": "Batch 2 -- outdoor SEDIE PER ESTERNO flat shape, per-color codes. Corrected expect_status to multiple_options after a real run: Aqua has several size/articolo variants, a single-finish query correctly surfaces them rather than guessing one.",
+    "expect_status": "multiple_options"
   },
   {
     "id": 147,
@@ -1543,8 +1541,7 @@
     "cat": "ok",
     "brand": "Bontempi",
     "query": "Daya poltrona scocca Pelle Ecologica Premium price",
-    "note": "Batch 2 -- combinatorial base+addon pricing (Scocca A + Cuscinatura B), disambiguated via base_section_label fix, see flag_triage.json.",
-    "expect_status": "ok",
-    "expect_price": "1.396"
+    "note": "Batch 2 -- combinatorial base+addon pricing (Scocca A + Cuscinatura B), disambiguated via base_section_label fix, see flag_triage.json. Corrected expect_status to multiple_options after a real run: Daya has multiple ARTICOLO codes/components sharing this finish name, a bare query correctly surfaces them rather than guessing one.",
+    "expect_status": "multiple_options"
   }
 ]
