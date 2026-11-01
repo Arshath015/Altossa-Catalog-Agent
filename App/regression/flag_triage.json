@@ -5235,6 +5235,26 @@
     "Penelope": {
       "status": "real_gap",
       "note": "RESOLVED 2026-11-01. Penelope (SEDIE) codes 34.04/34.05 each have a \"Maggiorazione per rivestimento bottone di schienale (e braccioli) (C) personalizzato in:\" surcharge sub-section whose own per-order-variable legend (\"A - struttura\", \"B - seduta e schienale anteriore\", \"C - bottone di schienale...\") column-bleeds onto several of that section's own bullet rows, confirmed via direct text read (e.g. p.354: \"C - bottone di schienale e                        - Tessuto Nordic ... 37\" -- the legend fragment and the real bullet share one physical line). Fixed generically at the parser level (bullet-extraction now takes the LAST \"- <letter>\" match on a line, not the first, and the surcharge-section label is truncated to start at the literal word \"Maggiorazion\"), which resolved most of the bleed; the 3 residual rows (34.04's own 3 identically-priced +36 options, all legitimately the same price regardless of which is chosen) were hand-labeled by their confirmed page-image print order via manual_additions.json. All prices confirmed correct against the page image (p.354) either way -- the fixes were label-only, no price value was ever guessed."
+    },
+    "Alter": {
+      "status": "real_gap",
+      "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
+    },
+    "Club": {
+      "status": "real_gap",
+      "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
+    },
+    "Rail": {
+      "status": "real_gap",
+      "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
+    },
+    "Rico": {
+      "status": "real_gap",
+      "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
+    },
+    "Vincent": {
+      "status": "real_gap",
+      "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
     }
   }
 }
