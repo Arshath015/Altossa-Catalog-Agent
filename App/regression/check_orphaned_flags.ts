@@ -50,6 +50,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Nube Italia': 'nube',
   'Monography': 'monography',
   'Bodema': 'bodema',
+  'Bontempi': 'bontempi',
 };
 
 interface Flag {

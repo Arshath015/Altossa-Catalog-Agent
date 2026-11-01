@@ -14421,6 +14421,489 @@ def parse_file_bodema_finish_grid(path, product_name, brand, flags):
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Bontempi -- brand #11. One generic parser handles BOTH confirmed dominant
+# shapes (see bontempi_brand_state.md's own Step 1 writeup): a flat single-€
+# named-option list (MADIE/TAVOLI/CARRELLI/LAMPADE/SPECCHI/outdoor seating/
+# etc) and a dual "Prezzo 1 / Prezzo 2" fabric-collection-tier list (indoor
+# SEDIE/SGABELLI/POLTRONE) -- the row-level regex (single price vs "P1 - P2"
+# pair) is shape-agnostic by construction, so no upfront per-page shape
+# detection is needed at all.
+#
+# Every product page is built from ARTICOLO-code blocks ("NN.NN[X]  ..."),
+# and MULTIPLE DIFFERENT products commonly share one physical page (e.g.
+# Aqua/Aria/Eva/Freak all on outdoor p.298, confirmed via direct page image)
+# -- so each block is independently attributed to whichever catalog product
+# it actually belongs to by finding THAT product's own bare name repeated as
+# the block's own heading line (every block reprints its own product name +
+# size on one line, e.g. "AMSTERDAM            195x53x72"), never by
+# assuming a whole page belongs to one product_name.
+_BONTEMPI_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+# Two confirmed ARTICOLO code formats: the dominant "NN.NN[X]" numeric-dot
+# form (e.g. "15.08", "40.15A"), and a 3-letter-prefix alphanumeric form
+# confirmed on several POLTRONE/CARRELLI products (e.g. "DAY000102",
+# "CLR000101A", "UCH000101") -- both always followed by whitespace then
+# "INGOMBRO" (or occasionally directly by the product's own heading line,
+# tolerated the same way as the dominant form).
+_BONTEMPI_ARTICOLO_RE = re.compile(r"^\s*(\d{2}\.[\dA-Z]{2,8}|[A-Z]{2,5}\d{4,8}[A-Z]{0,2})\s")
+_BONTEMPI_PRICE_SINGLE_RE = re.compile(r"^\d{1,3}(?:\.\d{3})*$")
+_BONTEMPI_PRICE_PAIR_RE = re.compile(r"^(\d{1,3}(?:\.\d{3})*)\s*-\s*(\d{1,3}(?:\.\d{3})*)$")
+_BONTEMPI_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,4}[A-Z]{0,3}$")
+# Logistics-column tokens (colli/q.tà/m3/Kg) sometimes column-bleed onto the
+# SAME physical line as a real VERSIONI bullet row (confirmed on Aida p.310:
+# "q.tà 1/2          - Argento naturale    M326    65") -- the bullet
+# extraction below always re-anchors on the "- <letter>" marker itself and
+# ignores everything before it, so this bleed never contaminates a real
+# row's label. Lines with NO bullet marker at all (pure logistics lines like
+# "colli 6 Kg 68") are excluded from the flat-line fallback path by this
+# prefix check, not by relying on comma-decimal numbers failing the price
+# regex (an accidental trailing WHOLE-number logistics value, e.g. "Kg 68",
+# could otherwise coincidentally look like a price).
+_BONTEMPI_LOGISTICS_LINE_RE = re.compile(r"^(?:colli|q\.tà|m3|m³|kg)\b", re.IGNORECASE)
+_BONTEMPI_BULLET_RE = re.compile(r"-\s+(?=[A-Za-zÀ-ÿ])(.*)$")
+
+
+def _bontempi_find_bullet(raw):
+    """Returns the LAST "- <letter>" match on the line, not the first --
+    the "A - struttura"/"B - .../C - bottone..." per-order-variable legend
+    (SPECIFICHE column, see Penelope p.354) sometimes column-bleeds onto
+    the SAME line as a real bullet row further right (e.g. "C - bottone di
+    schienale e                        - Tessuto Nordic ... 37"); matching
+    the first "-" on that line would wrongly capture the legend text itself
+    as the row's own label instead of the real "Tessuto Nordic" bullet.
+    Every other real bullet line checked has only ONE "- " occurrence, so
+    picking the last is a safe superset of the original first-match
+    behavior."""
+    matches = list(_BONTEMPI_BULLET_RE.finditer(raw))
+    return matches[-1] if matches else None
+
+# Products whose own bare name repeats IDENTICALLY on one shared page under
+# a DIFFERENT subtitle, with no other distinguishing heading text -- bare-
+# name matching alone can't tell the blocks apart. Confirmed only on
+# Poket's own 2 Gancio wall-hook accessories (p.355/PDF p.357): both print
+# as bare "GANCIO", distinguished only by "PER 2 SEDIE"/"PER 4 SEDIE" on the
+# line(s) immediately below. A brand-wide scan for this exact pattern found
+# no other instance.
+_BONTEMPI_HEADING_SUBTITLE = {
+    "Gancio per 2 Sedie": "PER 2 SEDIE",
+    "Gancio per 4 Sedie": "PER 4 SEDIE",
+    # Artistico/Etico Plus both have several shape variants sharing one
+    # bare heading word across many pages (RETTANGOLARE FISSO/A BOTTE
+    # FISSO/QUADRATO/CONSOLLE for Artistico) -- the "consolle" variant's
+    # own subtitle (wrapped onto the line(s) below the heading, confirmed
+    # on p.115/PDF p.117 and p.168/PDF p.170) is what actually distinguishes
+    # it from the OTHER Artistico/Etico Plus blocks that share its own
+    # resolved page range.
+    "Artistico consolle": "CONSOLLE",
+    "Etico Plus consolle": "CONSOLLE",
+}
+# Real printed heading-anchor text, when it differs from the catalog
+# product_name itself -- confirmed via direct page text on Poket's own
+# shared page (p.355/PDF p.357): "Carrello Portasedie" prints as "CARRELLO"
+# (with the size on that SAME line) immediately followed by "PORTASEDIE"
+# alone on the NEXT line (a 2-line-wrapped heading, with no size token on
+# its own second line) -- matching on the single first word (same word the
+# real size sits beside) is simpler and more reliable than joining 2 lines.
+# Both Gancio products print as bare "GANCIO" (identical for both), not
+# their own full catalog name -- see _BONTEMPI_HEADING_SUBTITLE above for
+# how they're told apart.
+_BONTEMPI_HEADING_ANCHOR = {
+    "Carrello Portasedie": "CARRELLO",
+    "Gancio per 2 Sedie": "GANCIO",
+    "Gancio per 4 Sedie": "GANCIO",
+    "Artistico consolle": "ARTISTICO",
+    "Etico Plus consolle": "ETICO PLUS",
+    # The 3 TAVOLI CONTRACT E PER ESTERNO products using the ordinary flat
+    # shape (see _BONTEMPI_SHAPE3_EXCLUDED's own module comment) print as
+    # bare "DIESIS"/"MOON"/"SANDER" with NO "per esterno" suffix anywhere on
+    # the page at all (confirmed p.290/296/297) -- their own catalog_index
+    # page range is what correctly scopes them apart from the separate
+    # indoor "Diesis"/"Moon"/"Sander" TAVOLI entries sharing the same bare
+    # name elsewhere in the document.
+    "Diesis per esterno": "DIESIS",
+    "Moon per esterno": "MOON",
+    "Sander per esterno": "SANDER",
+}
+
+
+def _bontempi_bare_name(product_name):
+    """Strips the auto-qualify "(Category)" suffix added for within-brand
+    collisions (see BONTEMPI_SECTION_QUALIFIER in extract_catalog.py) --
+    the real printed heading never includes it."""
+    return re.sub(r"\s*\([^)]*\)\s*$", "", product_name).strip()
+
+
+# Only 5 of TAVOLI CONTRACT E PER ESTERNO's 8 products (Alter, Club, Rail,
+# Rico, Vincent -- all under the "ARTICOLI CONTRACT" page header, PDF
+# pp.288-290) use a CONFIRMED THIRD table shape: a base frame-finish price
+# (own € column) PLUS a shared top-size price MATRIX (multiple size
+# columns, e.g. "ø 60 / ø 70 / ø 80 / 70x70 / 80x80", constant across every
+# frame finish) printed under its own "FINITURA STRUTTURA" 2-line header --
+# confirmed via direct text read on Alter p.286/PDF p.288 (code 01.76:
+# Bianco/Grigio chiaro/.../Nero opaco all = EUR264, with a SEPARATE
+# EUR145/199/228/199/228/136/183/237 price row per top size shared across
+# all of them). The generic row scanner above isn't shape-aware and was
+# confirmed to silently misattribute page-footer/column-bleed text as real
+# rows for this shape (e.g. Vincent: a false "Copyright © B 4 LIVING Spa"
+# fabric_tier) BEFORE this exclusion was added -- these 5 are deliberately
+# excluded here (0 rows + flag, not guessed at); real data is hand-
+# transcribed into manual_additions.json instead, verified against images.
+#
+# The other 3 (Diesis per esterno, Moon per esterno, Sander per esterno),
+# despite sharing the same TOC section, are confirmed via direct page image
+# (PDF pp.290-299, "TAVOLI PER ESTERNO" header, NOT "ARTICOLI CONTRACT") to
+# use the catalog's ordinary flat shape (a "Piano:" sub-header + named top-
+# material options + a flat "SOLO STRUTTURA..." price) -- the SAME shape
+# this parser already handles correctly everywhere else, confirmed NOT
+# needing this exclusion.
+_BONTEMPI_SHAPE3_EXCLUDED = {"Alter", "Club", "Rail", "Rico", "Vincent"}
+
+
+def parse_file_bontempi(path, product_name, brand, flags):
+    """See this section's own module comment above for the full shape
+    writeup and the multi-product-shared-page rationale."""
+    if product_name in _BONTEMPI_SHAPE3_EXCLUDED:
+        flags.append((None, product_name,
+                      "TAVOLI CONTRACT E PER ESTERNO's own 3rd table shape "
+                      "(base frame price + shared top-size matrix) -- not "
+                      "auto-parsed, see _BONTEMPI_SHAPE3_EXCLUDED's own "
+                      "comment, hand-transcribed into manual_additions.json instead"))
+        return [], flags
+    text = Path(path).read_text(encoding="utf-8")
+    lines = text.split("\n")
+    bare_upper = _BONTEMPI_HEADING_ANCHOR.get(product_name) or _bontempi_bare_name(product_name).upper()
+    subtitle = _BONTEMPI_HEADING_SUBTITLE.get(product_name)
+    # Many product headings carry a trailing "- NEW" launch badge on their
+    # own block's heading line (confirmed via direct text scan: 95
+    # occurrences catalog-wide, e.g. "BACH - NEW            200x116x75",
+    # "AGATHA - NEW           54X58X80/47") -- optional, tolerated here so
+    # it doesn't block the owner match; never stripped from a real product
+    # NAME since it's always separated by " - " (never directly appended).
+    # Some products carry a sub-model NUMBER directly appended to the bare
+    # name with only a SINGLE space (not the usual 2+-space column gap
+    # before real SPECIFICHE content) -- confirmed on Tondo p.485/PDF p.487:
+    # 3 distinct mirror sizes all print as "TONDO 180"/"TONDO 45"/"TONDO 36"
+    # (one catalog entry, 3 ARTICOLO blocks), with the real Ø-size still
+    # following 2+ spaces further right on the same line. Tolerated as an
+    # optional group so it doesn't block the owner match; not used for
+    # anything itself since the real size is captured separately.
+    owner_re = re.compile(r"^\s*" + re.escape(bare_upper) + r"(\s*-\s*NEW)?(\s\d{1,4})?(\s{2,}(\S.*\S))?\s*$")
+
+    page_of_line = [None] * len(lines)
+    page = None
+    block_starts = []
+    for idx, ln in enumerate(lines):
+        pm = _BONTEMPI_PDFPAGE_RE.match(ln.strip())
+        if pm:
+            page = int(pm.group(1))
+        page_of_line[idx] = page
+        if _BONTEMPI_ARTICOLO_RE.match(ln):
+            block_starts.append(idx)
+    block_starts.append(len(lines))
+
+    # First pass: find every block this product owns, so row-level identity
+    # (below) knows whether it needs the ARTICOLO code to stay unique.
+    owned_blocks = []  # (start, end, owner_idx, size, articolo_code, inline_row)
+    for bi in range(len(block_starts) - 1):
+        start, end = block_starts[bi], block_starts[bi + 1]
+        block = lines[start:end]
+        owner_idx, size, inline_row = None, None, None
+        for j, bl in enumerate(block[:10]):
+            m = owner_re.match(bl)
+            if m:
+                owner_idx = j
+                size = m.group(4).strip() if m.group(4) else None
+                if size:
+                    # A single-option product's own ONE bullet row sometimes
+                    # fits on the SAME physical line as the name+size
+                    # heading (confirmed on Alice p.312, code 40.18: "ALICE
+                    # 44x50x81/46         - Cuoio    409" all on one line) --
+                    # checked FIRST, before the bled-description trim below,
+                    # since both strip trailing content from the same
+                    # captured group and only one of them can be right for
+                    # any given line.
+                    bm = _BONTEMPI_BULLET_RE.search(size)
+                    if bm:
+                        inline_row = size[bm.start():]
+                        size = size[:bm.start()].strip() or None
+                    else:
+                        # The owner line's trailing content is column-
+                        # positioned, not free text -- a long multi-line
+                        # description paragraph's OWN continuation (e.g.
+                        # "giallo L080, rosso L093, ... nelle finiture:")
+                        # routinely bleeds onto the SAME physical line as
+                        # the product's own name+size (confirmed on
+                        # Amsterdam p.12: "AMSTERDAM            195x53x72
+                        # giallo L080, ..."). The real dimension token is
+                        # always the FIRST \s{2,}-separated chunk; only that
+                        # is kept as `size`, never the bled continuation
+                        # text after it.
+                        size = re.split(r"\s{2,}", size, maxsplit=1)[0].strip() or None
+                break
+        if owner_idx is None:
+            continue  # block belongs to a different product sharing this page
+        if subtitle:
+            nearby = " ".join(block[owner_idx:owner_idx + 3]).upper()
+            if subtitle not in nearby:
+                continue
+        articolo_m = _BONTEMPI_ARTICOLO_RE.match(block[0])
+        owned_blocks.append((start, end, owner_idx, size, articolo_m.group(1), inline_row))
+
+    # Multiple ARTICOLO blocks under ONE product (e.g. Amsterdam's own
+    # 15.08/15.10/15.11/15.12 -- 4 distinct cabinet configurations, often at
+    # the SAME size, each with its own fully independent price list) is
+    # common and confirmed real via direct page-image comparison -- without
+    # folding the block's own ARTICOLO code into row identity, 2 blocks
+    # sharing the same finish code (e.g. both offering "Legno impiallacciato
+    # Rovere Spessart / L002") but DIFFERENT real prices collide on the
+    # shared ambiguous-row safety net's own key and get wrongly hidden from
+    # the chat layer (confirmed: an early version of this parser without
+    # this tag produced 8189/11339 rows flagged ambiguous, 72% -- a parser
+    # bug, not real source ambiguity). Only tagged when a product genuinely
+    # has 2+ owned blocks, to keep model_variant clean (None) for the
+    # majority of products that only have one.
+    multi_block = len(owned_blocks) > 1
+
+    rows = []
+    any_own_block = bool(owned_blocks)
+    for start, end, owner_idx, size, articolo_code, inline_row in owned_blocks:
+        block = lines[start:end]
+        block_page = page_of_line[start]
+        in_surcharge_section = False
+        surcharge_section_label = ""
+        base_section_label = ""
+        block_tag = f"{articolo_code} - " if multi_block else ""
+        rows_before_block = len(rows)
+
+        row_lines = ([inline_row] if inline_row else []) + block[owner_idx + 1:]
+        for raw in row_lines:
+            s = raw.strip()
+            if not s:
+                continue
+            if "copyright" in s.lower() or "b 4 living" in s.lower() or "verificare sempre" in s.lower():
+                # The page footer ("Copyright © B 4 LIVING Spa ...
+                # Verificare sempre pesi/colli/volumi nella proforma ...
+                # <page>") sometimes falls inside a block's own trailing
+                # lines (when a product's last real row sits close to the
+                # bottom of the page) and, read by itself, looks exactly
+                # like an ordinary 2-column "<label>   <number>" row (the
+                # footer's own trailing page number matching the price
+                # regex) -- confirmed real on Amsterdam/Cosmopolitan/Eden/
+                # Enea/Musa/Pica (209 rows catalog-wide before this guard),
+                # producing a fake "Copyright © B 4 LIVING Spa" fabric_tier
+                # or surcharge label. Skipped outright, never treated as a
+                # row of any kind.
+                continue
+            low = s.lower()
+            # A few products (confirmed: Daya/Imperial/Penelope) price 2+
+            # SEPARATE, independently-ordered components under ONE ARTICOLO
+            # code, each its own lettered part per the page's own "Per
+            # trasmettere l'ordine specificare le variabili: A - Scocca,
+            # B - Cuscinatura" legend (e.g. Daya's own "Scocca (A) ... e
+            # rivestita in (prezzo parziale):" vs "Cuscinatura (B)
+            # trapuntata removibile e rivestita in (prezzo parziale):") --
+            # both commonly reuse the SAME fabric/finish vocabulary at
+            # DIFFERENT real prices for each part. Narrowly keyed on a
+            # literal "(X)" single-letter marker (not just any ":"-ending
+            # sentence, which would catch ordinary multi-line product
+            # descriptions too, e.g. Amsterdam's own long finish-list intro)
+            # -- confirmed this marker is specific to the lettered-component
+            # legend convention, never present in a plain descriptive
+            # sentence.
+            letter_m = re.search(r"\(([A-Z])\)", s)
+            if letter_m and s.rstrip().endswith(":"):
+                base_section_label = s.rstrip(":").strip()
+            if "maggiorazion" in low:
+                # Generalized from the original "accessori"/"struttura"-only
+                # check: confirmed real additional surcharge sections exist
+                # catalog-wide for other components too (e.g. Cosmopolitan
+                # p.18's own "Maggiorazione per gola in legno laccato a
+                # scelta in:" and "Maggiorazione per top in:", Imperial
+                # p.188's own "Maggiorazioni Bracciale superiore (B):" --
+                # note the plural "Maggiorazioni" with no "per" at all,
+                # which an earlier version of this check (requiring the
+                # literal substring "maggiorazione per") silently missed
+                # entirely, leaving those rows wrongly unprefixed and
+                # colliding with a DIFFERENT component's own surcharge
+                # section reusing the same option names, e.g. "Bracciale
+                # inferiore (C)"). Without this, a later surcharge section
+                # reusing the SAME finish name as an earlier base-price
+                # section or ANOTHER surcharge section silently collides on
+                # the shared ambiguous-row key and gets wrongly hidden.
+                in_surcharge_section = True
+                # The section's own distinguishing text (e.g. "Bracciale
+                # superiore (B)" vs "Bracciale inferiore (C)", both of
+                # which separately offer the identical "Argento naturale /
+                # M326" option at their own, independently real prices) is
+                # folded into every row's model_variant below -- otherwise
+                # 2 different components' surcharge sections sharing one
+                # option vocabulary collide on the shared ambiguous-row key
+                # even though both prices are genuinely correct, just for
+                # different parts.
+                # The "A - struttura"/"B - seduta..."/"C - bottone..."
+                # per-order-variable LEGEND (printed in the SPECIFICHE
+                # column on several SEDIE/POLTRONE products, e.g. Penelope
+                # p.354) sometimes column-bleeds onto the SAME line as this
+                # maggiorazione intro itself (confirmed: "A - struttura
+                # colli 1 Kg 15      Maggiorazione per rivestimento bottone
+                # ... in:") -- truncating to start at the real "Maggiorazion"
+                # word keeps the captured label clean and distinguishing,
+                # discarding the unrelated legend/logistics prefix.
+                maggiorazion_idx = low.find("maggiorazion")
+                surcharge_section_label = s[maggiorazion_idx:].rstrip(":").strip()
+                # The section-intro line itself ("Maggiorazione per
+                # struttura in:") -- confirmed via every sample checked to
+                # never carry a price on the same physical line (the priced
+                # bulleted rows always follow on their own separate lines,
+                # even when logistics-column text bleeds onto this one) --
+                # a pure section marker, not a row. Rows below are still
+                # correctly tagged as surcharges via the "maggiorazione" in
+                # label.lower() check further down (most bullet labels
+                # don't repeat the word, but the standalone min-order-qty
+                # surcharge line -- "Maggiorazione per ordini di 1 pezzo
+                # singolo." -- does, and is handled by that same check).
+                continue
+            if in_surcharge_section and low.endswith(":") and "maggiorazione" not in low:
+                # A surcharge section doesn't always run to the end of the
+                # block -- confirmed on Mood p.344 (code 34.08R): its own
+                # "Maggiorazione per scocca in polipropilene:" surcharge
+                # (+41 for one special shell color) is followed by a GENUINE
+                # new base-price section ("Imbottita e rivestita nella parte
+                # frontale della scocca a scelta nei colori:") pricing the
+                # chair's own real upholstery choices -- without this reset,
+                # those real dual-tier base rows got wrongly treated as
+                # surcharges and flagged/skipped as an "unexpected shape"
+                # instead of parsed. Every real intro sentence for a NEW
+                # bulleted-options list ends with ":" at the end of its own
+                # line (confirmed on every sample checked); narrowly
+                # excludes any line that itself still mentions
+                # "maggiorazione" (a multi-line-wrapped surcharge intro),
+                # so a genuine surcharge section's own intro can't
+                # accidentally cancel itself.
+                in_surcharge_section = False
+            bullet_m = _bontempi_find_bullet(raw)
+            if bullet_m:
+                content = bullet_m.group(1)
+            elif not _BONTEMPI_LOGISTICS_LINE_RE.match(s):
+                content = s
+            else:
+                continue
+            parts = [p for p in re.split(r"\s{2,}", content.strip()) if p]
+            if len(parts) < 2:
+                continue
+            last = parts[-1]
+            pair_m = _BONTEMPI_PRICE_PAIR_RE.match(last)
+            single_m = _BONTEMPI_PRICE_SINGLE_RE.match(last)
+            if not pair_m and not single_m:
+                continue
+            label = parts[0].strip()
+            if not label or not re.search(r"[A-Za-zÀ-ÿ]", label):
+                continue
+            row_code = None
+            if len(parts) >= 3 and _BONTEMPI_CODE_RE.match(parts[-2]):
+                row_code = parts[-2]
+            is_surcharge = "maggiorazione" in label.lower() or in_surcharge_section
+            if is_surcharge:
+                if pair_m:
+                    # A dual-tier price on what looks like a surcharge row
+                    # is an unrecognized shape -- never guessed at.
+                    flags.append((block_page, product_name,
+                                  f"surcharge-section row {label!r} has a dual "
+                                  f"Prezzo1/Prezzo2 price, an unexpected shape -- skipped"))
+                    continue
+                price = last if last.startswith("+") else f"+{last}"
+                section_tag = f"{surcharge_section_label} - " if surcharge_section_label else ""
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": f"{block_tag}{section_tag}{label}", "variant_context": None,
+                    "size": size, "fabric_tier": None, "tier_label": None,
+                    "code": row_code, "price_eur": price,
+                    "source_pdf_page": block_page, "ambiguous": False,
+                })
+            else:
+                base_tag_parts = []
+                if multi_block:
+                    base_tag_parts.append(articolo_code)
+                if base_section_label:
+                    base_tag_parts.append(base_section_label)
+                base_model_variant = " - ".join(base_tag_parts) if base_tag_parts else None
+                if pair_m:
+                    # Folded into fabric_tier itself (not just tier_label):
+                    # main()'s own shared ambiguous-row safety net keys on
+                    # (product, code, fabric_tier, model_variant) -- it does
+                    # NOT look at tier_label at all, so 2 rows sharing one
+                    # bare collection name (e.g. "Pelle Ecologica Premium")
+                    # with only tier_label differing would collide on that
+                    # key and both get wrongly marked ambiguous (confirmed:
+                    # this exact bug produced 820/11339 false ambiguous
+                    # rows before this fix, same root-cause class as
+                    # Tacchini's own Shape D1 fold-into-model_variant
+                    # precedent). Never touching the shared key itself --
+                    # folding the distinguishing text into a field it
+                    # already checks instead.
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": base_model_variant, "variant_context": None,
+                        "size": size, "fabric_tier": f"{label} (Prezzo 1)", "tier_label": "Prezzo 1",
+                        "code": row_code, "price_eur": pair_m.group(1),
+                        "source_pdf_page": block_page, "ambiguous": False,
+                    })
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": base_model_variant, "variant_context": None,
+                        "size": size, "fabric_tier": f"{label} (Prezzo 2)", "tier_label": "Prezzo 2",
+                        "code": row_code, "price_eur": pair_m.group(2),
+                        "source_pdf_page": block_page, "ambiguous": False,
+                    })
+                else:
+                    rows.append({
+                        "brand": brand, "product_name": product_name,
+                        "model_variant": base_model_variant, "variant_context": None,
+                        "size": size, "fabric_tier": label, "tier_label": "Finitura",
+                        "code": row_code, "price_eur": last,
+                        "source_pdf_page": block_page, "ambiguous": False,
+                    })
+
+        # Some blocks have NO named options at all -- a single flat price
+        # sits at the end of the DESCRIPTION line, BEFORE the product's own
+        # heading line even appears (confirmed on Diamante p.478/PDF p.480,
+        # codes 09.43/09.44: "Specchio rettangolare da fissare a parete
+        # orizzontalmente o verticalmente.                       1.570"
+        # immediately precedes "DIAMANTE             90x5x200" with no
+        # bulleted rows below it at all -- same shape on Double p.479).
+        # Only used as a fallback when the normal after-heading scan found
+        # nothing for THIS block, so it never overrides a real bulleted
+        # price list.
+        if len(rows) == rows_before_block:
+            for raw in block[:owner_idx]:
+                s = raw.strip()
+                if not s or _BONTEMPI_LOGISTICS_LINE_RE.match(s):
+                    continue
+                parts = [p for p in re.split(r"\s{2,}", s) if p]
+                if len(parts) < 2:
+                    continue
+                last = parts[-1]
+                single_m = _BONTEMPI_PRICE_SINGLE_RE.match(last)
+                if not single_m:
+                    continue
+                label = parts[0].strip()
+                if not label or not re.search(r"[A-Za-zÀ-ÿ]{3,}", label):
+                    continue
+                rows.append({
+                    "brand": brand, "product_name": product_name,
+                    "model_variant": articolo_code if multi_block else None, "variant_context": None,
+                    "size": size, "fabric_tier": None, "tier_label": None,
+                    "code": None, "price_eur": last,
+                    "source_pdf_page": block_page, "ambiguous": False,
+                })
+                break
+
+    if not any_own_block:
+        flags.append((None, product_name,
+                      "own heading not found in its extracted text -- nothing parsed"))
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -14436,7 +14919,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -14810,6 +15293,9 @@ def main():
                 has_finish_grid_entry = any(pn == p["product_name"] for pn, _ in _BODEMA_FINISH_GRID_OVERRIDES)
                 if not rows and has_finish_grid_entry:
                     rows, flags = parse_file_bodema_finish_grid(str(text_path), p["product_name"], p["brand"], [])
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "bontempi":
+                rows, flags = parse_file_bontempi(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)

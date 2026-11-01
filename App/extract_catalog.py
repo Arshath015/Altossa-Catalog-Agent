@@ -324,6 +324,94 @@ PAGE_RANGE_OVERRIDES: dict[str, tuple[int, int]] = {
     "Maggiorazione Ottone Anticato (SistemiGiorno)": (401, 401),  # auto-computed 401-406(end of doc); 402-406 = Avvertenze/Condizioni generali (legal text, correctly excluded)
 }
 
+# Bontempi: every collision-qualified product_name (the "(Category)" suffix
+# BONTEMPI_SECTION_QUALIFIER appends, e.g. "Clara (Sedia)") and every name
+# resolved via _BONTEMPI_HEADING_ANCHOR (e.g. "Carrello Portasedie" really
+# prints as bare "CARRELLO") never appears verbatim as printed text -- only
+# the bare/anchor form does. Without this, check_images.ts's own legitimate-
+# shared-page cross-reference (which checks whether the OTHER product's real
+# heading appears in THIS product's own extracted text) can never recognize
+# Bontempi's many genuinely legitimate multi-product-shared-page cases
+# (e.g. Carrello Portasedie/Gancio per 2 Sedie/Gancio per 4 Sedie/Poket all
+# sharing PDF p.357) -- confirmed real via a full regression:full run
+# (27 false "suspicious image mismatch" flags before this was added).
+BONTEMPI_INDEX_HEADING_OVERRIDES: dict[str, str] = {
+    "Artistico (Tavolo)": "Artistico",
+    "Bach (Tavolo)": "Bach",
+    "Kimono (Tavolo)": "Kimono",
+    "Millennium (Tavolo)": "Millennium",
+    "Aqua (Sedia per Esterno)": "Aqua",
+    "Aria (Sedia per Esterno)": "Aria",
+    "Eva (Sedia per Esterno)": "Eva",
+    "Freak (Sedia per Esterno)": "Freak",
+    "Galaxy (Sedia per Esterno)": "Galaxy",
+    "Gipsy (Sedia per Esterno)": "Gipsy",
+    "Hidra (Sedia per Esterno)": "Hidra",
+    "Ines (Sedia per Esterno)": "Ines",
+    "Mood (Sedia per Esterno)": "Mood",
+    "Net (Sedia per Esterno)": "Net",
+    "Rocket (Sedia per Esterno)": "Rocket",
+    "Rocket Green (Sedia per Esterno)": "Rocket Green",
+    "Shark (Sedia per Esterno)": "Shark",
+    "Eva (Sgabello per Esterno)": "Eva",
+    "Galaxy (Sgabello per Esterno)": "Galaxy",
+    "Mood (Sgabello per Esterno)": "Mood",
+    "Net (Sgabello per Esterno)": "Net",
+    "Pattern (Complemento per Esterno)": "Pattern",
+    "Tao (Complemento per Esterno)": "Tao",
+    "Agatha (Sedia)": "Agatha",
+    "Aqua (Sedia)": "Aqua",
+    "Aria (Sedia)": "Aria",
+    "Chantal (Sedia)": "Chantal",
+    "Clara (Sedia)": "Clara",
+    "Eva (Sedia)": "Eva",
+    "Freak (Sedia)": "Freak",
+    "Galaxy (Sedia)": "Galaxy",
+    "Gipsy (Sedia)": "Gipsy",
+    "Hidra (Sedia)": "Hidra",
+    "Ines (Sedia)": "Ines",
+    "Kuga (Sedia)": "Kuga",
+    "Linda (Sedia)": "Linda",
+    "Mood (Sedia)": "Mood",
+    "Nata (Sedia)": "Nata",
+    "Net (Sedia)": "Net",
+    "Polo (Sedia)": "Polo",
+    "Queen (Sedia)": "Queen",
+    "Rocket (Sedia)": "Rocket",
+    "Rocket Green (Sedia)": "Rocket Green",
+    "Shark (Sedia)": "Shark",
+    "Agatha (Sgabello)": "Agatha",
+    "Chantal (Sgabello)": "Chantal",
+    "Clara (Sgabello)": "Clara",
+    "Eva (Sgabello)": "Eva",
+    "Galaxy (Sgabello)": "Galaxy",
+    "Kuga (Sgabello)": "Kuga",
+    "Linda (Sgabello)": "Linda",
+    "Mood (Sgabello)": "Mood",
+    "Nata (Sgabello)": "Nata",
+    "Net (Sgabello)": "Net",
+    "Polo (Sgabello)": "Polo",
+    "Queen (Sgabello)": "Queen",
+    "Shark (Sgabello)": "Shark",
+    "Clara (Poltrona)": "Clara",
+    "Artistico (Tavolino)": "Artistico",
+    "Hip Hop (Tavolino)": "Hip Hop",
+    "Millennium (Tavolino)": "Millennium",
+    "Pattern (Tavolino)": "Pattern",
+    "Tao (Tavolino)": "Tao",
+    "Bach (Consolle)": "Bach",
+    "Hip Hop (Consolle)": "Hip Hop",
+    "Kimono (Consolle)": "Kimono",
+    "Carrello Portasedie": "CARRELLO",
+    "Gancio per 2 Sedie": "GANCIO",
+    "Gancio per 4 Sedie": "GANCIO",
+    "Artistico consolle": "ARTISTICO",
+    "Etico Plus consolle": "ETICO PLUS",
+    "Diesis per esterno": "DIESIS",
+    "Moon per esterno": "MOON",
+    "Sander per esterno": "SANDER",
+}
+
 # Bonaldo: products whose literal printed page heading doesn't match their
 # catalog product_name closely enough for parse_prices.py's own heading-
 # matching (whole-word prefix match, tolerant of digits/punctuation but not
@@ -354,6 +442,7 @@ INDEX_HEADING_OVERRIDES: dict[str, str] = {
     # of gotchas as the earlier windows_poppler_gotchas memory).
     "Salomé": "SALOMÈ",
 }
+INDEX_HEADING_OVERRIDES.update(BONTEMPI_INDEX_HEADING_OVERRIDES)
 
 # Bonaldo: index entries that are NOT independently-parseable products at
 # all -- each is a "variant" name (a lower/alternate model of a sibling
@@ -2179,6 +2268,233 @@ def compute_ranges_bodema(entries: list[tuple[str, int]], last_printed_page: int
         end = (nxt - 1) if nxt is not None else last_printed_page
         ranges.append({"name": name, "printed_start": start, "printed_end": max(start, end)})
     return ranges
+
+
+# ---------------------------------------------------------------------------
+# Bontempi (Listino Bontempi L2 2024_02.pdf) -- brand #11. Single-page
+# InDesign pages (595.276 x 841.89pt, standard A4 -- confirmed via pdfinfo,
+# NOT a 2-up spread). Real embedded text, -layout verified against rendered
+# images on 4 representative pages across both dominant table shapes (flat
+# named-option shape and dual Prezzo1/Prezzo2 fabric-tier shape) plus an
+# outdoor-furniture page -- every price/code/label matched the image exactly.
+#
+# The TOC ("INDICE", PDF pages 3 and 5, 2 columns per page) was parsed
+# programmatically (not hand-transcribed like Bodema's) since it's a clean,
+# consistent dot-leader format with no OCR ambiguity -- 229 entries across
+# 17 section headers. CONFIRMED the reading order is a single logical snake
+# (p3-left, p3-right, p5-left, p5-right): a section started in one
+# page/column continues directly into the next column WITHOUT re-printing
+# its own header (e.g. SEDIE starts on p3's right column at "Aida" and
+# continues onto p5's left column at "Rocket" with no repeated "SEDIE"
+# label) -- naive per-column independent section-tracking produced 17
+# entries with no section at all until this was found and fixed.
+#
+# Page numbering: PDF page = printed page + 2, verified consistent across
+# the ENTIRE document (checked p.12/p.108/p.298/p.314/p.486 samples, no
+# drift found anywhere) -- still resolved via a real per-page footer scan
+# (build_bontempi_page_map below), not hardcoded, same discipline as every
+# other brand.
+BONTEMPI_TOC_ENTRIES: list[tuple[str, int, str]] = [
+    # MADIE E CONTENITORI
+    ("Amsterdam", 12, "MADIE E CONTENITORI"), ("Cosmopolitan", 16, "MADIE E CONTENITORI"),
+    ("Elvis", 62, "MADIE E CONTENITORI"), ("Eden", 62, "MADIE E CONTENITORI"),
+    ("Enea", 64, "MADIE E CONTENITORI"), ("Kunta", 66, "MADIE E CONTENITORI"),
+    ("Madison", 68, "MADIE E CONTENITORI"), ("Musa", 71, "MADIE E CONTENITORI"),
+    ("Pica", 73, "MADIE E CONTENITORI"),
+    # TAVOLI
+    ("Artistico", 108, "TAVOLI"), ("Artistico consolle", 115, "TAVOLI"), ("Bach", 116, "TAVOLI"),
+    ("Barone", 121, "TAVOLI"), ("Bridge", 125, "TAVOLI"), ("Chef", 132, "TAVOLI"), ("Cruz", 136, "TAVOLI"),
+    ("Cruz XXL", 138, "TAVOLI"), ("Delta", 141, "TAVOLI"), ("Diesis", 151, "TAVOLI"), ("Dublino", 153, "TAVOLI"),
+    ("Duke", 155, "TAVOLI"), ("Etro", 158, "TAVOLI"), ("Etro XXL", 161, "TAVOLI"), ("Echo in", 166, "TAVOLI"),
+    ("Echo", 167, "TAVOLI"), ("Etico Plus consolle", 168, "TAVOLI"), ("Fiandre", 170, "TAVOLI"),
+    ("Flash", 173, "TAVOLI"), ("Fusion", 174, "TAVOLI"), ("Genio", 184, "TAVOLI"), ("Giro", 186, "TAVOLI"),
+    ("Glamour", 187, "TAVOLI"), ("Imperial", 188, "TAVOLI"), ("Kimono", 203, "TAVOLI"),
+    ("Lazy Susan", 211, "TAVOLI"), ("Louis", 212, "TAVOLI"), ("Magnum", 222, "TAVOLI"), ("Mago", 223, "TAVOLI"),
+    ("Mago consolle", 224, "TAVOLI"), ("Majesty", 225, "TAVOLI"), ("Millennium", 230, "TAVOLI"),
+    ("Millennium XXL", 242, "TAVOLI"), ("Mirage", 245, "TAVOLI"), ("Moon", 251, "TAVOLI"),
+    ("Pascal", 257, "TAVOLI"), ("Podium", 258, "TAVOLI"), ("Ramos", 262, "TAVOLI"), ("Sander", 262, "TAVOLI"),
+    ("Senso", 265, "TAVOLI"), ("Tom", 268, "TAVOLI"), ("Universe", 270, "TAVOLI"),
+    ("Universe XXL", 280, "TAVOLI"), ("Versus", 283, "TAVOLI"),
+    # TAVOLI CONTRACT E PER ESTERNO
+    ("Alter", 286, "TAVOLI CONTRACT E PER ESTERNO"), ("Club", 286, "TAVOLI CONTRACT E PER ESTERNO"),
+    ("Rail", 288, "TAVOLI CONTRACT E PER ESTERNO"), ("Rico", 288, "TAVOLI CONTRACT E PER ESTERNO"),
+    ("Vincent", 288, "TAVOLI CONTRACT E PER ESTERNO"),
+    ("Diesis per esterno", 290, "TAVOLI CONTRACT E PER ESTERNO"),
+    ("Moon per esterno", 291, "TAVOLI CONTRACT E PER ESTERNO"),
+    ("Sander per esterno", 297, "TAVOLI CONTRACT E PER ESTERNO"),
+    # SEDIE PER ESTERNO
+    ("Aqua", 298, "SEDIE PER ESTERNO"), ("Aria", 298, "SEDIE PER ESTERNO"), ("Eva", 298, "SEDIE PER ESTERNO"),
+    ("Freak", 298, "SEDIE PER ESTERNO"), ("Galaxy", 299, "SEDIE PER ESTERNO"),
+    ("Gipsy", 300, "SEDIE PER ESTERNO"), ("Hidra", 301, "SEDIE PER ESTERNO"), ("Ines", 301, "SEDIE PER ESTERNO"),
+    ("Mood", 302, "SEDIE PER ESTERNO"), ("Net", 303, "SEDIE PER ESTERNO"), ("Rocket", 304, "SEDIE PER ESTERNO"),
+    ("Rocket Green", 304, "SEDIE PER ESTERNO"), ("Shark", 305, "SEDIE PER ESTERNO"),
+    # SGABELLI PER ESTERNO
+    ("Eva", 305, "SGABELLI PER ESTERNO"), ("Galaxy", 306, "SGABELLI PER ESTERNO"),
+    ("Mood", 306, "SGABELLI PER ESTERNO"), ("Net", 308, "SGABELLI PER ESTERNO"),
+    # COMPLEMENTI PER ESTERNO
+    ("Pattern", 308, "COMPLEMENTI PER ESTERNO"), ("Tao", 308, "COMPLEMENTI PER ESTERNO"),
+    # SEDIE
+    ("Aida", 310, "SEDIE"), ("Agatha", 310, "SEDIE"), ("Alfa", 311, "SEDIE"), ("Alice", 312, "SEDIE"),
+    ("Amelie", 312, "SEDIE"), ("Aqua", 314, "SEDIE"), ("Aria", 314, "SEDIE"), ("Chantal", 314, "SEDIE"),
+    ("Clara", 316, "SEDIE"), ("Dada", 317, "SEDIE"), ("Dalila", 318, "SEDIE"), ("Drop", 319, "SEDIE"),
+    ("Eva", 321, "SEDIE"), ("Freak", 321, "SEDIE"), ("Galaxy", 322, "SEDIE"), ("Gipsy", 323, "SEDIE"),
+    ("Grace", 324, "SEDIE"), ("Hidra", 325, "SEDIE"), ("Hisa", 326, "SEDIE"), ("Ines", 327, "SEDIE"),
+    ("Kate", 328, "SEDIE"), ("Kelly", 329, "SEDIE"), ("Kuga", 330, "SEDIE"), ("Kuga Slim", 330, "SEDIE"),
+    ("Linda", 331, "SEDIE"), ("Lucrezia", 332, "SEDIE"), ("Malik Flex", 333, "SEDIE"), ("Malik", 333, "SEDIE"),
+    ("Margot", 334, "SEDIE"), ("Mila", 336, "SEDIE"), ("Mood", 337, "SEDIE"), ("Nata Flex", 350, "SEDIE"),
+    ("Nata", 351, "SEDIE"), ("Net", 353, "SEDIE"), ("Penelope", 354, "SEDIE"), ("Poket", 355, "SEDIE"),
+    # "Carrelli"/"Ganci" in the TOC are generic plurals covering 3 real,
+    # separately-coded products on Poket's own shared page (04.89 Carrello
+    # Portasedie, 04.92 Gancio per 2 Sedie, 04.93 Gancio per 4 Sedie) --
+    # confirmed via direct page image (p.355/PDF p.357) before building any
+    # parser, split into their own real entries rather than left as 2 vague
+    # catalog_index rows a generic parser couldn't resolve correctly.
+    ("Carrello Portasedie", 355, "SEDIE"), ("Gancio per 2 Sedie", 355, "SEDIE"),
+    ("Gancio per 4 Sedie", 355, "SEDIE"), ("Polo", 356, "SEDIE"), ("Queen", 360, "SEDIE"),
+    ("Rocket", 362, "SEDIE"), ("Rocket Green", 362, "SEDIE"), ("Sally", 363, "SEDIE"), ("Seventy", 364, "SEDIE"),
+    ("Shape", 365, "SEDIE"), ("Shark", 366, "SEDIE"), ("Simba", 366, "SEDIE"), ("Sofia Flex", 366, "SEDIE"),
+    ("Sofia", 367, "SEDIE"), ("Suri", 367, "SEDIE"), ("Sveva", 368, "SEDIE"), ("Tai Flex", 369, "SEDIE"),
+    ("Tai", 370, "SEDIE"), ("Vivian", 370, "SEDIE"),
+    # SGABELLI
+    ("Agatha", 372, "SGABELLI"), ("Chantal", 372, "SGABELLI"), ("Clara", 373, "SGABELLI"),
+    ("Eva", 375, "SGABELLI"), ("Galaxy", 375, "SGABELLI"), ("Kuga", 376, "SGABELLI"), ("Linda", 377, "SGABELLI"),
+    ("Mood", 378, "SGABELLI"), ("Nata", 381, "SGABELLI"), ("Net", 383, "SGABELLI"), ("Polo", 383, "SGABELLI"),
+    ("Queen", 384, "SGABELLI"), ("Shark", 384, "SGABELLI"),
+    # POLTRONE
+    ("Clara", 386, "POLTRONE"), ("Clarissa", 387, "POLTRONE"), ("Daya", 388, "POLTRONE"),
+    ("Lady", 390, "POLTRONE"), ("Long island", 390, "POLTRONE"),
+    # CARRELLI, TAVOLINI, POUF E PANCHE
+    ("Alfred", 394, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Artistico", 394, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Badu", 396, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Chic", 397, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Circus", 397, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Cross", 398, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Diagonal", 401, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Elica", 402, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Esa", 402, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Flexus", 403, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Flower", 403, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("H2O", 404, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Hip Hop", 405, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Igloo", 407, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Karol", 408, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Kito", 410, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Lift", 410, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Loop", 410, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Manhattan", 411, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Millennium", 412, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Pagoda", 414, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Pattern", 416, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Planet", 416, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Puffoso", 418, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Ray", 419, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Tao", 420, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Tiffany", 420, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Tokio", 421, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Tower", 424, "CARRELLI, TAVOLINI, POUF E PANCHE"), ("Uchi", 425, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    ("Yang", 425, "CARRELLI, TAVOLINI, POUF E PANCHE"),
+    # PORTARIVISTE
+    ("Fan", 403, "PORTARIVISTE"),
+    # LIBRERIE E VETRINE
+    ("Atena", 428, "LIBRERIE E VETRINE"), ("Audrey", 432, "LIBRERIE E VETRINE"),
+    ("Charlotte", 432, "LIBRERIE E VETRINE"), ("Lexington", 446, "LIBRERIE E VETRINE"),
+    # MENSOLE
+    ("Wing", 451, "MENSOLE"), ("Zen", 451, "MENSOLE"),
+    # CONSOLLE E SCRITTOI
+    ("Bach", 454, "CONSOLLE E SCRITTOI"), ("Hip Hop", 454, "CONSOLLE E SCRITTOI"),
+    ("Kimono", 455, "CONSOLLE E SCRITTOI"), ("Piper", 456, "CONSOLLE E SCRITTOI"),
+    ("Matisse", 456, "CONSOLLE E SCRITTOI"), ("Secret", 457, "CONSOLLE E SCRITTOI"),
+    ("Taylor", 458, "CONSOLLE E SCRITTOI"), ("Vanity", 458, "CONSOLLE E SCRITTOI"),
+    ("Zac", 461, "CONSOLLE E SCRITTOI"),
+    # LAMPADE
+    ("Blow", 464, "LAMPADE"), ("Circle", 466, "LAMPADE"), ("Cloe", 467, "LAMPADE"), ("Comet", 468, "LAMPADE"),
+    ("Funky", 469, "LAMPADE"), ("Infinity", 469, "LAMPADE"), ("Pandora", 471, "LAMPADE"),
+    ("Papillon", 472, "LAMPADE"), ("Pop", 472, "LAMPADE"), ("Rain", 473, "LAMPADE"), ("Sferatus", 473, "LAMPADE"),
+    ("Soul", 474, "LAMPADE"), ("Spark", 475, "LAMPADE"), ("Stone", 477, "LAMPADE"), ("Swing", 477, "LAMPADE"),
+    # SPECCHI
+    ("Break", 477, "SPECCHI"), ("Coco", 478, "SPECCHI"), ("Diamante", 478, "SPECCHI"), ("Double", 479, "SPECCHI"),
+    ("Eidos", 479, "SPECCHI"), ("Illusion", 479, "SPECCHI"), ("Impero", 479, "SPECCHI"), ("King", 480, "SPECCHI"),
+    ("Luxor", 481, "SPECCHI"), ("Pill", 484, "SPECCHI"), ("Renoir", 485, "SPECCHI"), ("Tondo", 485, "SPECCHI"),
+    # APPENDIABITI
+    ("Alga", 486, "APPENDIABITI"), ("Battista", 486, "APPENDIABITI"), ("Hula", 486, "APPENDIABITI"),
+]
+
+# Customer-meaningful singular qualifier per TOC section, used only to
+# disambiguate the 27 confirmed within-brand bare-name collisions (e.g.
+# "Clara" sold as a Sedia/Sgabello/Poltrona) -- every collision found is
+# cross-SECTION (never 2 entries of the same name in the same section), so
+# the TOC's own section label is a sufficient, always-distinct qualifier.
+# Never a generic "(2)"/file-derived tag -- these are the catalog's own
+# real printed section titles, translated to natural customer language.
+BONTEMPI_SECTION_QUALIFIER = {
+    "MADIE E CONTENITORI": "Madia", "TAVOLI": "Tavolo",
+    "TAVOLI CONTRACT E PER ESTERNO": "Tavolo per Esterno",
+    "SEDIE PER ESTERNO": "Sedia per Esterno", "SGABELLI PER ESTERNO": "Sgabello per Esterno",
+    "COMPLEMENTI PER ESTERNO": "Complemento per Esterno",
+    "SEDIE": "Sedia", "SGABELLI": "Sgabello", "POLTRONE": "Poltrona",
+    "CARRELLI, TAVOLINI, POUF E PANCHE": "Tavolino",
+    "PORTARIVISTE": "Portariviste", "LIBRERIE E VETRINE": "Libreria",
+    "MENSOLE": "Mensola", "CONSOLLE E SCRITTOI": "Consolle",
+    "LAMPADE": "Lampada", "SPECCHI": "Specchio", "APPENDIABITI": "Appendiabiti",
+}
+
+
+def build_bontempi_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Bontempi's footer alternates recto/verso layout (confirmed via direct
+    page checks): even-numbered printed pages show the page number FIRST on
+    the footer line ("12 ... Verificare sempre pesi/colli/volumi nella
+    proforma ... Copyright..."), odd-numbered pages show it LAST ("Copyright
+    ... Verificare sempre pesi/colli/volumi nella proforma ... 13") -- a
+    strict leading-digit-only regex silently missed exactly half the
+    document (238/503 pages) until this was found via a direct count
+    against the full extracted text. Both forms are tried on every page's
+    full text (not just the last line, since the footer isn't always the
+    very last non-blank line)."""
+    page_map: dict[int, int] = {}
+    leading_re = re.compile(r"^\s*(\d{1,4})\s+Verificare sempre pesi")
+    trailing_re = re.compile(r"Verificare sempre pesi.*?(\d{1,4})\s*$")
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        found = None
+        for line in text.split("\n"):
+            m = leading_re.search(line) or trailing_re.search(line)
+            if m:
+                found = int(m.group(1))
+                break
+        if found is not None:
+            page_map[found] = pg
+    return page_map
+
+
+def parse_index_bontempi(pdf_path: str, total_pages: int) -> tuple[list[tuple[str, int]], int]:
+    """Resolves BONTEMPI_TOC_ENTRIES against the real PDF via
+    build_bontempi_page_map (footer-verified, not a hardcoded +2 offset,
+    even though +2 was confirmed to hold everywhere checked). Qualifies a
+    bare name with its own TOC section's real customer-meaningful word
+    (BONTEMPI_SECTION_QUALIFIER) whenever that bare name is used by 2+
+    distinct (name, section) pairs -- same generic auto-qualify rule as
+    Monography/Bodema, but keyed on TOC section rather than a per-product
+    page heading, since Bontempi's own page sub-labels (e.g. "FREESTANDING",
+    "STRUTTURA ACCIAIO GAMBE CONIFICATE") are per-product descriptive text,
+    not a small shared vocabulary the way Bodema's category words were.
+    Sanity-checks each resolved page's own text contains the bare product
+    name (case-insensitive), warning (not silently dropping) any miss.
+    Returns (entries, last_printed_page), same shape as parse_index_bodema."""
+    page_map = build_bontempi_page_map(pdf_path, total_pages)
+
+    by_name: dict[str, list[tuple[int, str]]] = {}
+    for name, printed_page, section in BONTEMPI_TOC_ENTRIES:
+        by_name.setdefault(name, []).append((printed_page, section))
+
+    final_entries: list[tuple[str, int]] = []
+    unresolved: list[tuple[str, int, int]] = []
+    for name, printed_page, section in BONTEMPI_TOC_ENTRIES:
+        pdf_page = page_map.get(printed_page, printed_page + 2)
+        display = name
+        if len(by_name[name]) > 1:
+            qualifier = BONTEMPI_SECTION_QUALIFIER.get(section, section.title())
+            display = f"{name} ({qualifier})"
+        final_entries.append((display, printed_page))
+
+        text = pdftotext_page(pdf_path, pdf_page)
+        if name.split()[0].lower() not in text.lower():
+            unresolved.append((name, printed_page, pdf_page))
+
+    if unresolved:
+        print(f"      -> WARNING: {len(unresolved)} TOC entries' resolved PDF "
+              f"page text did not contain the product's own first name-word "
+              f"(name, toc_printed_page, resolved_pdf_page): {unresolved}")
+
+    last_printed_page = max(p for _, p in final_entries)
+    return final_entries, last_printed_page
 
 
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
@@ -4104,7 +4420,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -4180,10 +4496,10 @@ def main():
         return
 
     if (not args.index_pages and not args.single_product and not args.manual_entries_file
-            and args.style not in ("varaschini", "tacchini", "nube", "monography", "bodema")):
+            and args.style not in ("varaschini", "tacchini", "nube", "monography", "bodema", "bontempi")):
         print("ERROR: --index-pages is required for --style "
               f"{args.style!r} (only 'varaschini', 'tacchini', 'nube', "
-              "'monography', 'bodema', --single-product, and "
+              "'monography', 'bodema', 'bontempi', --single-product, and "
               "--manual-entries-file can omit it).")
         sys.exit(1)
 
@@ -4200,6 +4516,11 @@ def main():
               "PDF (BODEMA_TOC_ENTRIES -- see parse_index_bodema's own "
               "module comment)...")
         entries, bodema_last_printed_page = parse_index_bodema(pdf_path, total_pages)
+    elif args.style == "bontempi":
+        print("[1/5] Resolving the programmatically-parsed TOC against the "
+              "real PDF (BONTEMPI_TOC_ENTRIES -- see parse_index_bontempi's "
+              "own module comment)...")
+        entries, bontempi_last_printed_page = parse_index_bontempi(pdf_path, total_pages)
     elif args.style == "monography":
         print("[1/5] Scanning PDF pages 6-49's own per-half (2-up spread) "
               "text for product NAME+CATEGORY headers (no reliable TOC page "
@@ -4267,6 +4588,12 @@ def main():
         # fallback formula for the rare unreadable-footer page, rather
         # than bare identity.
         page_fallback = lambda p: p + 1
+    elif args.style == "bontempi":
+        page_map = build_bontempi_page_map(pdf_path, total_pages)
+        # Confirmed pdf = printed + 2 throughout (see parse_index_bontempi's
+        # own module comment) -- used as the fallback formula for the rare
+        # unreadable-footer page.
+        page_fallback = lambda p: p + 2
     elif args.style == "cattelan":
         page_map = build_offset_page_map(pdf_path, total_pages)
         page_fallback = build_offset_fallback(page_map)
@@ -4322,6 +4649,10 @@ def main():
         ranges = compute_ranges_tacchini(entries, tacchini_last_printed_page)
     elif args.style == "bodema":
         ranges = compute_ranges_bodema(entries, bodema_last_printed_page)
+    elif args.style == "bontempi":
+        # compute_ranges_bodema is generic tie-aware grouping, no Bodema
+        # specifics -- reused as-is for Bontempi's own TOC entries.
+        ranges = compute_ranges_bodema(entries, bontempi_last_printed_page)
     elif args.style == "monography":
         last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1]
         ranges = compute_ranges_monography(entries, last_printed_page_guess)

@@ -664,5 +664,26 @@
     "brand": "Bodema",
     "query": "give me all prices for Apollo",
     "note": "Batch 1 (Trasformabili group) stress case -- Apollo's own page also has an embedded 'KIT COPRIMECCANISMO' accessory row (code KIT001) mixed into its own price table, a TESSUTO-only (7-column, no Pelle) sub-shape confirmed on several Divani/Trasformabili pages. Confirms Apollo's own 3 real sizes parse correctly even with that extra row present."
+  },
+  {
+    "id": 96,
+    "cat": "tricky_structure",
+    "brand": "Bontempi",
+    "query": "give me the price for Clara sedia",
+    "note": "Bare-name collision stress case -- Clara is sold as Sedia/Sgabello/Poltrona, disambiguated via BONTEMPI_SECTION_QUALIFIER auto-qualify. Confirms the Sedia variant specifically resolves, not a different category."
+  },
+  {
+    "id": 97,
+    "cat": "tricky_structure",
+    "brand": "Bontempi",
+    "query": "give me all prices for Kunta",
+    "note": "Kunta stress case -- 4 ARTICOLO codes each genuinely offering the SAME brushed argento/bronzo finish under 2 different cabinet configurations at 2 different real prices, resolved via per-row config tagging (see flag_triage.json). Confirms no ambiguous rows ship."
+  },
+  {
+    "id": 98,
+    "cat": "tricky_structure",
+    "brand": "Bontempi",
+    "query": "give me all prices for Poket",
+    "note": "Multi-product-shared-page stress case -- Poket, Carrello Portasedie, Gancio per 2 Sedie, and Gancio per 4 Sedie all share ONE physical page (p.355); confirms Poket own-block scoping correctly excludes the other 3 products rows."
   }
 ]

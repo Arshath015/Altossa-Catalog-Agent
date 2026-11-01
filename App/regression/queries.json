@@ -1483,5 +1483,68 @@
     "note": "Batch 3 -- Tessuti's own manual_additions.json reference row (resolved via the same mechanism as Monography's Fabric/Leather reference entries).",
     "expect_status": "ok",
     "expect_price": "56"
+  },
+  {
+    "id": 143,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "give me all prices for Amsterdam",
+    "note": "Batch 1 -- MADIE E CONTENITORI flat shape, 4 ARTICOLO blocks (15.08/15.10/15.11/15.12), each with 3 finishes + 1 accessory surcharge.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 42
+  },
+  {
+    "id": 144,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "Artistico 160x90x75 Cristallo trasparente extrachiaro price",
+    "note": "Batch 1 -- TAVOLI flat shape with named-finish + surcharge sub-sections (Maggiorazione per struttura).",
+    "expect_status": "ok",
+    "expect_price": "1.943"
+  },
+  {
+    "id": 145,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "give me all prices for Aida",
+    "note": "Batch 2 -- SEDIE dual Prezzo1/Prezzo2 fabric-tier shape, 2 ARTICOLO blocks.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 18
+  },
+  {
+    "id": 146,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "Aqua sedia per esterno Bianco price",
+    "note": "Batch 2 -- outdoor SEDIE PER ESTERNO flat shape, per-color codes.",
+    "expect_status": "ok",
+    "expect_price": "108"
+  },
+  {
+    "id": 147,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "give me all prices for Blow",
+    "note": "Batch 1 -- LAMPADE flat shape.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 12
+  },
+  {
+    "id": 148,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "give me all prices for Alter",
+    "note": "Batch 1 -- TAVOLI CONTRACT E PER ESTERNO ARTICOLI CONTRACT shape (base struttura + shared piano matrix), hand-transcribed via manual_additions.json, see flag_triage.json.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 54
+  },
+  {
+    "id": 149,
+    "cat": "ok",
+    "brand": "Bontempi",
+    "query": "Daya poltrona scocca Pelle Ecologica Premium price",
+    "note": "Batch 2 -- combinatorial base+addon pricing (Scocca A + Cuscinatura B), disambiguated via base_section_label fix, see flag_triage.json.",
+    "expect_status": "ok",
+    "expect_price": "1.396"
   }
 ]
