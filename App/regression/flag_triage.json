@@ -2938,6 +2938,10 @@
     "Dolmen Prolunga aggiuntiva 60x100 (1820A)": {
       "status": "false_alarm",
       "note": "ADDED 2026-09-06: a real, distinct, previously-uncataloged accessory (Dolmen's own \"additional extension\" for the 1821/1821L/1822/1822L table family) discovered during the materials-grid audit's Dolmen fix -- its price was bleeding into the main tables' own tier scan, unclaimed, before being excluded there. Page-image confirmed (p211/p212): a genuine 2-tier price (EUR 638 standard / EUR 803 Grigio Perla/Ardesia premium), identical on every one of its 4 page mentions (once per table variant). Added per the 2026-09-06 standing approval to add verified accessories directly rather than flagging each one as a decision point. Captured via a dedicated _varaschini_dolmen_parser override (not manual_additions.json, since that merge step is never called by Varaschini's own --format varaschini regeneration flow and would silently revert on a future regen) -- anchors on the \"Prolunga aggiuntiva 60x100\" text, takes the first 2 non-cover prices within a 15-line window, with an exact-value safety check (only emits if it finds precisely [\"638\",\"803\"], otherwise flags rather than guesses). Verified via full brand-wide before/after diff: exactly 2 rows added, 0 rows removed or changed anywhere else, including Dolmen's own 4 real table codes (confirmed still correct and unaffected by this addition)."
+    },
+    "_CATALOG_WIDE: reported \"Prodotti per la Pulizia wider name gap (~2,348 records)\" -- does not match live data": {
+      "status": "false_alarm",
+      "note": "Checked live 2026-11-01: Varaschini's real \"Prodotti per la Pulizia\" product line is confined to ONE page (PDF/printed p.570), 16 total catalog_index.json entries, already fully resolved -- 10 real, correctly-priced codes (228M3, 228M5, 3899A, 3899F3, 3899P, 3899PC, 3899R, 3899VC, 3899VP, 2x750ml PIANI TAVOLI KIT PULIZIA; 10 live price rows) plus 6 confirmed false-positive-code entries (104/145/165/220/ml(300)/ml(500) -- each a price or dimension value misdetected as a product code on the same page, already status false_alarm in this ledger, see those 6 individual entries above). No name-level gap affecting anything close to 2,348 records was found under this name anywhere in the live dataset (total Varaschini catalog is 1402 index entries / 4253 price rows, so 2,348 would be the majority of the entire brand). Possible the leftover list item conflated this with a different, larger finding (e.g. the documented check-coverage 'fabrication' root-cause, ~2496/2498 cosmetic mismatches, already resolved per varaschini_brand_state.md) or was simply inaccurate. Logging the discrepancy rather than fabricating a match -- needs clarification if a real, larger Pulizia-specific gap was meant. Varaschini's actual current known_gap list (61 entries, unrelated to Pulizia) is reported separately in varaschini_brand_state.md and LEFTOVERS.md, unchanged, as instructed."
     }
   },
   "Ditre Italia": {
@@ -4985,6 +4989,10 @@
     "Condizioni generali / Avvertenze (SistemiGiorno)": {
       "status": "reference_content_excluded",
       "note": "Confirmed 2026-08-23 during SistemiGiorno's remaining-sections mapping pass. Real pdf pages 402-406 (printed 397+), same warranty/sales-terms document pattern as 'Condizioni generali / Avvertenze (SistemiNotte)'. Read in full: the one '€' hit found is 'la somma di € 150,00 (Euro Centocinquanta/00) per ogni giorno di ritardo' -- a late-payment penalty clause within the sales-terms document, NOT a product price (individually verified via direct read, not assumed from the SistemiNotte pattern alone). Zero CODICI, zero product prices anywhere in this range -- not a product at all, deliberately never added to catalog_index.json, not even as a zero-row known_gap placeholder."
+    },
+    "_CATALOG_WIDE: reported \"Cage-style leftovers\" -- not found in live Pianca data": {
+      "status": "false_alarm",
+      "note": "Checked live 2026-11-01: no product named \"Cage\" (or any Cage-pattern/Cage-shape reference) exists anywhere in data/Pianca/prices.json or catalog_index.json, and no mention of \"Cage\" appears in pianca_brand_state.md. \"Cage\" IS a real Tacchini product (a different brand, fully resolved 2026-10-17 via that brand's own Shape E parser) -- possible the leftover list item was describing the wrong brand, or refers to a Pianca item under a name not yet identified. Logging as unresolved/needs clarification rather than fabricating a match. Pianca's actual current known_gap list (75 entries, unrelated to any \"Cage\" name) is reported separately in pianca_brand_state.md and LEFTOVERS.md, unchanged, as instructed."
     }
   },
   "Tacchini": {
@@ -5043,6 +5051,14 @@
     "Basilan": {
       "status": "false_alarm",
       "note": "Found 2026-10-04 via check_orphaned_flags.ts, before the single_value_fallback (shipped 2026-10-12) and Shape D1 fixes existed. RE-INVESTIGATED 2026-10-31 while closing the Tacchini polish list: the stale boilerplate note quoting a generic 2-or-3-numeric-column example does not match this product's real page at all (p19, basilan_news_p19.jpg -- its only page) -- Basilan is just 2 codes, 0BSLSD01 (single value, Rattan, resolved by single_value_fallback, see the dedicated \"Basilan Sedia/Rattan single-value fallback\" entry above) and 0BSLCS01 (clean 12-tier grid). Confirmed via direct page-image comparison: all 13 rows match the image exactly. The parser currently produces ZERO review flags for Basilan. Status corrected from known_gap to false_alarm -- same situation as Roma above, a stale flag_triage entry left behind after an unrelated later fix silently resolved it."
+    },
+    "_CATALOG_WIDE: Serie 500/3, Serie 500/4, E63, Clockwise, Torii Love -- News-page rows held as permanent per-product overrides, no reusable extraction pipeline": {
+      "status": "known_gap",
+      "note": "Session close-out 2026-11-01, re-verified live (not copied from a prior summary): these 5 products' News-page price rows are preserved in prices.json via a hand-applied per-product override (first documented inside the '_CATALOG_WIDE: Shape D' entry's own 2026-10-12 update, '5 losses ... confirmed NOT fixable via text-regen', but never given its own top-level ledger entry until now). Root cause unchanged since then: only each product's Main-page .txt file exists under App's text pipeline -- the News PDF's own content for these 5 was never captured into a reusable per-product text file the way Core/Reversível/Basilan/Lina later got (Lina's own News page was separately resolved 2026-11-01 via manual_additions.json, see Tacchini's own 'Lina' ledger entry -- a real, working precedent for how these 5 COULD be closed the same way, not yet applied to them). Confirmed via direct inspection today: all 4 rows live for Serie 500/3 + Serie 500/4 come from their own Main-page content only; E63 additionally still has no catalog_index.json page_images entry for its News-sourced rows (orphaned image reference, same gap noted in the original Shape D writeup). RISK, stated explicitly per instruction: a future full re-extraction/regen of Tacchini from text would NOT reproduce these 5 products' News-page rows (they have no source text file to regenerate from) -- the override must be preserved by any rebuild tooling, or these 5 silently lose that data. Not attempted to fix this session (out of scope for a leftover-logging pass); a real fix needs the same per-product News-PDF text extraction + manual_additions.json transcription Lina just got."
+    },
+    "Serie 500/3 and Serie 500/4 -- shared News-page accessory codes (500RIPVT/500RIPVN) not captured": {
+      "status": "known_gap",
+      "note": "Verified live 2026-11-01 via direct pdftotext -layout extraction of Tacchini-Pricelist-News-2026-V2-Euro.pdf (bundled project poppler) page containing both products' 'Accessories Pricelist' section. Two shared accessory codes -- 500RIPVT ('Ripiano vetro opzionale'/Optional glass shelf) and 500RIPVN ('Ripiano legno opzionale'/Optional wooden shelf) -- appear TWICE, once under each product, with DIFFERENT prices per product (Serie 500/3: Vetro/Glass=250, Noce Canaletto/Walnut=340; Serie 500/4: Vetro/Glass=240, Noce Canaletto/Walnut=330). Confirmed via direct query against live data/Tacchini/prices.json: zero rows anywhere contain code 500RIPVT or 500RIPVN -- only each product's own 2 main cabinet rows (Lacca Opaca/Noce Canaletto) are present, 4 rows total across both products. Not yet transcribed into manual_additions.json. A safe fix would hand-transcribe both codes under each product (4 new rows total, prices already confirmed above against the page text), same discipline as Lina's own News-page resolution -- not attempted this session, logged as a leftover per instruction."
     }
   },
   "Nube Italia": {
@@ -5087,6 +5103,22 @@
     "Leather": {
       "status": "real_gap",
       "note": "CONFIRMED resolved via manual_additions.json, not a real gap in the extraction sense -- this is a shared, catalog-wide reference table (Decorative Pillows/Fabric/Leather, printed once on PDF page 5/printed page 9) that has no Pop/C.O.M. structure for the generic parser to find at all (by design, not an extraction failure), so parse_file_monography correctly flags it rather than guessing. 6/4/2 rows respectively hand-transcribed and verified against a 200dpi render of the real page, per the user's own explicit design decision to extract these as their own queryable pseudo-products. 2026-10-19."
+    },
+    "Pharell (Table Base)": {
+      "status": "false_alarm",
+      "note": "Verified live 2026-11-01 against data/Monography/prices.json: the 'Bright' tier row (source_pdf_page 24, price +450) has tier_label stored as \"Wood\" -- the source PDF's real column header is \"Wood Finishing\", truncated in the stored label. Price itself (+450) is correct and unaffected -- this is a cosmetic display-label shortening, not a pricing error. Nothing changed; logged as a leftover per instruction."
+    },
+    "Pharell (Consolle)": {
+      "status": "false_alarm",
+      "note": "Verified live 2026-11-01 against data/Monography/prices.json: the 'Bright'/'Special' tier rows (source_pdf_page 42, prices +330/+580) both have tier_label stored as \"Wood\" -- same truncation of the source PDF's real \"Wood Finishing\" column header as Pharell (Table Base) (see that entry). Prices themselves are correct and unaffected -- cosmetic display-label shortening only. Nothing changed; logged as a leftover per instruction."
+    },
+    "Allure (Mirror)": {
+      "status": "false_alarm",
+      "note": "Verified live 2026-11-01 against data/Monography/prices.json: the round-mirror row (source_pdf_page 44, price 1.050) has size stored as plain \"round mirror\", with no dimension suffix -- the source PDF labels this item with a \"D. 95\" (diameter 95cm) notation that isn't carried into the stored size string (the sibling square-mirror row, by contrast, does keep its W85 H85 dimensions). Price itself (1.050) is correct and unaffected -- this is a cosmetic size-formatting gap, not a pricing error. Nothing changed; logged as a leftover per instruction."
+    },
+    "Nomad": {
+      "status": "false_alarm",
+      "note": "Verified live 2026-11-01 against data/Monography/prices.json: the rectangular-rug row (source_pdf_page 47, price 6.620) has size stored verbatim as \"rug rectangular, (W370 D250)\" -- the stray comma before the dimension parenthetical is a literal source-PDF typo, preserved as-is rather than silently corrected. Price itself (6.620) is correct and unaffected -- cosmetic source-typo carry-through only. Nothing changed; logged as a leftover per instruction."
     }
   },
   "Bodema": {
