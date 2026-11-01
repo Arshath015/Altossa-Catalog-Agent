@@ -18,7 +18,7 @@ const BRANDS: Brand[] = [
   { name: 'Tacchini', status: 'ready', productCount: 120 },
   { name: 'Nube Italia', status: 'ready', productCount: 28 },
   { name: 'Bodema', status: 'ready', productCount: 111 },
-  { name: 'Bontempi', status: 'soon', productCount: 0 },
+  { name: 'Bontempi', status: 'ready', productCount: 230 },
   { name: 'Calligaris', status: 'soon', productCount: 0 },
   { name: 'Desiree', status: 'soon', productCount: 0 },
   { name: 'Eforma', status: 'soon', productCount: 0 },
