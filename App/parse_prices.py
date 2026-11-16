@@ -14926,8 +14926,8 @@ def parse_file_bontempi(path, product_name, brand, flags):
 #   Finish tables (complementi, rugs): rows of
 #     "<italian>  <english>  <spanish>  <price>".
 #
-# Special: RETI E MATERASSI (8-digit code size grid) and GUANCIALI (codes but
-# no prices printed at all -> flagged, 0 rows).
+# Special: RETI E MATERASSI (8-digit code size grid, price in bold under each
+# CODICE row) and GUANCIALI (same price-under-CODICE layout, one item per block).
 
 _DESIREE_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
 # Codes are 6 digits, or "C" + 5 digits for whole compositions.
@@ -14941,7 +14941,7 @@ _DESIREE_TIER_TOKEN_RE = re.compile(
     r"(?:^|\s{2,})(COM\s+H\.\s*[\d.,]+(?:\s+ML\s+[\d.,]+)?|Top|[CDEFGHKWYZ])(?=\s{2,}|\s*$)"
 )
 _DESIREE_CLUSTER_RE = re.compile(r"\S+(?: \S+)*")
-_DESIREE_MODEL_RE = re.compile(r"^[A-ZÀ-Ý0-9“\"][A-ZÀ-Ý0-9 /\-.,“”\"'+]*$")
+_DESIREE_MODEL_RE = re.compile(r"^[A-ZÀ-Ý0-9“\"][A-ZÀ-Ý0-9 /\-.,“”\"'+°Ø]*$")
 _DESIREE_PREFIX_LINE_RE = re.compile(r"^\s{0,4}([A-Z0-9]{1,3})\s{2,}(\S+(?: \S+)*)")
 _DESIREE_HEADER_LABEL = r"(?:(?:Completo|Fodera)(?: [a-zà-ù]+)?|Bordino|Zip)"
 _DESIREE_HEADER_LABEL_RE = re.compile(_DESIREE_HEADER_LABEL)
@@ -15363,13 +15363,16 @@ def _parse_desiree_reti(text, product_name, brand):
             page = int(pm.group(1))
             continue
 
-        s = ln.strip()
-        if s and re.match(r"^[A-Z]", s) and not code8_re.search(ln):
-            left_name = s.split("  ")[0].strip()
-
-        rm = re.search(r"\s{100,}([A-Z][A-Z\s]+[A-Z0-9])\s*$", ln)
-        if rm and not code8_re.search(ln):
-            right_name = rm.group(1).strip()
+        # The Italian heading (RETE... / COPPIA... / MATERASSO...) is the first,
+        # upper-case line of each sub-product; the left page's headings start at
+        # x=0 and the right page's at x~225. English and Spanish repeats below
+        # it must not replace it.
+        for hm in re.finditer(r"\S+(?: \S+)*", ln):
+            if re.match(r"^(RETE|COPPIA|MATERASSO)\b", hm.group(0)):
+                if hm.start() < 200:
+                    left_name = hm.group(0)
+                else:
+                    right_name = hm.group(0)
 
         if "CODICE" not in ln:
             continue
@@ -15438,6 +15441,50 @@ def _parse_desiree_reti(text, product_name, brand):
     return rows, flags
 
 
+def _parse_desiree_guanciali(text, product_name, brand, flags):
+    """Pillows (printed p.336): per item a "MISURA ARTICOLO <size>" line, a
+    CODICE row holding the 8-digit code, and the price as a bold figure on the
+    line below, right-aligned under the code (end columns within a few chars).
+    The weight (kg.) sits above the code and is not a price."""
+    rows = []
+    lines = text.split("\n")
+    page = None
+    name = size = None
+    for i, ln in enumerate(lines):
+        pm = _DESIREE_PDFPAGE_RE.match(ln.strip())
+        if pm:
+            page = int(pm.group(1))
+            continue
+        nm = re.match(r"^(GUANCIALE[A-Z ]*?)\s{2,}", ln + "  ")
+        if nm:
+            name = nm.group(1).strip()
+        sm = re.search(r"MISURA ARTICOLO\s+(\d+x\d+)\s*$", ln)
+        if sm:
+            size = sm.group(1)
+        cm = re.search(r"CODICE\s+(\d{8})(?!\d)", ln)
+        if not cm:
+            continue
+        code, code_end = cm.group(1), cm.end(1)
+        price = None
+        for nxt in lines[i + 1:i + 5]:
+            hit = [m for m in re.finditer(r"(?<![\d.,/A-Za-z])(\d{1,2}\.\d{3}|\d{2,4})(?![\d.,/A-Za-z])", nxt)
+                   if abs(m.end(1) - code_end) <= 4]
+            if len(hit) == 1:
+                price = hit[0].group(1)
+                break
+        if price and name and size:
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": name, "variant_context": None,
+                "size": size, "fabric_tier": None, "tier_label": None,
+                "code": code, "price_eur": price,
+                "source_pdf_page": page, "ambiguous": False,
+            })
+        else:
+            flags.append((page, product_name, f"code {code}: price/name/size not found under the CODICE row -- not parsed"))
+    return rows, flags
+
+
 # Blocks whose page layout defeats the zone reader, transcribed from the page
 # images (2026-11-16) and applied only when the parser produced no row for that
 # code, so they can never duplicate or override parsed data.
@@ -15480,17 +15527,12 @@ def _desiree_apply_verified_rows(product_name, brand, rows, flags):
 
 def parse_file_desiree(path, product_name, brand, flags, catalog_entry=None, all_entries=None):
     """Parse Desiree price tables from a per-product text file."""
-    if product_name == "GUANCIALI":
-        flags.append((None, product_name,
-                      "GUANCIALI: 3 pillow types with 8-digit article codes "
-                      "appear in the PDF but no prices are listed -- "
-                      "prices are absent from the source PDF"))
-        return [], flags
-
     text = Path(path).read_text(encoding="utf-8")
 
     if product_name == "RETI E MATERASSI":
         return _parse_desiree_reti(text, product_name, brand)
+    if product_name == "GUANCIALI":
+        return _parse_desiree_guanciali(text, product_name, brand, flags)
 
     rows, flags = _parse_desiree_zoned(text, product_name, brand, flags, catalog_entry, all_entries)
     _desiree_apply_verified_rows(product_name, brand, rows, flags)

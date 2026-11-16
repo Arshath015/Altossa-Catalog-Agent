@@ -1,6 +1,6 @@
 # Desiree Brand State
 
-## Status: LIVE (2026-11-16) -- brand #12, sidebar "ready", 101/102 products priced
+## Status: LIVE (2026-11-16) -- brand #12, sidebar "ready", 102/102 products priced
 
 ## Source
 - **Price list**: `Price_list/New/AI Team pricelist/Desiree/LISTINO IN VIGORE DAL 28 OTT 24/desireelistinoprezzia0.pdf`
@@ -101,7 +101,7 @@ Structural pass done. Baseline regression:full passing (clean across all 11 bran
 
 ### 2026-11-16 — Price parse built, verified, wired (pre-go-live)
 
-**Result:** 25,842 price rows, 101 of 102 products priced (all but GUANCIALI), 0 ambiguous rows, 0 exact duplicates. `data/Desiree/prices.json` regenerates deterministically from `parse_prices.py --format desiree` (no manual_additions.json; hand-verified blocks live in code, see below).
+**Result:** 25,845 price rows, all 102 products priced, 0 ambiguous rows, 0 exact duplicates. `data/Desiree/prices.json` regenerates deterministically from `parse_prices.py --format desiree` (no manual_additions.json; hand-verified blocks live in code, see below).
 
 **Parser design (`parse_file_desiree`, App/parse_prices.py)**
 - The PDF is 2-up: pdftotext -layout interleaves the left and right printed pages on the same lines. Each PDF page is cut into a LEFT and RIGHT zone at the x-position of the right page's article codes, and each zone is parsed as its own stream. A product only takes zones whose printed page is in its own index range, or that no other product claims (printed page = 2*pdf-8 left, 2*pdf-7 right).
@@ -114,14 +114,14 @@ Structural pass done. Baseline regression:full passing (clean across all 11 bran
 
 **Checks run:** every column series is non-decreasing within each material across 2,282 series (the only Top->K steps are the fabric->leather switch); 29 hand-picked values compared with the page images / source text (AGON, HAB bed incl. the split-row Z tier, FASCIA/EASY/ARREDA cushions, ALASIA, SAVOYE).
 
-**Known gaps:** GUANCIALI -- codes and sizes are printed but NO price (flag_triage.json: known_gap, confirmed on the page image).
+**Known gaps:** none. CORRECTION 2026-11-16: GUANCIALI was first logged as 'no price printed' -- wrong. The user spotted in the PDF that the bold figure under each CODICE row IS the price (38 / 75 / 78); it was read as a stray number. Fixed with a dedicated parser; RETI E MATERASSI (same layout) was re-checked row by row against p.171 (prices were right, sub-product names were garbled; fixed). Lesson: verify every special-case parser against its page image, not only the main shapes.
 
-**Wiring:** BRANDS lists in check_coverage.ts / check_images.ts, FLAG_PRODUCING_BRANDS in check_orphaned_flags.ts, flag_triage.json (GUANCIALI), queries.json #150-159, stress_v2_queries.json #99-102. Server restart needed after any prices.json regen (CatalogChat caches at construction).
+**Wiring:** BRANDS lists in check_coverage.ts / check_images.ts, FLAG_PRODUCING_BRANDS in check_orphaned_flags.ts, flag_triage.json (empty Desiree ledger), queries.json #150-161, stress_v2_queries.json #99-102. Server restart needed after any prices.json regen (CatalogChat caches at construction).
 
 ### 2026-11-16 -- Go-live
 
-regression:full read from the log (not the task notification): fabrication 0; check-images 0 mismatches; check-coverage 0 row-count mismatches across all brands (Desiree 101 checked, 0 zero-row untriaged); stress-v2 0 fabrication / 0 image-routing; orphaned-flags clean (GUANCIALI triaged); all remaining checks 0 failures. The main `regression` stage reported 17 SOFT expectation failures, all on OTHER brands (Cattelan 11, Bonaldo 1, Pianca 4, Monography 1), none Desiree (queries #150-159 all pass); the server log showed every Groq key rate-limited ("deterministic matching only"), 5 of the 17 are marked degraded. Not proven pre-existing by a baseline replay -- no server or other-brand data was touched in this build.
+regression:full read from the log (not the task notification): fabrication 0; check-images 0 mismatches; check-coverage 0 row-count mismatches across all brands (Desiree 101 checked then; rerun after the GUANCIALI fix below); stress-v2 0 fabrication / 0 image-routing; orphaned-flags clean (GUANCIALI triaged); all remaining checks 0 failures. The main `regression` stage reported 17 SOFT expectation failures, all on OTHER brands (Cattelan 11, Bonaldo 1, Pianca 4, Monography 1), none Desiree (queries #150-159 all pass); the server log showed every Groq key rate-limited ("deterministic matching only"), 5 of the 17 are marked degraded. Not proven pre-existing by a baseline replay -- no server or other-brand data was touched in this build.
 
-Deviation from the go-live list: "prices.json has >=1 row per product" is met for 101/102; GUANCIALI (3 pillows) has 0 rows because the PDF prints no price for them (triaged known_gap, chat answers `no_price_data` honestly).
+All go-live conditions met: 102/102 products have rows, 0 flags, flag_triage.json has an empty Desiree ledger.
 
 Bare-name collisions (RITO, DORVAN, KARIN, LACOON, LUDWIG, ZENIT, HAB, ARLON, KARA, ELI FLY ...) resolve through `clarify_product` in the chat (tested: RITO). This is NOT the same path as the Pianca "Onda" / Ditre "Papilo" misses, where an exact-name match won silently over same-named siblings -- tracked separately.

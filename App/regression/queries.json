@@ -1620,9 +1620,10 @@
     "id": 158,
     "cat": "ok",
     "brand": "Desiree",
-    "query": "give me the price of guanciali",
-    "note": "Desiree -- GUANCIALI has codes and sizes but the PDF prints no price; honest no-data answer is correct (see flag_triage.json).",
-    "expect_status": "no_price_data"
+    "query": "give me all prices for guanciali",
+    "note": "Desiree -- GUANCIALI: 3 pillows, price printed in bold under each CODICE row (fiberfill 38, latex 75, anatomical latex 78). An earlier version of this build wrongly read those as stray numbers and logged 'no price printed'; corrected 2026-11-16 after the user spotted it in the PDF.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 3
   },
   {
     "id": 159,
@@ -1631,5 +1632,23 @@
     "query": "give me all prices for Rito scrittoio",
     "note": "Desiree -- bare-name collision: RITO exists as Divano / Poltrona / Complemento / outdoor; the answer must ask which one rather than pick silently.",
     "expect_status": "clarify_product"
+  },
+  {
+    "id": 160,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "give me all prices for Reti e materassi",
+    "note": "Desiree -- RETI E MATERASSI: 8 sub-products (4 slatted bases/pairs, 4 mattresses) x 3-4 sizes, price in bold under each CODICE row, left page + right page of PDF p.171; 26 rows, sub-product names from the Italian headings.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 26
+  },
+  {
+    "id": 161,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Reti e materassi materasso in lattice 160x200 price",
+    "note": "Desiree -- right-page mattress on the shared PDF p.171; 1.195 verified on the page image.",
+    "expect_status": "ok",
+    "expect_price": "1.195"
   }
 ]
