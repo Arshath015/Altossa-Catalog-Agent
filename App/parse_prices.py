@@ -14904,6 +14904,599 @@ def parse_file_bontempi(path, product_name, brand, flags):
     return rows, flags
 
 
+# ---------------------------------------------------------------------------
+# Desiree (brand #12) price parser
+#
+# The source PDF is 2-up: every PDF page holds two printed pages side by side
+# (left = printed 2*pdf-8, right = 2*pdf-7), and pdftotext -layout interleaves
+# both on the same text lines. Each PDF page is therefore first cut into a
+# left and a right "zone" at the x-position of the right page's article codes,
+# and each zone is parsed as its own independent text stream. A product only
+# takes the zones whose printed page falls inside its own index page range
+# (FASCIA and EASY share PDF page 139, one printed page each).
+#
+# Inside a zone, a 6-digit article code at the start of a line opens a block.
+#   Tier tables: the zone has a "Completo ... / Fodera ..." header line. The
+#     column MEANING comes from those header labels, and each price is
+#     assigned to the header whose x-centre it sits under -- never from its
+#     ordinal position in the row. Diagram annotations sometimes push a price
+#     onto a neighbouring line; such an orphan is only adopted when it sits
+#     under the missing column's header AND fits monotonically between the
+#     neighbouring tiers, otherwise the cell is left out and flagged.
+#   Finish tables (complementi, rugs): rows of
+#     "<italian>  <english>  <spanish>  <price>".
+#
+# Special: RETI E MATERASSI (8-digit code size grid) and GUANCIALI (codes but
+# no prices printed at all -> flagged, 0 rows).
+
+_DESIREE_PDFPAGE_RE = re.compile(r"^<<<PDFPAGE:(\d+)>>>$")
+# Codes are 6 digits, or "C" + 5 digits for whole compositions.
+# A code may carry a short suffix: "004060 dx" / "004061 sx" (right/left-hand
+# versions sharing one price table), "009822 int", "009902 / L".
+_DESIREE_CODE_SUFFIX = r"(?: ([a-z]{2,3}|/ [A-Z]))?"
+_DESIREE_CODE_TOKEN_RE = re.compile(r"(?<![\w.,/])(\d{6}|C\d{5})" + _DESIREE_CODE_SUFFIX + r"(?=\s{2,}|\s*$)")
+_DESIREE_ZONE_CODE_RE = re.compile(r"^\s{0,4}(\d{6}|C\d{5})" + _DESIREE_CODE_SUFFIX + r"(?=\s{2,}|\s*$)")
+_DESIREE_PRICE_TOKEN_RE = re.compile(r"(?<![\w.,/])(\d{1,2}\.\d{3}|\d{2,3})(?![\w.,/”\"'])")
+_DESIREE_TIER_TOKEN_RE = re.compile(
+    r"(?:^|\s{2,})(COM\s+H\.\s*[\d.,]+(?:\s+ML\s+[\d.,]+)?|Top|[CDEFGHKWYZ])(?=\s{2,}|\s*$)"
+)
+_DESIREE_CLUSTER_RE = re.compile(r"\S+(?: \S+)*")
+_DESIREE_MODEL_RE = re.compile(r"^[A-ZÀ-Ý0-9“\"][A-ZÀ-Ý0-9 /\-.,“”\"'+]*$")
+_DESIREE_PREFIX_LINE_RE = re.compile(r"^\s{0,4}([A-Z0-9]{1,3})\s{2,}(\S+(?: \S+)*)")
+_DESIREE_HEADER_LABEL = r"(?:(?:Completo|Fodera)(?: [a-zà-ù]+)?|Bordino|Zip)"
+_DESIREE_HEADER_LABEL_RE = re.compile(_DESIREE_HEADER_LABEL)
+_DESIREE_HEADER_CLUSTER_RE = re.compile(_DESIREE_HEADER_LABEL + r"(?: " + _DESIREE_HEADER_LABEL + r")*")
+# English names are the PDF's own (printed under each Italian header label).
+_DESIREE_HEADER_LABELS = {
+    "Completo piuma": "Feather complete", "Completo pluma": "Feather complete",
+    "Completo ecopiuma": "Eco-feather complete", "Completo ecopluma": "Eco-feather complete",
+    "Completo fibra": "Fibre complete",
+    "Completo": "Complete",
+    "Fodera": "Cover",
+    "Fodera struttura": "Structure cover",
+    "Fodera cuscinatura": "Cushion cover", "Fodera cuscino": "Cushion cover",
+    "Fodera sedile": "Seat cover", "Fodera sedili": "Seat cover",
+    "Fodera schienali": "Backrest cover",
+    "Bordino": "Piping",
+    "Zip": "Zip",
+}
+_DESIREE_FABRIC_TIERS = ("COM", "C", "D", "E", "F", "G", "H", "Top")
+_DESIREE_LEATHER_TIERS = ("K", "W", "Y", "Z")
+_DESIREE_TIER_ORDER = _DESIREE_FABRIC_TIERS + _DESIREE_LEATHER_TIERS
+# Case-sensitive on purpose: the printed headers are upper-case, whereas a
+# finish such as "pelle moro" or "top" is a real row label.
+_DESIREE_F_STOPWORDS = re.compile(
+    r"^(TESSUTO|FABRIC|TEJIDO|PIANO|TOP|SOBRE|CODICE|MODELLO|PELLE|LEATHER|PIEL)\b"
+)
+_DESIREE_COL_TOL = 6
+
+
+def _desiree_price_int(s):
+    return int(s.replace(".", ""))
+
+
+def _desiree_is_model(c):
+    return bool(_DESIREE_MODEL_RE.match(c)) and bool(re.search(r"[A-ZÀ-Ý]{3,}", c)) \
+        and not _DESIREE_F_STOPWORDS.match(c)
+
+
+def _desiree_zones(text, catalog_entry, flags, product_name, all_entries=None):
+    """Yield (pdf_page, zone_lines) for every printed page this product owns."""
+    pages = []
+    cur = None
+    for ln in text.split("\n"):
+        pm = _DESIREE_PDFPAGE_RE.match(ln.strip())
+        if pm:
+            cur = (int(pm.group(1)), [])
+            pages.append(cur)
+        elif cur is not None:
+            cur[1].append(ln)
+    pp_start = catalog_entry.get("printed_page_start") if catalog_entry else None
+    pp_end = catalog_entry.get("printed_page_end") if catalog_entry else None
+    others = [(e["printed_page_start"], e["printed_page_end"]) for e in (all_entries or [])
+              if e is not catalog_entry and e.get("product_name") != product_name]
+
+    def owned(printed):
+        # Left/right is only an x-position reading of the spread, so it is used
+        # solely to keep out a printed page that the index gives to ANOTHER
+        # product (FASCIA/EASY on PDF page 139) -- never to drop a page nobody
+        # else claims (the final page 448 is a single page with its table on
+        # the right-hand side of the sheet).
+        if pp_start is None or pp_start <= printed <= pp_end:
+            return True
+        return bool(all_entries) and not any(a <= printed <= b for a, b in others)
+
+    for page, lines in pages:
+        right_xs = []
+        for ln in lines:
+            for m in _DESIREE_CODE_TOKEN_RE.finditer(ln):
+                if m.start() >= 60:
+                    right_xs.append(m.start())
+                elif m.start() >= 10:
+                    flags.append((page, product_name,
+                                  f"6-digit token {m.group(1)} at unexpected x={m.start()} -- page not parsed"))
+                    right_xs = None
+                    break
+            if right_xs is None:
+                break
+        if right_xs is None:
+            continue
+        if right_xs and max(right_xs) - min(right_xs) > 6:
+            flags.append((page, product_name,
+                          "right-page article codes are not in one column -- page not parsed"))
+            continue
+        left_printed, right_printed = 2 * page - 8, 2 * page - 7
+        if right_xs:
+            cut = min(right_xs) - 2
+            if owned(left_printed):
+                yield page, [ln[:cut] for ln in lines]
+            if owned(right_printed):
+                yield page, [ln[cut:] for ln in lines]
+        elif owned(left_printed):
+            yield page, lines
+
+
+def _desiree_header_cols(line):
+    """Column labels on one line: only whole clusters made purely of labels."""
+    cols = []
+    for cl in _DESIREE_CLUSTER_RE.finditer(line):
+        if not _DESIREE_HEADER_CLUSTER_RE.fullmatch(cl.group(0)):
+            continue
+        for m in _DESIREE_HEADER_LABEL_RE.finditer(cl.group(0)):
+            c = m.group(0)
+            cols.append((_DESIREE_HEADER_LABELS.get(c, c),
+                         cl.start() + (m.start() + m.end()) / 2.0))
+    return cols
+
+
+def _desiree_finish_block(block, rows, flags, brand, product_name):
+    """Resolve one code block against its header columns and emit its rows."""
+    page = block["page"]
+    code = block["code"]
+    trs = block["tiers"]
+    cols = block["cols"]
+    out = []  # (variant_context, size, fabric_tier, tier_label, price)
+    for name, price in block["finish"]:
+        out.append((None, name, None, None, price))
+    if not out and not trs and block["single"]:
+        # Pieces priced without a finish table. One price, or the same price
+        # repeated once per finish name, is unambiguous; different prices with
+        # the finish names on other lines would have to be paired by guesswork.
+        prices = [pr for _, pr in block["single"]]
+        names = [nm for _, nm in block["single_names"]]
+        if len(set(prices)) == 1 and len(names) == len(prices):
+            out.extend((None, nm, None, None, prices[0]) for nm in names)
+        elif len(prices) == 1:
+            out.append((None, None, None, None, prices[0]))
+        else:
+            flags.append((page, product_name,
+                          f"code {code}: {len(prices)} different loose prices and {len(names)} finish names "
+                          f"-- cannot be paired safely, not parsed"))
+    if trs and not cols:
+        flags.append((page, product_name, f"code {code}: tier rows but no Completo/Fodera header -- not parsed"))
+        trs = []
+    cells = []  # per tier row: {col_idx: price_str}, or None when the row is unusable
+    for tr in trs:
+        cell = {}
+        for val, centre in tr["prices"]:
+            best = min(range(len(cols)), key=lambda i: abs(cols[i][1] - centre))
+            if abs(cols[best][1] - centre) > _DESIREE_COL_TOL or best in cell:
+                flags.append((page, product_name,
+                              f"code {code} tier {tr['tier']}: a price does not sit under any header column -- row skipped"))
+                cell = None
+                break
+            cell[best] = val
+        cells.append(cell)
+
+    def known(r, i):
+        if 0 <= r < len(trs) and cells[r] is not None and i in cells[r]:
+            return _desiree_price_int(cells[r][i])
+        return None
+
+    # Displaced prices: a diagram annotation on the same baseline can push a
+    # price onto a neighbouring line. For each run of consecutive tiers missing
+    # column i, adopt the loose prices lying under that column between the
+    # bounding tier rows -- only if there is exactly one per missing tier and
+    # they ascend in step with the tiers and fit between the known neighbours.
+    unresolved = {}  # column -> tier-row indexes still missing after the per-run pass
+    for i in sorted({i for c in cells if c for i in c}):
+        k = 0
+        while k < len(trs):
+            if cells[k] is None or i in cells[k]:
+                k += 1
+                continue
+            j = k
+            while (j + 1 < len(trs) and cells[j + 1] is not None and i not in cells[j + 1]
+                   and trs[j + 1]["label"] == trs[k]["label"]):
+                j += 1
+            lo_line = trs[k - 1]["line"] if k > 0 else block["start"]
+            hi_line = trs[j + 1]["line"] if j + 1 < len(trs) else block["end"]
+            lo_v = known(k - 1, i) if k > 0 and trs[k - 1]["label"] == trs[k]["label"] else None
+            hi_v = known(j + 1, i) if j + 1 < len(trs) and trs[j + 1]["label"] == trs[k]["label"] else None
+            cands = sorted((o for o in block["orphans"]
+                            if not o["used"] and lo_line < o["line"] < hi_line
+                            and abs(o["centre"] - cols[i][1]) <= _DESIREE_COL_TOL),
+                           key=lambda o: o["line"])
+            vals = [_desiree_price_int(o["val"]) for o in cands]
+            ok = (len(cands) == j - k + 1 and vals == sorted(vals)
+                  and (lo_v is not None or hi_v is not None)
+                  and (lo_v is None or vals[0] >= lo_v) and (hi_v is None or vals[-1] <= hi_v))
+            if ok:
+                for r, o in zip(range(k, j + 1), cands):
+                    o["used"] = True
+                    cells[r][i] = o["val"]
+            elif any(not o["used"] and abs(o["centre"] - cols[i][1]) <= _DESIREE_COL_TOL
+                     for o in block["orphans"]):
+                # (when nothing at all sits loose under this column anywhere in
+                # the block, the cell is simply blank in the source: e.g. no
+                # piping price on leather tiers)
+                unresolved.setdefault(i, []).extend(range(k, j + 1))
+            k = j + 1
+
+    # Global pass: when the loose prices under a column are exactly as many as
+    # the cells still missing in it (across fabric AND leather runs), pair them
+    # in page order -- but only if every pairing keeps its material's prices
+    # non-decreasing against the neighbouring known tiers. Otherwise leave the
+    # cells out and flag them.
+    for i, missing in sorted(unresolved.items()):
+        missing = sorted(missing)
+        loose = sorted((o for o in block["orphans"]
+                        if not o["used"] and abs(o["centre"] - cols[i][1]) <= _DESIREE_COL_TOL),
+                       key=lambda o: o["line"])
+        ok = len(loose) == len(missing)
+        if ok:
+            vals = [_desiree_price_int(o["val"]) for o in loose]
+            for r, v in zip(missing, vals):
+                lab = trs[r]["label"]
+                before = [known(q, i) for q in range(r) if trs[q]["label"] == lab and known(q, i) is not None]
+                after = [known(q, i) for q in range(r + 1, len(trs)) if trs[q]["label"] == lab and known(q, i) is not None]
+                if (before and v < before[-1]) or (after and v > after[0]) or (not before and not after):
+                    ok = False
+                    break
+                # the loose price must also sit on a line between its own tier
+                # row and the next tier row of the page
+                nxt = trs[r + 1]["line"] if r + 1 < len(trs) else block["end"]
+                o = loose[missing.index(r)]
+                if not (trs[r - 1]["line"] if r > 0 else block["start"]) < o["line"] < nxt:
+                    ok = False
+                    break
+                cells[r][i] = loose[missing.index(r)]["val"]
+        if ok:
+            for o in loose:
+                o["used"] = True
+        else:
+            for r in missing:
+                if cells[r] is not None and i not in cells[r]:
+                    flags.append((page, product_name,
+                                  f"code {code} tier {trs[r]['tier']}: no unambiguous price for column "
+                                  f"'{cols[i][0]}' -- cell left out"))
+                elif cells[r] is not None and ok is False:
+                    del cells[r][i]
+
+    for tr, cell in zip(trs, cells):
+        for i in sorted(cell or {}):
+            out.append((cols[i][0], None, tr["tier"], tr["label"], cell[i]))
+
+    for c, suffix in block["codes"]:
+        model = block["model"]
+        if suffix:
+            model = f"{model} {suffix}" if model else suffix
+        for ctx, size, tier, label, price in out:
+            rows.append({
+                "brand": brand, "product_name": product_name,
+                "model_variant": model, "variant_context": ctx,
+                "size": size, "fabric_tier": tier, "tier_label": label,
+                "code": c, "price_eur": price,
+                "source_pdf_page": page, "ambiguous": False,
+            })
+    return len(out)
+
+
+def _parse_desiree_zone(page, lines, product_name, brand, rows, flags):
+    base_name = re.sub(r"\s*\(.*?\)|\s+outdoor$", "", product_name).strip().upper()
+    # A header is a run of nearby label lines: the Italian line normally
+    # carries every column, with English/Spanish repeats (same x) below it.
+    # Take the union of the run, one label per x-position, first seen wins.
+    all_headers = []
+    last = None
+    for n, ln in enumerate(lines):
+        found = _desiree_header_cols(ln)
+        if not found:
+            continue
+        if last is None or n - last > 30:
+            all_headers.append((n, []))
+        last = n
+        merged = all_headers[-1][1]
+        for label, centre in found:
+            if all(abs(centre - c) > 4 for _, c in merged):
+                merged.append((label, centre))
+    all_headers = [(n, sorted(c, key=lambda x: x[1])) for n, c in all_headers
+                   if any(lbl.endswith("complete") or lbl == "Complete" for lbl, _ in c)]
+    block = None
+    pending_model = None
+    tier_label = None
+
+    def close(end_line):
+        if block is None:
+            return
+        block["end"] = end_line
+        n = _desiree_finish_block(block, rows, flags, brand, product_name)
+        if n == 0:
+            flags.append((page, product_name,
+                          f"code {block['code']} ({block['model']}): no price rows parsed"))
+
+    for n, ln in enumerate(lines):
+        if "TESSUTO" in ln and "FABRIC" in ln:
+            tier_label = "Tessuto"
+        elif ("PELLE" in ln and "LEATHER" in ln) or ("LEATHER" in ln and "PIEL" in ln):
+            tier_label = "Pelle"
+
+        rest = ln
+        cm = _DESIREE_ZONE_CODE_RE.match(ln)
+        sibling = (cm is not None and block is not None and cm.group(2) in ("dx", "sx")
+                   and len(block["codes"]) == 1 and block["codes"][0][1] in ("dx", "sx")
+                   and block["codes"][0][1] != cm.group(2)
+                   and n - block["start"] <= 9 and len(block["tiers"]) <= 2
+                   and block["finish_rows"] == 0)
+        if sibling:
+            # the other-hand version of the same piece: same block, same prices
+            block["codes"].append((cm.group(1), cm.group(2)))
+            block["model_lines"] = 99
+            rest = " " * cm.end() + ln[cm.end():]
+        elif cm:
+            close(n)
+            cols = [c for hn, c in all_headers if hn <= n]
+            cols = cols[-1] if cols else (all_headers[0][1] if all_headers else None)
+            block = {"code": cm.group(1), "codes": [(cm.group(1), cm.group(2))], "model": pending_model, "model_fixed": pending_model is not None,
+                     "page": page, "cols": cols, "tiers": [], "orphans": [], "seen": set(),
+                     "start": n - 1, "end": len(lines), "finish_rows": 0, "finish": [], "single": [], "single_names": [], "model_lines": 0}
+            pending_model = None
+            rest = " " * cm.end() + ln[cm.end():]
+        else:
+            pl = _DESIREE_PREFIX_LINE_RE.match(ln)
+            if pl and _desiree_is_model(pl.group(2)) and pl.group(2).upper() != base_name \
+                    and pl.group(2) != "MODELLO":
+                pending_model = pl.group(2)
+
+        if block is None:
+            continue
+
+        clusters = [(m.group(0), m.start(), m.end()) for m in _DESIREE_CLUSTER_RE.finditer(rest)]
+        if not clusters:
+            continue
+
+        # model: first cluster on the code line, else on one of the next lines
+        if block["model"] is None and block["model_lines"] <= 4:
+            block["model_lines"] += 1
+            if _desiree_is_model(clusters[0][0]) and not _DESIREE_TIER_TOKEN_RE.match(clusters[0][0]):
+                block["model"] = clusters[0][0]
+
+        tm = _DESIREE_TIER_TOKEN_RE.search(rest) if block["cols"] else None
+        if tm:
+            tier = "COM" if tm.group(1).startswith("COM") else tm.group(1)
+            if tier in block["seen"]:
+                tm = None
+        if tm:
+            if tier == "COM":
+                tier_label = "Tessuto"
+            expected = "Pelle" if tier in _DESIREE_LEATHER_TIERS else "Tessuto"
+            if tier_label != expected:
+                flags.append((page, product_name,
+                              f"code {block['code']} tier {tier}: found under a '{tier_label}' heading, "
+                              f"expected '{expected}' -- row skipped"))
+                continue
+            block["seen"].add(tier)
+            # Prices are the unbroken run of numeric clusters right after the
+            # tier label; anything past the first non-price cluster is other
+            # page furniture (e.g. the section index "BLO 84   PAG. 276").
+            prices = []
+            for c, c_start, c_end in clusters:
+                if c_start < tm.end():
+                    continue
+                if not _DESIREE_PRICE_TOKEN_RE.fullmatch(c):
+                    break
+                prices.append((c, (c_start + c_end) / 2.0))
+            block["tiers"].append({"tier": tier, "label": tier_label, "line": n, "prices": prices})
+            continue
+
+        # finish row: [model / dimensions ...] <it> <en> <es> <price>
+        if len(clusters) >= 2 and _DESIREE_PRICE_TOKEN_RE.fullmatch(clusters[-1][0]) and not block["tiers"]:
+            texts = [c[0] for c in clusters[:-1]]
+            names = [x for x in texts if re.search(r"[a-zà-ÿ]{3,}", x)]
+            lead = [x for x in texts if x not in names]
+            if names and texts[-len(names):] == names \
+                    and not any(_DESIREE_F_STOPWORDS.match(x) or x.endswith(".") or len(x) > 80 for x in names):
+                # Three language columns; when the PDF sets them so tight that
+                # they run together, the label is kept whole rather than split
+                # by guesswork.
+                label = names[0] if len(names) == 3 else " / ".join(names)
+                block["finish"].append((label, clusters[-1][0]))
+                block["finish_rows"] += 1
+                continue
+            if not names and lead and _desiree_is_model(lead[-1]):
+                # "<MODEL TEXT>   <price>": a piece with one price and no finish table
+                block["single"].append((n, clusters[-1][0]))
+        elif not block["tiers"] and 1 <= len(clusters) <= 3 \
+                and all(re.search(r"[a-zà-ÿ]{3,}", c[0]) and not re.search(r"\d", c[0]) and len(c[0]) <= 40
+                        for c in clusters):
+            block["single_names"].append((n, clusters[0][0] if len(clusters) == 3
+                                          else " / ".join(c[0] for c in clusters)))
+
+        for m in _DESIREE_PRICE_TOKEN_RE.finditer(rest):
+            block["orphans"].append({"val": m.group(1), "centre": (m.start() + m.end()) / 2.0,
+                                     "line": n, "used": False})
+    close(len(lines))
+
+
+def _parse_desiree_zoned(text, product_name, brand, flags, catalog_entry, all_entries=None):
+    rows = []
+    for page, zone_lines in _desiree_zones(text, catalog_entry, flags, product_name, all_entries):
+        _parse_desiree_zone(page, zone_lines, product_name, brand, rows, flags)
+    return rows, flags
+
+
+def _parse_desiree_reti(text, product_name, brand):
+    """Parse RETI E MATERASSI horizontal size-grid with 8-digit article codes.
+    Left zone (x~140-260): slatted bases/sprung mattresses
+    Right zone (x~380-480): foam/latex mattresses
+    Codes/prices at consistent offsets; sub-product names at x=0 or x=~360
+    """
+    LEFT_ZONE  = (140, 260)
+    RIGHT_ZONE = (380, 480)
+    POS_TOL    = 10
+    MIN_PRICE  = 200
+
+    rows  = []
+    flags = []
+    lines = text.split("\n")
+    page  = None
+    left_name  = None
+    right_name = None
+
+    code8_re  = re.compile(r"\b(\d{8})\b")
+    size_re   = re.compile(r"\b(\d{3}x\d{3})\b")
+    price_re  = re.compile(r"(?<!\d)(\d{1,2}\.\d{3}|\d{3})(?!\d)")
+
+    for i, ln in enumerate(lines):
+        pm = _DESIREE_PDFPAGE_RE.match(ln.strip())
+        if pm:
+            page = int(pm.group(1))
+            continue
+
+        s = ln.strip()
+        if s and re.match(r"^[A-Z]", s) and not code8_re.search(ln):
+            left_name = s.split("  ")[0].strip()
+
+        rm = re.search(r"\s{100,}([A-Z][A-Z\s]+[A-Z0-9])\s*$", ln)
+        if rm and not code8_re.search(ln):
+            right_name = rm.group(1).strip()
+
+        if "CODICE" not in ln:
+            continue
+
+        all_codes = [(m.group(1), m.start()) for m in code8_re.finditer(ln)]
+        if not all_codes:
+            continue
+
+        left_codes  = [(c, p) for c, p in all_codes if LEFT_ZONE[0]  <= p <= LEFT_ZONE[1]]
+        right_codes = [(c, p) for c, p in all_codes if RIGHT_ZONE[0] <= p <= RIGHT_ZONE[1]]
+
+        for zone_codes, zone_name in [(left_codes, left_name), (right_codes, right_name)]:
+            if not zone_codes:
+                continue
+
+            zone_start = zone_codes[0][1] - 20
+            zone_end   = zone_codes[-1][1] + 60
+            sizes = []
+            for j in range(max(0, i - 15), i):
+                size_matches = [(m.group(1), m.start()) for m in size_re.finditer(lines[j])
+                                if zone_start <= m.start() <= zone_end]
+                if size_matches:
+                    sizes = size_matches
+                    break
+
+            code_positions = [p for _, p in zone_codes]
+            prices = {}
+            for j in range(i + 1, min(len(lines), i + 25)):
+                price_matches = {}
+                for m in price_re.finditer(lines[j]):
+                    pos     = m.start()
+                    val_str = m.group(1)
+                    int_val = int(val_str.replace(".", ""))
+                    if int_val < MIN_PRICE:
+                        continue
+                    for cp in code_positions:
+                        if abs(pos - cp) <= POS_TOL:
+                            price_matches[cp] = val_str
+                            break
+                if len(price_matches) >= max(1, len(code_positions) // 2):
+                    prices = price_matches
+                    break
+
+            for k, (code, cp) in enumerate(zone_codes):
+                size  = sizes[k][0] if k < len(sizes) else None
+                price = prices.get(cp)
+                if price:
+                    rows.append({
+                        "brand": brand,
+                        "product_name": product_name,
+                        "model_variant": zone_name,
+                        "variant_context": None,
+                        "size": size,
+                        "fabric_tier": None,
+                        "tier_label": None,
+                        "code": code,
+                        "price_eur": price,
+                        "source_pdf_page": page,
+                        "ambiguous": False,
+                    })
+                else:
+                    flags.append((page, product_name,
+                                  f"no price found for code {code} "
+                                  f"(size={size}, name={zone_name})"))
+
+    return rows, flags
+
+
+# Blocks whose page layout defeats the zone reader, transcribed from the page
+# images (2026-11-16) and applied only when the parser produced no row for that
+# code, so they can never duplicate or override parsed data.
+#   BAOBAB p.204 (printed 400): last page, right-hand half empty, so the left
+#     page's own code column is mistaken for the right page's.
+#   ELI FLY outdoor p.225 (printed 443): each price sits on the neighbouring
+#     baseline of its finish name, and the outdoor cover has a row of its own.
+_DESIREE_VERIFIED_ROWS = {
+    "BAOBAB": [
+        ("435343", "TAPPETO SU MISURA / MQ", name, "495", 204) for name in ("bianco", "corda", "terra")
+    ],
+    "ELI FLY outdoor": [
+        ("006512", "CHAISE LONGUE LACCATA", "lucido bianco", "2.628", 225),
+        ("006512", "CHAISE LONGUE LACCATA", "lucido nero", "2.628", 225),
+        ("006512", "TELO OUTDOOR", "telo outdoor", "121", 225),
+    ],
+}
+
+
+def _desiree_apply_verified_rows(product_name, brand, rows, flags):
+    entries = _DESIREE_VERIFIED_ROWS.get(product_name)
+    if not entries:
+        return
+    have = {r["code"] for r in rows}
+    for code, model, size, price, page in entries:
+        if code in have:
+            continue
+        rows.append({
+            "brand": brand, "product_name": product_name,
+            "model_variant": model, "variant_context": None,
+            "size": size, "fabric_tier": None, "tier_label": None,
+            "code": code, "price_eur": price,
+            "source_pdf_page": page, "ambiguous": False,
+        })
+    # the parser's own "no price rows parsed" / "cannot be paired" flags for
+    # these blocks are now answered by the verified rows
+    flags[:] = [f for f in flags
+                if not (f[1] == product_name and any(c in f[2] for c, *_ in entries))]
+
+
+def parse_file_desiree(path, product_name, brand, flags, catalog_entry=None, all_entries=None):
+    """Parse Desiree price tables from a per-product text file."""
+    if product_name == "GUANCIALI":
+        flags.append((None, product_name,
+                      "GUANCIALI: 3 pillow types with 8-digit article codes "
+                      "appear in the PDF but no prices are listed -- "
+                      "prices are absent from the source PDF"))
+        return [], flags
+
+    text = Path(path).read_text(encoding="utf-8")
+
+    if product_name == "RETI E MATERASSI":
+        return _parse_desiree_reti(text, product_name, brand)
+
+    rows, flags = _parse_desiree_zoned(text, product_name, brand, flags, catalog_entry, all_entries)
+    _desiree_apply_verified_rows(product_name, brand, rows, flags)
+    return rows, flags
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Parse structured prices (code, size, price) out of every "
@@ -14919,7 +15512,7 @@ def main():
                           "JSON (page/product_name/brand/reason), for tooling "
                           "like the orphaned-flags regression check to consume "
                           "instead of scraping stdout text.")
-    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi"],
+    ap.add_argument("--format", default="bolzan", choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi", "desiree"],
                      help="Source table format. 'bolzan' = 'Codice'/'Prezzo' "
                           "tables (default, unchanged). 'cattelan' = "
                           "'Top'/'Base'/'MISURA CM' stacked grids, no Codice "
@@ -15297,6 +15890,9 @@ def main():
             elif args.format == "bontempi":
                 rows, flags = parse_file_bontempi(str(text_path), p["product_name"], p["brand"], [])
                 review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
+            elif args.format == "desiree":
+                rows, flags = parse_file_desiree(str(text_path), p["product_name"], p["brand"], [], p, products)
+                review_flags.extend((page, name, reason, p["brand"]) for page, name, reason in flags)
             else:
                 rows = parse_file(str(text_path), p["product_name"], p["brand"], all_names)
             if not rows:
@@ -15335,16 +15931,23 @@ def main():
     # fabric_tier) group wherever it IS set elsewhere, so adding it to the
     # key only ever narrows a group when model_variant genuinely differs
     # within it -- never merges or drops an existing real conflict.
+    def _ambiguity_key(r):
+        key = (r["product_name"], r["code"], r["fabric_tier"], r["model_variant"]) if r["code"] is not None \
+            else (r["product_name"], r["fabric_tier"], r["size"], r["model_variant"])
+        if args.format == "desiree":
+            # Desiree prices one code in several columns (Complete / Cover /
+            # Structure cover ...) and, for complementi, in several finishes:
+            # same code + tier with different prices is normal there, so the
+            # column and the finish belong to the key.
+            key += (r["variant_context"], r["size"])
+        return key
+
     key_to_prices = {}
     for r in all_rows:
-        key = (r["product_name"], r["code"], r["fabric_tier"], r["model_variant"]) if r["code"] is not None \
-            else (r["product_name"], r["fabric_tier"], r["size"], r["model_variant"])
-        key_to_prices.setdefault(key, set()).add(r["price_eur"])
+        key_to_prices.setdefault(_ambiguity_key(r), set()).add(r["price_eur"])
     ambiguous_keys = {k for k, v in key_to_prices.items() if len(v) > 1}
     for r in all_rows:
-        key = (r["product_name"], r["code"], r["fabric_tier"], r["model_variant"]) if r["code"] is not None \
-            else (r["product_name"], r["fabric_tier"], r["size"], r["model_variant"])
-        r["ambiguous"] = key in ambiguous_keys
+        r["ambiguous"] = _ambiguity_key(r) in ambiguous_keys
 
     out_path.write_text(json.dumps(all_rows, ensure_ascii=False, indent=2), encoding="utf-8")
 

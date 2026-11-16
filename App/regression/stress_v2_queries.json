@@ -685,5 +685,33 @@
     "brand": "Bontempi",
     "query": "give me all prices for Poket",
     "note": "Multi-product-shared-page stress case -- Poket, Carrello Portasedie, Gancio per 2 Sedie, and Gancio per 4 Sedie all share ONE physical page (p.355); confirms Poket own-block scoping correctly excludes the other 3 products rows."
+  },
+  {
+    "id": 99,
+    "cat": "tricky_structure",
+    "brand": "Desiree",
+    "query": "give me the price for Fascia cuscino 54x44",
+    "note": "Desiree -- FASCIA and EASY share PDF p.139; image routing must show that page for either, and prices must come only from the right product."
+  },
+  {
+    "id": 100,
+    "cat": "tricky_structure",
+    "brand": "Desiree",
+    "query": "how much is the Easy cuscino 48x38 Feather complete fabric D",
+    "note": "Desiree -- EASY right-page cushion on the shared page 139; checks prices AND page image."
+  },
+  {
+    "id": 101,
+    "cat": "tricky_structure",
+    "brand": "Desiree",
+    "query": "give me all prices for Savoye",
+    "note": "Desiree -- sofa with dx/sx code pairs sharing one table and a hand-recovered displaced cell (Top Complete 6.230)."
+  },
+  {
+    "id": 102,
+    "cat": "tricky_structure",
+    "brand": "Desiree",
+    "query": "give me all prices for Eli fly outdoor",
+    "note": "Desiree -- outdoor chaise block hand-verified in _DESIREE_VERIFIED_ROWS plus the mattress table."
   }
 ]

@@ -1543,5 +1543,93 @@
     "query": "Daya poltrona scocca Pelle Ecologica Premium price",
     "note": "Batch 2 -- combinatorial base+addon pricing (Scocca A + Cuscinatura B), disambiguated via base_section_label fix, see flag_triage.json. Corrected expect_status to multiple_options after a real run: Daya has multiple ARTICOLO codes/components sharing this finish name, a bare query correctly surfaces them rather than guessing one.",
     "expect_status": "multiple_options"
+  },
+  {
+    "id": 150,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "give me all prices for Fascia",
+    "note": "Desiree -- FASCIA owns the whole LEFT printed page (270) of PDF p.139: 3 cushions x 12 tiers x 2 columns (Feather complete / Cover). Confirmed against the page image; EASY's codes on the right page must not leak in.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 72
+  },
+  {
+    "id": 151,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Fascia cuscino 42x34 Feather complete fabric C price",
+    "note": "Desiree -- 2-column (Feather complete / Cover) cushion table; 121 verified on page image p.139.",
+    "expect_status": "ok",
+    "expect_price": "121"
+  },
+  {
+    "id": 152,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Easy cuscino 40x40 Feather complete Z price",
+    "note": "Desiree -- EASY (right printed page 271), leather tier Z, Feather complete column (Cover is 252). Verified on page image.",
+    "expect_status": "ok",
+    "expect_price": "284"
+  },
+  {
+    "id": 153,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Agon elemento 150 Feather complete COM price",
+    "note": "Desiree -- 4-column sofa table (Feather complete / Fibre complete / Structure cover / Cushion cover); first block of AGON.",
+    "expect_status": "ok",
+    "expect_price": "2.785"
+  },
+  {
+    "id": 154,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Alasia poltrona Complete COM price",
+    "note": "Desiree -- armchair, 2 columns Complete / Cover.",
+    "expect_status": "ok",
+    "expect_price": "1.581"
+  },
+  {
+    "id": 155,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Savoye pouf large Complete COM price",
+    "note": "Desiree -- POUF LARGE has only Complete + Cushion cover columns (no Structure cover); column read by header position, not ordinal. Verified on page image p.97.",
+    "expect_status": "ok",
+    "expect_price": "1.871"
+  },
+  {
+    "id": 156,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "Baobab tappeto su misura corda price",
+    "note": "Desiree -- custom-size rug per sq.m (code 435343), a hand-verified block in _DESIREE_VERIFIED_ROWS (page p.204 right half empty).",
+    "expect_status": "ok",
+    "expect_price": "495"
+  },
+  {
+    "id": 157,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "give me all prices for Baobab",
+    "note": "Desiree -- 4 fixed-size rugs x 3 finishes + the custom-size per-sq.m rug x 3 finishes.",
+    "expect_status": "full_price_grid",
+    "expect_row_count": 15
+  },
+  {
+    "id": 158,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "give me the price of guanciali",
+    "note": "Desiree -- GUANCIALI has codes and sizes but the PDF prints no price; honest no-data answer is correct (see flag_triage.json).",
+    "expect_status": "no_price_data"
+  },
+  {
+    "id": 159,
+    "cat": "ok",
+    "brand": "Desiree",
+    "query": "give me all prices for Rito scrittoio",
+    "note": "Desiree -- bare-name collision: RITO exists as Divano / Poltrona / Complemento / outdoor; the answer must ask which one rather than pick silently.",
+    "expect_status": "clarify_product"
   }
 ]

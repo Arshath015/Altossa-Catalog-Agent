@@ -5256,5 +5256,11 @@
       "status": "real_gap",
       "note": "RESOLVED 2026-11-01 -- see this brand's own _CATALOG_WIDE: ARTICOLI CONTRACT shape entry above for the full writeup. This product's own base struttura + shared piano top-size matrix (confirmed via page image, PDF pp.288-290) is hand-transcribed into data/Bontempi/manual_additions.json, verified against the page image."
     }
+  },
+  "Desiree": {
+    "GUANCIALI": {
+      "status": "known_gap",
+      "note": "CONFIRMED 2026-11-16 via the page image (PDF p.172, printed pp.336-337) and the extracted text: the 3 pillow types (Fiberfill 43518099, Latex 43518199, Anatomical latex 43518299) are listed with article codes, sizes and weights but the list prints NO price for any of them. Nothing to parse or transcribe; 0 rows is the correct, honest result. Revisit only if a later price list prints prices for them."
+    }
   }
 }

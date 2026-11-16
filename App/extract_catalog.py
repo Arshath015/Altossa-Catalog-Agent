@@ -2497,6 +2497,171 @@ def parse_index_bontempi(pdf_path: str, total_pages: int) -> tuple[list[tuple[st
     return final_entries, last_printed_page
 
 
+# ---------------------------------------------------------------------------
+# Desiree (desireelistinoprezzia0.pdf -- brand #12). 2-up spread PDF: each
+# PDF page contains 2 printed pages side-by-side. Text-based (Futura Std /
+# Slimbach Std fonts), all readable via pdftotext. 234 PDF pages, 457
+# printed pages (reference sections start at 453).
+#
+# Page numbering: pdf_page = (printed_page + 8) // 2  (integer division).
+# Equivalently, PDF page k contains printed pages (2k-8) and (2k-7).
+# Verified: PDF pg 5 → printed 2+3, pg 10 → 12+13, pg 13 → 18+19,
+# pg 228 → 448+449.  PDF pages 1-4 are cover/finishes/navigation with no
+# printed page numbers.
+#
+# TOC spans printed pages 2-13 (PDF pages 5-10), 8 sections.
+# Reference-only trailing pages (TESSUTO/CAMPIONARIO/CONDIZIONI DI VENDITA
+# at printed pg 453+) are excluded from catalog entries.
+#
+# Price table shapes:
+#   S4 (indoor sofas only): 4 price columns per tier row:
+#       Feather complete | Fibre complete | Structure cover | Cushion cover
+#       Tiers: COM H.x ML y, C, D, E, F, G, H, Top (fabric) + K, W, Y, Z (leather)
+#   S2 (armchairs, beds, cushions, outdoor sofas, outdoor armchairs):
+#       2 price columns per tier row: Complete | Cover.  Same tier alphabet.
+#       BICOLORE model variants: only the Cover column has a price.
+#   F  (complementi, accessories, rugs): flat price per finish/size variant;
+#       rugs have per-colour prices; accessories (reti/materassi/guanciali)
+#       use a horizontal size-as-column grid.
+#
+# 12 confirmed cross-section name collisions resolved by DESIREE_SECTION_QUALIFIER.
+# One within-section OUTDOOR collision (DORVAN outdoor × 2: sofa at pg 424
+# and tavolini at pg 446) pre-resolved by explicit naming in TOC entries.
+DESIREE_TOC_ENTRIES: list[tuple[str, int, str]] = [
+    # DIVANI
+    ("AGON", 18, "DIVANI"), ("ARLON", 26, "DIVANI"), ("AVÌ", 34, "DIVANI"),
+    ("BOÈ", 38, "DIVANI"), ("BOOG", 42, "DIVANI"), ("DORVAN", 52, "DIVANI"),
+    ("EASTON", 60, "DIVANI"), ("ELIES", 68, "DIVANI"), ("ETHÌA", 76, "DIVANI"),
+    ("FREEMOOD", 84, "DIVANI"), ("GLOW IN", 90, "DIVANI"), ("HAB", 112, "DIVANI"),
+    ("KARIN", 116, "DIVANI"), ("KUBIC", 118, "DIVANI"), ("LACOON", 128, "DIVANI"),
+    ("LACOON ISLAND", 132, "DIVANI"), ("LOV ELEGANCE", 136, "DIVANI"),
+    ("LOVELY DAY", 142, "DIVANI"), ("LUDWIG", 150, "DIVANI"), ("MELVIL", 154, "DIVANI"),
+    ("MONOPOLI", 160, "DIVANI"), ("NATHAN", 172, "DIVANI"), ("RITO", 174, "DIVANI"),
+    ("ROLLKING", 180, "DIVANI"), ("SAVOYE", 184, "DIVANI"), ("SHERIDAN", 190, "DIVANI"),
+    ("TULISS", 200, "DIVANI"), ("VON", 204, "DIVANI"), ("ZENIT", 214, "DIVANI"),
+    # POLTRONE
+    ("ALASIA", 222, "POLTRONE"), ("ALIX", 224, "POLTRONE"), ("AVÌ", 226, "POLTRONE"),
+    ("CLOÈ", 228, "POLTRONE"), ("DORALEE", 230, "POLTRONE"), ("EBEN", 232, "POLTRONE"),
+    ("EGO", 234, "POLTRONE"), ("ELDORA", 236, "POLTRONE"), ("ELI FLY", 238, "POLTRONE"),
+    ("KARA", 240, "POLTRONE"), ("KARIN", 244, "POLTRONE"), ("KOSTER", 246, "POLTRONE"),
+    ("LACOON", 248, "POLTRONE"), ("LE MIDÌ", 252, "POLTRONE"),
+    ("NEST SOFT", 254, "POLTRONE"), ("ONE FLO", 256, "POLTRONE"),
+    ("RITO", 258, "POLTRONE"), ("SOOR", 260, "POLTRONE"),
+    ("TULISS", 262, "POLTRONE"), ("WING", 264, "POLTRONE"),
+    # CUSCINI
+    ("ARREDA", 268, "CUSCINI"), ("FASCIA", 270, "CUSCINI"), ("EASY", 271, "CUSCINI"),
+    # LETTI
+    ("BLO 84", 276, "LETTI"), ("BLO 118", 280, "LETTI"), ("CHANCE", 284, "LETTI"),
+    ("CHANCE UP", 290, "LETTI"), ("DEDALO", 294, "LETTI"), ("DEDALO UP", 298, "LETTI"),
+    ("HAB", 302, "LETTI"), ("LOV", 306, "LETTI"), ("LUDWIG", 310, "LETTI"),
+    ("OZIUM", 316, "LETTI"), ("PLATZ", 318, "LETTI"), ("SHELLON", 320, "LETTI"),
+    ("SHELLON IN", 322, "LETTI"), ("VANITY", 326, "LETTI"), ("ZENIT", 330, "LETTI"),
+    # ACCESSORI
+    ("RETI E MATERASSI", 334, "ACCESSORI"), ("GUANCIALI", 336, "ACCESSORI"),
+    # COMPLEMENTI
+    ("ARLON", 338, "COMPLEMENTI"), ("CIÀCOLA", 342, "COMPLEMENTI"),
+    ("DABLIU IN", 346, "COMPLEMENTI"), ("DORVAN", 348, "COMPLEMENTI"),
+    ("IMAE", 350, "COMPLEMENTI"), ("IMAGE", 352, "COMPLEMENTI"),
+    ("KARA", 362, "COMPLEMENTI"), ("LINEAR", 366, "COMPLEMENTI"),
+    ("LUDWIG", 368, "COMPLEMENTI"), ("MERINE", 370, "COMPLEMENTI"),
+    ("NEMU", 372, "COMPLEMENTI"), ("RITO", 374, "COMPLEMENTI"),
+    ("ROLLKING", 376, "COMPLEMENTI"), ("SABI", 378, "COMPLEMENTI"),
+    ("STUM", 382, "COMPLEMENTI"), ("TÈ", 386, "COMPLEMENTI"),
+    ("TOMO", 388, "COMPLEMENTI"), ("YORI", 392, "COMPLEMENTI"),
+    ("ZEROCENTO", 394, "COMPLEMENTI"),
+    # TAPPETI
+    ("BAOBAB", 398, "TAPPETI"), ("GESTO CONTROLLATO", 402, "TAPPETI"),
+    ("GOA", 406, "TAPPETI"), ("GRADÉ", 408, "TAPPETI"),
+    ("OMAGGIO A PICASSO", 412, "TAPPETI"), ("SYON", 414, "TAPPETI"),
+    ("TASMAN", 420, "TAPPETI"),
+    # OUTDOOR — sofas/armchairs use S2; complementi/rug use F.
+    # "DORVAN outdoor" appears twice in this section (sofa at 424, tavolini
+    # at 446) -- both have the same section so the within-section collision
+    # is pre-resolved here by giving the tavolini entry a distinct name.
+    ("DORVAN outdoor", 424, "OUTDOOR"), ("HANEDA outdoor", 432, "OUTDOOR"),
+    ("LACOON ISLAND outdoor", 438, "OUTDOOR"), ("ELI FLY outdoor", 442, "OUTDOOR"),
+    ("RITO outdoor", 444, "OUTDOOR"), ("DORVAN outdoor Tavolini", 446, "OUTDOOR"),
+    ("JAVEA outdoor", 448, "OUTDOOR"),
+]
+
+# Customer-meaningful singular qualifier per TOC section, used only to
+# disambiguate the 12 confirmed within-brand bare-name collisions.
+# Every collision is cross-SECTION (never 2 entries of the same name in
+# the same section), so the TOC's own section label is a sufficient,
+# always-distinct qualifier.
+DESIREE_SECTION_QUALIFIER = {
+    "DIVANI": "Divano", "POLTRONE": "Poltrona", "CUSCINI": "Cuscino",
+    "LETTI": "Letto", "ACCESSORI": "Accessorio", "COMPLEMENTI": "Complemento",
+    "TAPPETI": "Tappeto", "OUTDOOR": "Outdoor",
+}
+
+
+def build_desiree_page_map(pdf_path: str, total_pages: int) -> dict[int, int]:
+    """Desiree is a 2-up spread PDF: each PDF page contains two printed pages
+    side by side. The footer line of each spread has BOTH printed page numbers:
+    one at the far-left and one at the far-right, separated by a large span of
+    whitespace (confirmed: pdf pg 10 → '12   ...   13', pg 13 → '18   ...   19').
+    Both numbers are mapped to the same PDF page.
+
+    Footer pattern: a line matching r'^\\s*(\\d{1,3})\\s{10,}(\\d{1,3})\\s*$'
+    where the two numbers are consecutive integers (a and a+1). Pages 1-4 have
+    no printed-page footers (cover/finishes/navigation)."""
+    page_map: dict[int, int] = {}
+    spread_re = re.compile(r"^\s*(\d{1,3})\s{10,}(\d{1,3})\s*$")
+    for pg in range(1, total_pages + 1):
+        text = pdftotext_page(pdf_path, pg)
+        for line in text.split("\n"):
+            m = spread_re.match(line)
+            if m:
+                a, b = int(m.group(1)), int(m.group(2))
+                if b == a + 1:
+                    page_map[a] = pg
+                    page_map[b] = pg
+                    break
+    return page_map
+
+
+def parse_index_desiree(pdf_path: str, total_pages: int) -> tuple[list[tuple[str, int]], int]:
+    """Resolves DESIREE_TOC_ENTRIES against the real PDF via
+    build_desiree_page_map (spread-footer-verified, not a hardcoded formula,
+    even though (printed+8)//2 was confirmed to hold everywhere checked).
+    Qualifies bare names with DESIREE_SECTION_QUALIFIER whenever a bare name
+    appears in 2+ distinct sections. The one within-section OUTDOOR collision
+    (DORVAN outdoor × 2) is pre-resolved in DESIREE_TOC_ENTRIES itself via
+    explicit naming ('DORVAN outdoor Tavolini' for pg 446).
+    Sanity-checks each resolved page's own text contains the first word of
+    the bare product name (case-insensitive), warning on any miss.
+    Returns (entries, last_printed_page), same shape as parse_index_bontempi."""
+    page_map = build_desiree_page_map(pdf_path, total_pages)
+
+    by_name: dict[str, list[tuple[int, str]]] = {}
+    for name, printed_page, section in DESIREE_TOC_ENTRIES:
+        by_name.setdefault(name, []).append((printed_page, section))
+
+    final_entries: list[tuple[str, int]] = []
+    unresolved: list[tuple[str, int, int]] = []
+    for name, printed_page, section in DESIREE_TOC_ENTRIES:
+        pdf_page = page_map.get(printed_page, (printed_page + 8) // 2)
+        display = name
+        if len(by_name[name]) > 1:
+            qualifier = DESIREE_SECTION_QUALIFIER.get(section, section.title())
+            display = f"{name} ({qualifier})"
+        final_entries.append((display, printed_page))
+
+        text = pdftotext_page(pdf_path, pdf_page)
+        first_word = name.split()[0].lower()
+        if first_word not in text.lower():
+            unresolved.append((name, printed_page, pdf_page))
+
+    if unresolved:
+        print(f"      -> WARNING: {len(unresolved)} TOC entries' resolved PDF "
+              f"page text did not contain the product's own first name-word "
+              f"(name, toc_printed_page, resolved_pdf_page): {unresolved}")
+
+    last_printed_page = max(p for _, p in final_entries)
+    return final_entries, last_printed_page
+
+
 def parse_index_pianca(pdf_path: str, index_pages: range) -> list[tuple[str, int]]:
     """Parse Pianca's INDICE page(s) via -tsv coordinates. Two mutually
     exclusive per-PAGE formats are supported (confirmed real, distinct
@@ -4420,7 +4585,7 @@ def main():
     )
     ap.add_argument("--out", default="./data", help="Output root folder")
     ap.add_argument("--style", default="bolzan",
-                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi"],
+                     choices=["bolzan", "cattelan", "bonaldo", "varaschini", "ditre", "pianca", "tacchini", "nube", "monography", "bodema", "bontempi", "desiree"],
                      help="Index format + page-footer style. 'bolzan' = "
                           "'p.N' index, two-number-per-spread footer "
                           "(default, unchanged). 'cattelan' = dot-leader "
@@ -4496,11 +4661,11 @@ def main():
         return
 
     if (not args.index_pages and not args.single_product and not args.manual_entries_file
-            and args.style not in ("varaschini", "tacchini", "nube", "monography", "bodema", "bontempi")):
+            and args.style not in ("varaschini", "tacchini", "nube", "monography", "bodema", "bontempi", "desiree")):
         print("ERROR: --index-pages is required for --style "
               f"{args.style!r} (only 'varaschini', 'tacchini', 'nube', "
-              "'monography', 'bodema', 'bontempi', --single-product, and "
-              "--manual-entries-file can omit it).")
+              "'monography', 'bodema', 'bontempi', 'desiree', --single-product, "
+              "and --manual-entries-file can omit it).")
         sys.exit(1)
 
     reader = PdfReader(pdf_path)
@@ -4521,6 +4686,11 @@ def main():
               "real PDF (BONTEMPI_TOC_ENTRIES -- see parse_index_bontempi's "
               "own module comment)...")
         entries, bontempi_last_printed_page = parse_index_bontempi(pdf_path, total_pages)
+    elif args.style == "desiree":
+        print("[1/5] Resolving the hand-transcribed 2-up-spread TOC against "
+              "the real PDF (DESIREE_TOC_ENTRIES -- see parse_index_desiree's "
+              "own module comment)...")
+        entries, desiree_last_printed_page = parse_index_desiree(pdf_path, total_pages)
     elif args.style == "monography":
         print("[1/5] Scanning PDF pages 6-49's own per-half (2-up spread) "
               "text for product NAME+CATEGORY headers (no reliable TOC page "
@@ -4594,6 +4764,12 @@ def main():
         # own module comment) -- used as the fallback formula for the rare
         # unreadable-footer page.
         page_fallback = lambda p: p + 2
+    elif args.style == "desiree":
+        page_map = build_desiree_page_map(pdf_path, total_pages)
+        # Confirmed formula (printed+8)//2 throughout (see parse_index_desiree's
+        # own module comment) -- used as the fallback for any rare
+        # unreadable-footer spread.
+        page_fallback = lambda p: (p + 8) // 2
     elif args.style == "cattelan":
         page_map = build_offset_page_map(pdf_path, total_pages)
         page_fallback = build_offset_fallback(page_map)
@@ -4653,6 +4829,9 @@ def main():
         # compute_ranges_bodema is generic tie-aware grouping, no Bodema
         # specifics -- reused as-is for Bontempi's own TOC entries.
         ranges = compute_ranges_bodema(entries, bontempi_last_printed_page)
+    elif args.style == "desiree":
+        # Same tie-aware grouping as Bodema/Bontempi -- reused as-is.
+        ranges = compute_ranges_bodema(entries, desiree_last_printed_page)
     elif args.style == "monography":
         last_printed_page_guess = max(page_map.keys()) if page_map else entries[-1][1]
         ranges = compute_ranges_monography(entries, last_printed_page_guess)

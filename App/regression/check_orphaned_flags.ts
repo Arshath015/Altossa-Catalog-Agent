@@ -51,6 +51,7 @@ const FLAG_PRODUCING_BRANDS: Record<string, string> = {
   'Monography': 'monography',
   'Bodema': 'bodema',
   'Bontempi': 'bontempi',
+  'Desiree': 'desiree',
 };
 
 interface Flag {
